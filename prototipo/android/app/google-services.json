@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1056545890912",
+    "project_id": "tiao-oficina-mecanica",
+    "storage_bucket": "tiao-oficina-mecanica.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1056545890912:android:b02a19e9672d262ff5d905",
+        "android_client_info": {
+          "package_name": "com.tiao.tiao_oficina"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB9U1Tnm58iXEAFimcYYcYwj1tAnsLUf-8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
