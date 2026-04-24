@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tião — Sistema Interno</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; font-family: 'DM Sans', sans-serif; background: #0e1620; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 24px 16px; }
+  #root { display: flex; flex-direction: column; align-items: center; width: 100%; gap: 20px; }
+  ::-webkit-scrollbar { display: none; }
+  * { -webkit-tap-highlight-color: transparent; }
+  @keyframes fadeSlide { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes scaleIn  { from { transform:scale(0.75); opacity:0; } to { transform:scale(1); opacity:1; } }
+  @keyframes spin     { to { transform:rotate(360deg); } }
+  @keyframes shake    { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-5px)} 40%,80%{transform:translateX(5px)} }
+  @keyframes ping     { from{transform:scale(1);opacity:.8} to{transform:scale(2.6);opacity:0} }
+  @keyframes slideUp  { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+// ─── EXACT DESIGN TOKENS (same as customer app) ────────────────────────────
+const BASE_T = {
+  navy:'#1C2F4A', navyMid:'#2A4268', navyLight:'#3A5280',
+  orange:'#F97316', orangeLight:'#FFF0E6',
+  bg:'#F4F5F7', card:'#FFFFFF',
+  textPrimary:'#111827', textSecondary:'#6B7280', textMuted:'#9CA3AF',
+  green:'#16A34A', greenBg:'#DCFCE7',
+  blue:'#2563EB',  blueBg:'#DBEAFE',
+  yellow:'#D97706', yellowBg:'#FEF3C7',
+  red:'#DC2626',   redBg:'#FEE2E2',
+  purple:'#7C3AED', purpleBg:'#EDE9FE',
+  teal:'#0D9488',   tealBg:'#CCFBF1',
+  border:'#E5E7EB', divider:'#F3F4F6',
+};
+
+const STATUS_MAP = {
+  aguardando: { label:'Aguardando',        color:BASE_T.textMuted, bg:'#F3F4F6',      dot:'#9CA3AF' },
+  orcamento:  { label:'Aprovar orçamento', color:BASE_T.yellow,    bg:BASE_T.yellowBg, dot:BASE_T.yellow },
+  andamento:  { label:'Em andamento',      color:BASE_T.blue,      bg:BASE_T.blueBg,   dot:BASE_T.blue },
+  revisao:    { label:'Em revisão',        color:BASE_T.purple,    bg:BASE_T.purpleBg, dot:BASE_T.purple },
+  concluido:  { label:'Concluído',         color:BASE_T.green,     bg:BASE_T.greenBg,  dot:BASE_T.green },
+  cancelado:  { label:'Cancelado',         color:BASE_T.red,       bg:BASE_T.redBg,    dot:BASE_T.red },
+};
+
+// ─── THEME SYSTEM ──────────────────────────────────────────────────────────
+const ThemeCtx = React.createContext(BASE_T);
+const useT = () => React.useContext(ThemeCtx);
+
+const PERSONALITIES = {
+  naval:   { navy:'#1C2F4A', navyMid:'#2A4268', navyLight:'#3A5280', orange:'#F97316', orangeLight:'#FFF0E6' },
+  floresta:{ navy:'#14532D', navyMid:'#166534', navyLight:'#15803D', orange:'#F59E0B', orangeLight:'#FFFBEB' },
+  grafite: { navy:'#27272A', navyMid:'#3F3F46', navyLight:'#52525B', orange:'#F97316', orangeLight:'#FFF0E6' },
+  vinho:   { navy:'#7F1D1D', navyMid:'#991B1B', navyLight:'#B91C1C', orange:'#FB923C', orangeLight:'#FFF7ED' },
+};
+
+function buildTheme(personality, dark) {
+  const pal = PERSONALITIES[personality] || PERSONALITIES.naval;
+  const surface = dark
+    ? { bg:'#0F172A', card:'#1E293B', textPrimary:'#F1F5F9', textSecondary:'#94A3B8', textMuted:'#64748B', border:'#334155', divider:'#1E293B' }
+    : { bg:'#F4F5F7', card:'#FFFFFF', textPrimary:'#111827', textSecondary:'#6B7280', textMuted:'#9CA3AF', border:'#E5E7EB', divider:'#F3F4F6' };
+  return { ...BASE_T, ...pal, ...surface, isDark: dark };
+}
+
+// ─── MOCK DATA ─────────────────────────────────────────────────────────────
+const SERVICES = [
+  { id:'OS-089', client:'Carlos Mendes',   car:'Honda Civic 2019',    plate:'ABC-1234', service:'Revisão completa + pastilhas', status:'andamento', mechanic:'José',    time:'14:00', value:439.90, progress:65 },
+  { id:'OS-090', client:'Ana Paula Lima',  car:'Toyota Corolla 2021', plate:'DEF-5678', service:'Troca de óleo + filtros',       status:'orcamento',  mechanic:'Ricardo', time:'10:30', value:195.00, progress:20 },
+  { id:'OS-091', client:'Rafael Souza',    car:'Fiat Argo 2022',      plate:'GHI-9012', service:'Alinhamento e balanceamento',   status:'aguardando', mechanic:'—',       time:'—',     value:180.00, progress:0 },
+  { id:'OS-092', client:'Mariana Costa',   car:'VW Polo 2020',        plate:'JKL-3456', service:'Revisão de 30.000 km',          status:'revisao',    mechanic:'José',    time:'16:00', value:520.00, progress:85 },
+  { id:'OS-088', client:'Pedro Alves',     car:'Chevrolet Onix 2018', plate:'MNO-7890', service:'Troca de bateria',              status:'concluido',  mechanic:'Ricardo', time:'11:00', value:380.00, progress:100 },
+];
+
+const MESSAGES = [
+  { id:1, from:'client',   text:'Boa tarde! Meu carro está fazendo um barulho estranho no freio.',         time:'08:05', read:true },
+  { id:2, from:'employee', text:'Boa tarde, Carlos! Pode trazer para avaliarmos. Disponibilidade hoje?',    time:'08:08', read:true },
+  { id:3, from:'client',   text:'Sim, posso levar agora.',                                                  time:'08:12', read:true },
+  { id:4, from:'system',   text:'Veículo recebido — Honda Civic ABC-1234',                                  time:'08:30', read:true },
+  { id:5, from:'employee', text:'Carlos, identificamos pastilhas desgastadas e óleo vencido. Orçamento enviado.',  time:'09:35', read:true },
+  { id:6, from:'client',   text:'Pode fazer tudo. Aprovei o orçamento.',                                    time:'10:18', read:true },
+  { id:7, from:'system',   text:'Orçamento aprovado pelo cliente — R$ 439,90',                              time:'10:18', read:true },
+  { id:8, from:'employee', text:'Ótimo! Começando agora. Previsão até 17h.',                                time:'14:02', read:false },
+];
+
+const PARTS = [
+  { id:'P001', name:'Óleo Motor 5W30 Sintético (1L)', cat:'Lubrificantes',  qty:24, min:10, unit:'litro', price:32.90,  status:'ok' },
+  { id:'P002', name:'Filtro de Óleo Universal',        cat:'Filtros',        qty:8,  min:10, unit:'unid.', price:28.50,  status:'low' },
+  { id:'P003', name:'Filtro de Ar Esportivo',           cat:'Filtros',        qty:5,  min:8,  unit:'unid.', price:45.00,  status:'low' },
+  { id:'P004', name:'Pastilha de Freio Dianteira',      cat:'Freios',         qty:12, min:6,  unit:'par',   price:89.00,  status:'ok' },
+  { id:'P005', name:'Disco de Freio Ventilado',          cat:'Freios',         qty:4,  min:4,  unit:'unid.', price:185.00, status:'ok' },
+  { id:'P006', name:'Bateria 60Ah MF',                   cat:'Elétrica',       qty:3,  min:5,  unit:'unid.', price:290.00, status:'low' },
+  { id:'P007', name:'Correia Dentada Kit',               cat:'Motor',          qty:7,  min:4,  unit:'kit',   price:210.00, status:'ok' },
+  { id:'P008', name:'Vela de Ignição (jogo 4)',          cat:'Motor',          qty:18, min:8,  unit:'jogo',  price:68.00,  status:'ok' },
+];
+
+const REPORTS = {
+  month: 'Abril 2026',
+  revenue: 18420.00, revenueGrowth: +12.4,
+  services: 42, servicesGrowth: +8,
+  avgTicket: 438.57, avgTicketGrowth: +4.1,
+  pending: 3,
+  byStatus: [
+    { label:'Concluídos', value:34, color:BASE_T.green },
+    { label:'Em andamento', value:5, color:BASE_T.blue },
+    { label:'Aguardando', value:3, color:BASE_T.textMuted },
+  ],
+  topServices: [
+    { name:'Troca de óleo',       count:18, revenue:1618.20 },
+    { name:'Revisão completa',    count:8,  revenue:4480.00 },
+    { name:'Freios',              count:7,  revenue:2240.00 },
+    { name:'Alinhamento/balanç.', count:6,  revenue:1080.00 },
+    { name:'Bateria',             count:3,  revenue:1140.00 },
+  ],
+};
+
+// ─── SHARED COMPONENTS (same as customer app) ──────────────────────────────
+function StatusBadge({ status }) {
+  const T = useT();
+  const s = STATUS_MAP[status] || STATUS_MAP.aguardando;
+  return (
+    <span style={{ display:'inline-flex', alignItems:'center', gap:5, background:s.bg, color:s.color, fontSize:11, fontWeight:600, letterSpacing:0.2, padding:'3px 9px', borderRadius:20 }}>
+      <span style={{ width:6, height:6, borderRadius:'50%', background:s.dot, flexShrink:0 }} />
+      {s.label}
+    </span>
+  );
+}
+
+function ProgressBar({ pct, color }) {
+  const T = useT();
+  color = color ?? T.orange;
+  return (
+    <div style={{ height:6, background:T.border, borderRadius:99, overflow:'hidden' }}>
+      <div style={{ width:`${pct}%`, height:'100%', background:`linear-gradient(90deg,${color},${color}bb)`, borderRadius:99, transition:'width 1s cubic-bezier(.4,0,.2,1)' }} />
+    </div>
+  );
+}
+
+function Btn({ children, primary, outline, danger, ghost, full, small, onClick, disabled, loading }) {
+  const T = useT();
+  const [pressed, setPressed] = useState(false);
+  let bg  = primary ? T.orange : outline ? 'transparent' : ghost ? 'transparent' : T.card;
+  let col = primary ? '#fff'   : outline ? T.orange      : ghost ? T.textSecondary : T.textPrimary;
+  let bdr = outline ? `1.5px solid ${T.orange}` : ghost ? 'none' : 'none';
+  if (danger) { bg=T.redBg; col=T.red; bdr=`1.5px solid ${T.red}44`; }
+  return (
+    <button onMouseDown={()=>setPressed(true)} onMouseUp={()=>setPressed(false)} onMouseLeave={()=>setPressed(false)}
+      onTouchStart={()=>setPressed(true)} onTouchEnd={()=>setPressed(false)}
+      onClick={onClick} disabled={disabled||loading}
+      style={{ width:full?'100%':'auto', padding:small?'8px 14px':'13px 18px', background:bg, color:col, border:bdr, borderRadius:12, fontSize:small?12:14, fontWeight:600, fontFamily:'DM Sans,sans-serif', cursor:(disabled||loading)?'not-allowed':'pointer', opacity:(disabled||loading)?0.6:1, transform:pressed?'scale(0.97)':'scale(1)', transition:'transform .12s,opacity .12s,box-shadow .12s', boxShadow:(primary&&!pressed)?`0 4px 14px ${T.orange}44`:'none', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+      {loading && <div style={{ width:12, height:12, border:`2px solid ${col}44`, borderTop:`2px solid ${col}`, borderRadius:'50%', animation:'spin .7s linear infinite' }} />}
+      {children}
+    </button>
+  );
+}
+
+function Card({ children, style, onClick }) {
+  const T = useT();
+  const [hov, setHov] = useState(false);
+  return (
+    <div onClick={onClick} onMouseEnter={()=>onClick&&setHov(true)} onMouseLeave={()=>setHov(false)}
+      style={{ background:T.card, borderRadius:16, padding:14, boxShadow:hov?'0 4px 16px rgba(0,0,0,0.1)':'0 1px 3px rgba(0,0,0,0.07)', transition:'box-shadow .2s,transform .15s', transform:hov?'translateY(-1px)':'none', cursor:onClick?'pointer':'default', ...style }}>
+      {children}
+    </div>
+  );
+}
+
+function Input({ label, type='text', placeholder, value, onChange, error, icon }) {
+  const T = useT();
+  const [focused, setFocused] = useState(false);
+  return (
+    <div style={{ marginBottom:4 }}>
+      {label && <p style={{ fontSize:12, fontWeight:600, color:T.textSecondary, marginBottom:6 }}>{label}</p>}
+      <div style={{ position:'relative' }}>
+        {icon && <div style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}>{icon}</div>}
+        <input type={type} placeholder={placeholder} value={value} onChange={onChange}
+          onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)}
+          style={{ width:'100%', padding:`13px ${icon?'13px':'13px'} 13px ${icon?'40px':'13px'}`, background:T.card, border:`1.5px solid ${error?T.red:focused?T.navy:T.border}`, borderRadius:12, fontSize:14, color:T.textPrimary, fontFamily:'DM Sans,sans-serif', outline:'none', transition:'border-color .2s', animation:error?'shake .3s ease':'none' }} />
+      </div>
+      {error && <p style={{ fontSize:11, color:T.red, marginTop:5 }}>{error}</p>}
+    </div>
+  );
+}
+
+function Avatar({ initials, size=36, color }) {
+  const T = useT();
+  return (
+    <div style={{ width:size, height:size, borderRadius:'50%', background:color||`linear-gradient(135deg,${T.navy},${T.navyMid})`, color:'#fff', fontSize:size*.32, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+      {initials}
+    </div>
+  );
+}
+
+function KpiCard({ label, value, sub, subColor, icon, iconBg }) {
+  const T = useT();
+  return (
+    <Card style={{ flex:1 }}>
+      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:10 }}>
+        <div style={{ width:36, height:36, borderRadius:10, background:iconBg, display:'flex', alignItems:'center', justifyContent:'center' }}>{icon}</div>
+        {sub && <span style={{ fontSize:11, fontWeight:600, color:subColor||T.green, background:subColor?`${subColor}18`:T.greenBg, padding:'3px 7px', borderRadius:20 }}>{sub}</span>}
+      </div>
+      <p style={{ fontSize:20, fontWeight:700, color:T.textPrimary, marginBottom:3 }}>{value}</p>
+      <p style={{ fontSize:11, color:T.textMuted }}>{label}</p>
+    </Card>
+  );
+}
+
+// ─── ICONS ─────────────────────────────────────────────────────────────────
+function Icon({ name, size=20, color=T.textSecondary }) {
+  const s = { width:size, height:size, display:'block', flexShrink:0 };
+  const p = (d, extra={}) => <svg style={s} viewBox="0 0 24 24" fill="none" {...extra}>{d}</svg>;
+  const S = (d) => <path d={d} stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />;
+  const icons = {
+    home:     p(<>{S("M3 12L12 3l9 9")}{S("M5 10v9a1 1 0 001 1h4v-4h4v4h4a1 1 0 001-1v-9")}</>),
+    wrench:   p(<>{S("M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z")}</>),
+    list:     p(<>{S("M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01")}</>),
+    chart:    p(<>{S("M18 20V10M12 20V4M6 20v-6")}</>),
+    box:      p(<>{S("M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z")}{S("M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12")}</>),
+    chat:     p(<>{S("M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z")}</>),
+    check:    p(<>{S("M20 6L9 17l-5-5")}</>),
+    back:     p(<>{S("M15 18l-6-6 6-6")}</>),
+    close:    p(<>{S("M18 6L6 18M6 6l12 12")}</>),
+    send:     p(<>{S("M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z")}</>),
+    bell:     p(<>{S("M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9")}{S("M13.73 21a2 2 0 01-3.46 0")}</>),
+    car:      p(<>{S("M5 17H3v-5l2-5h14l2 5v5h-2")}<circle cx="7.5" cy="17.5" r="1.5" stroke={color} strokeWidth="2"/><circle cx="16.5" cy="17.5" r="1.5" stroke={color} strokeWidth="2"/>{S("M5 12h14")}</>),
+    alert:    p(<>{S("M12 2L2 20h20L12 2z")}{S("M12 9v4M12 17h.01")}</>),
+    info:     p(<><circle cx="12" cy="12" r="9" stroke={color} strokeWidth="2"/>{S("M12 8h.01M12 12v4")}</>),
+    plus:     p(<>{S("M12 5v14M5 12h14")}</>),
+    search:   p(<><circle cx="11" cy="11" r="8" stroke={color} strokeWidth="2"/>{S("M21 21l-4.35-4.35")}</>),
+    filter:   p(<>{S("M22 3H2l8 9.46V19l4 2v-8.54L22 3z")}</>),
+    chevron:  p(<>{S("M9 18l6-6-6-6")}</>),
+    user:     p(<><circle cx="12" cy="8" r="4" stroke={color} strokeWidth="2"/>{S("M4 20a8 8 0 0116 0")}</>),
+    logout:   p(<>{S("M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9")}</>),
+    money:    p(<><rect x="2" y="6" width="20" height="13" rx="2" stroke={color} strokeWidth="2"/>{S("M12 10v4M10 12h4")}</>),
+    trending: p(<>{S("M23 6l-9.5 9.5-5-5L1 18")}{S("M17 6h6v6")}</>),
+    tag:      p(<>{S("M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z")}<circle cx="7" cy="7" r="1.5" fill={color}/></>),
+    eye:      p(<>{S("M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z")}<circle cx="12" cy="12" r="3" stroke={color} strokeWidth="2"/></>),
+    edit:     p(<>{S("M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7")}{S("M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z")}</>),
+  };
+  return icons[name] || null;
+}
+
+// ─── PHONE FRAME ───────────────────────────────────────────────────────────
+function PhoneFrame({ children, label }) {
+  const T = useT();
+  return (
+    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
+      {label && (
+        <div style={{ background:'rgba(255,255,255,0.08)', borderRadius:20, padding:'6px 16px', display:'flex', alignItems:'center', gap:8 }}>
+          <span style={{ fontSize:12, color:'rgba(255,255,255,0.7)', fontWeight:500 }}>{label}</span>
+        </div>
+      )}
+      <div style={{ width:390, height:844, background:'#1a1a1a', borderRadius:54, padding:10, boxShadow:'0 0 0 1px #333, 0 32px 80px rgba(0,0,0,0.6)', position:'relative', flexShrink:0 }}>
+        <div style={{ position:'absolute', left:-3, top:120, width:3, height:36, background:'#2a2a2a', borderRadius:'2px 0 0 2px' }} />
+        <div style={{ position:'absolute', left:-3, top:168, width:3, height:64, background:'#2a2a2a', borderRadius:'2px 0 0 2px' }} />
+        <div style={{ position:'absolute', right:-3, top:160, width:3, height:80, background:'#2a2a2a', borderRadius:'0 2px 2px 0' }} />
+        <div style={{ width:'100%', height:'100%', borderRadius:44, overflow:'hidden', background:'#fff', display:'flex', flexDirection:'column', position:'relative' }}>
+          {/* Status bar */}
+          <div style={{ height:50, background:T.navy, flexShrink:0, display:'flex', alignItems:'flex-end', justifyContent:'space-between', padding:'0 24px 8px', color:'rgba(255,255,255,0.75)' }}>
+            <span style={{ fontSize:14, fontWeight:600 }}>9:41</span>
+            <div style={{ width:120, height:30, background:'#111', borderRadius:20, position:'absolute', left:'50%', transform:'translateX(-50%)', top:0 }} />
+            <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+              <svg width="16" height="11" viewBox="0 0 16 11"><rect x="0" y="6" width="3" height="5" rx="0.6" fill="rgba(255,255,255,0.75)"/><rect x="4.5" y="4" width="3" height="7" rx="0.6" fill="rgba(255,255,255,0.75)"/><rect x="9" y="2" width="3" height="9" rx="0.6" fill="rgba(255,255,255,0.75)"/><rect x="13.5" y="0" width="2.5" height="11" rx="0.6" fill="rgba(255,255,255,0.75)"/></svg>
+              <svg width="24" height="11" viewBox="0 0 24 11"><rect x="0.5" y="0.5" width="21" height="10" rx="3" stroke="rgba(255,255,255,0.4)" fill="none"/><rect x="2" y="2" width="17" height="7" rx="1.5" fill="rgba(255,255,255,0.75)"/><path d="M23 3.5v4c.8-.3 1.3-1 1.3-2s-.5-1.7-1.3-2z" fill="rgba(255,255,255,0.4)"/></svg>
+            </div>
+          </div>
+          {children}
+          <div style={{ position:'absolute', bottom:8, left:'50%', transform:'translateX(-50%)', width:120, height:5, background:'rgba(0,0,0,0.2)', borderRadius:99 }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── NAV BAR (Employee) ────────────────────────────────────────────────────
+function EmpNavBar({ active, onNav, role }) {
+  const T = useT();
+  const tabs = role === 'manager'
+    ? [{ id:'dash', label:'Dashboard', icon:'home' }, { id:'services', label:'Serviços', icon:'wrench' }, { id:'stock', label:'Estoque', icon:'box' }, { id:'reports', label:'Relatórios', icon:'chart' }]
+    : [{ id:'dash', label:'Dashboard', icon:'home' }, { id:'services', label:'Serviços', icon:'wrench' }, { id:'chat', label:'Mensagens', icon:'chat' }];
+  return (
+    <div style={{ position:'absolute', bottom:0, left:0, right:0, background:'rgba(255,255,255,0.96)', backdropFilter:'blur(16px)', borderTop:`1px solid ${T.border}`, paddingBottom:22, paddingTop:8, display:'flex', zIndex:100 }}>
+      {tabs.map(t => {
+        const isActive = active === t.id;
+        return (
+          <button key={t.id} onClick={() => onNav(t.id)} style={{ flex:1, background:'none', border:'none', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:3, padding:'4px 0', position:'relative', fontFamily:'DM Sans,sans-serif' }}>
+            <Icon name={t.icon} size={22} color={isActive?T.orange:T.textMuted} />
+            <span style={{ fontSize:10, fontWeight:isActive?600:400, color:isActive?T.orange:T.textMuted }}>{t.label}</span>
+            {isActive && <div style={{ position:'absolute', top:-1, left:'50%', transform:'translateX(-50%)', width:20, height:2.5, background:T.orange, borderRadius:99 }} />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SCREEN: LOGIN
+// ══════════════════════════════════════════════════════════════════════════════
+function LoginScreen({ onLogin }) {
+  const T = useT();
+  const [mode, setMode] = useState('password'); // 'password' | 'otp'
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [otp, setOtp] = useState(['','','','','','']);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
+  const otpRefs = [useRef(), useRef(), useRef(), useRef(), useRef(), useRef()];
+
+  const handleLogin = () => {
+    if (!email) { setError('Informe o e-mail ou telefone'); return; }
+    if (!password && mode==='password') { setError('Informe a senha'); return; }
+    if (email === 'erro@teste.com') { setError('Usuário ou senha incorretos'); return; }
+    setError('');
+    setLoading(true);
+    setTimeout(() => {
+      setLoading(false);
+      const role = email.includes('gerente') ? 'manager' : 'employee';
+      onLogin(role, email.includes('gerente') ? 'Tião (Gerente)' : 'José Ferreira');
+    }, 1400);
+  };
+
+  const sendOtp = () => {
+    if (!email) { setError('Informe o telefone para receber o código'); return; }
+    setError(''); setOtpSent(true);
+  };
+
+  const handleOtpInput = (i, val) => {
+    if (!/^[0-9]?$/.test(val)) return;
+    const next = [...otp]; next[i] = val; setOtp(next);
+    if (val && i < 5) otpRefs[i+1].current?.focus();
+    if (!val && i > 0) otpRefs[i-1].current?.focus();
+    if (next.every(v => v)) {
+      setLoading(true);
+      setTimeout(() => { setLoading(false); onLogin('employee', 'José Ferreira'); }, 1200);
+    }
+  };
+
+  return (
+    <div style={{ flex:1, overflowY:'auto', background:T.bg, display:'flex', flexDirection:'column' }}>
+      {/* Header illustration area */}
+      <div style={{ background:`linear-gradient(160deg, ${T.navy} 0%, ${T.navyMid} 100%)`, padding:'36px 24px 44px', display:'flex', flexDirection:'column', alignItems:'center', gap:10 }}>
+        <div style={{ width:64, height:64, borderRadius:20, background:'rgba(255,255,255,0.12)', display:'flex', alignItems:'center', justifyContent:'center', marginBottom:4 }}>
+          <Icon name="wrench" size={32} color="#fff" />
+        </div>
+        <p style={{ fontSize:22, fontWeight:700, color:'#fff' }}>Tião Oficina</p>
+        <p style={{ fontSize:13, color:'rgba(255,255,255,0.5)' }}>Acesso para funcionários</p>
+      </div>
+
+      {/* Card form */}
+      <div style={{ flex:1, padding:'0 20px 24px', marginTop:-20 }}>
+        <Card style={{ borderRadius:20, padding:22 }}>
+          {/* Mode toggle */}
+          <div style={{ display:'flex', background:T.bg, borderRadius:10, padding:3, marginBottom:22 }}>
+            {[['password','Senha'],['otp','Código OTP']].map(([m, lbl]) => (
+              <button key={m} onClick={() => { setMode(m); setError(''); }} style={{ flex:1, padding:'8px 0', background:mode===m?T.card:'transparent', borderRadius:8, border:'none', cursor:'pointer', fontSize:12, fontWeight:mode===m?700:500, color:mode===m?T.textPrimary:T.textMuted, fontFamily:'DM Sans,sans-serif', boxShadow:mode===m?'0 1px 4px rgba(0,0,0,0.1)':'none', transition:'all .2s' }}>
+                {lbl}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+            <Input label="E-mail ou telefone" type="email" placeholder="jose@tiao.com.br" value={email} onChange={e=>{ setEmail(e.target.value); setError(''); }} error={error && !password && mode==='password' && !email ? error : ''} />
+
+            {mode === 'password' && (
+              <Input label="Senha" type="password" placeholder="••••••••" value={password} onChange={e=>{ setPassword(e.target.value); setError(''); }} error={error} />
+            )}
+
+            {mode === 'otp' && !otpSent && (
+              <div>
+                {error && <p style={{ fontSize:11, color:T.red, marginBottom:8 }}>{error}</p>}
+                <Btn outline full onClick={sendOtp}>Enviar código por SMS</Btn>
+              </div>
+            )}
+
+            {mode === 'otp' && otpSent && (
+              <div>
+                <p style={{ fontSize:12, fontWeight:600, color:T.textSecondary, marginBottom:10 }}>Digite o código enviado para {email||'seu telefone'}</p>
+                <div style={{ display:'flex', gap:8, justifyContent:'center', marginBottom:8 }}>
+                  {otp.map((v, i) => (
+                    <input key={i} ref={otpRefs[i]} value={v} onChange={e=>handleOtpInput(i,e.target.value)}
+                      maxLength={1} inputMode="numeric"
+                      style={{ width:42, height:50, textAlign:'center', fontSize:20, fontWeight:700, background:T.bg, border:`1.5px solid ${v?T.navy:T.border}`, borderRadius:10, color:T.textPrimary, fontFamily:'DM Sans,sans-serif', outline:'none' }} />
+                  ))}
+                </div>
+                <button onClick={()=>setOtpSent(false)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:12, color:T.orange, fontWeight:500, fontFamily:'DM Sans,sans-serif', width:'100%', textAlign:'center', padding:'4px 0' }}>
+                  Reenviar código
+                </button>
+              </div>
+            )}
+
+            {mode === 'password' && (
+              <>
+                {error && <div style={{ background:T.redBg, borderRadius:10, padding:'10px 12px', display:'flex', gap:8, alignItems:'center' }}>
+                  <Icon name="alert" size={16} color={T.red} />
+                  <p style={{ fontSize:12, color:T.red, fontWeight:500 }}>{error}</p>
+                </div>}
+                <Btn primary full onClick={handleLogin} loading={loading}>
+                  {!loading && 'Entrar'}
+                </Btn>
+              </>
+            )}
+
+            {loading && mode === 'otp' && (
+              <div style={{ display:'flex', justifyContent:'center', padding:'8px 0' }}>
+                <div style={{ width:22, height:22, border:`2.5px solid ${T.border}`, borderTop:`2.5px solid ${T.orange}`, borderRadius:'50%', animation:'spin .7s linear infinite' }} />
+              </div>
+            )}
+          </div>
+
+          <p style={{ fontSize:11, color:T.textMuted, textAlign:'center', marginTop:18, lineHeight:1.6 }}>
+            Use <strong style={{color:T.textSecondary}}>jose@tiao.com.br</strong> → funcionário<br/>
+            Use <strong style={{color:T.textSecondary}}>gerente@tiao.com.br</strong> → gerente
+          </p>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SCREEN: EMPLOYEE DASHBOARD
+// ══════════════════════════════════════════════════════════════════════════════
+function EmpDashboard({ onNav, onSelectService, userName, role, onLogout }) {
+  const T = useT();
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const active  = SERVICES.filter(s => s.status === 'andamento' || s.status === 'orcamento');
+  const waiting = SERVICES.filter(s => s.status === 'aguardando');
+  const done    = SERVICES.filter(s => s.status === 'concluido');
+
+  return (
+    <div style={{ flex:1, overflowY:'auto', background:T.bg, paddingBottom:88 }}>
+      <div style={{ background:`linear-gradient(160deg,${T.navy},${T.navyMid})`, padding:'14px 18px 22px', color:'#fff' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
+          <div>
+            <p style={{ fontSize:12, opacity:0.55, marginBottom:2 }}>Bom dia 👋</p>
+            <p style={{ fontSize:18, fontWeight:700 }}>{userName}</p>
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <div style={{ background:'rgba(255,255,255,0.1)', borderRadius:20, padding:'4px 10px', display:'flex', alignItems:'center', gap:5 }}>
+              <Icon name="user" size={13} color="rgba(255,255,255,0.7)" />
+              <span style={{ fontSize:11, color:'rgba(255,255,255,0.7)', fontWeight:500, textTransform:'capitalize' }}>{role==='manager'?'Gerente':'Mecânico'}</span>
+            </div>
+            <button onClick={() => setShowLogoutConfirm(true)} style={{ width:32, height:32, borderRadius:10, background:'rgba(255,255,255,0.1)', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <Icon name="logout" size={15} color="rgba(255,255,255,0.75)" />
+            </button>
+          </div>
+        </div>
+        {/* KPI row */}
+        <div style={{ display:'flex', gap:10 }}>
+          {[
+            { label:'Ativos', value:active.length,  bg:'rgba(37,99,235,0.25)', color:T.blue },
+            { label:'Aguardando', value:waiting.length, bg:'rgba(217,119,6,0.25)', color:T.yellow },
+            { label:'Hoje',  value:done.length,    bg:'rgba(22,163,74,0.25)',  color:T.green },
+          ].map(k => (
+            <div key={k.label} style={{ flex:1, background:'rgba(255,255,255,0.08)', borderRadius:12, padding:'10px 12px', border:'1px solid rgba(255,255,255,0.1)' }}>
+              <p style={{ fontSize:20, fontWeight:700, color:'#fff' }}>{k.value}</p>
+              <p style={{ fontSize:10, color:'rgba(255,255,255,0.5)', marginTop:2 }}>{k.label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ padding:'14px 14px 0' }}>
+        {/* Urgent: pending approval */}
+        {SERVICES.filter(s=>s.status==='orcamento').length > 0 && (
+          <Card style={{ marginBottom:12, background:T.yellowBg, border:`1px solid ${T.yellow}44` }} onClick={() => onSelectService(SERVICES.find(s=>s.status==='orcamento'))}>
+            <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+              <Icon name="alert" size={18} color={T.yellow} />
+              <div style={{ flex:1 }}>
+                <p style={{ fontSize:13, fontWeight:600, color:T.yellow }}>1 orçamento aguardando aprovação</p>
+                <p style={{ fontSize:11, color:T.yellow, opacity:.8, marginTop:2 }}>Toque para ver detalhes</p>
+              </div>
+              <Icon name="chevron" size={18} color={T.yellow} />
+            </div>
+          </Card>
+        )}
+
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+          <p style={{ fontSize:13, fontWeight:700, color:T.textPrimary }}>Atendimentos ativos</p>
+          <button onClick={() => onNav('services')} style={{ background:'none', border:'none', cursor:'pointer', fontSize:12, color:T.orange, fontWeight:600, fontFamily:'DM Sans,sans-serif' }}>Ver todos</button>
+        </div>
+
+        {/* Logout confirm sheet */}
+        {showLogoutConfirm && (
+          <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,0.5)', zIndex:300, display:'flex', alignItems:'flex-end' }} onClick={() => setShowLogoutConfirm(false)}>
+            <div style={{ background:T.card, borderRadius:'20px 20px 0 0', padding:'22px 20px 44px', width:'100%', animation:'slideUp .22s ease' }} onClick={e => e.stopPropagation()}>
+              <p style={{ fontSize:16, fontWeight:700, color:T.textPrimary, marginBottom:6 }}>Sair da conta?</p>
+              <p style={{ fontSize:13, color:T.textMuted, marginBottom:22, lineHeight:1.5 }}>Você precisará fazer login novamente para acessar o sistema.</p>
+              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                <Btn primary full onClick={onLogout}>Confirmar saída</Btn>
+                <Btn outline full onClick={() => setShowLogoutConfirm(false)}>Cancelar</Btn>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {SERVICES.filter(s => s.status !== 'concluido').map(svc => (
+          <Card key={svc.id} style={{ marginBottom:9 }} onClick={() => { onSelectService(svc); onNav('detail'); }}>
+            <div style={{ display:'flex', alignItems:'flex-start', gap:10, marginBottom:10 }}>
+              <div>
+                <p style={{ fontSize:13, fontWeight:600, color:T.textPrimary, lineHeight:1.3 }}>{svc.client}</p>
+                <p style={{ fontSize:11, color:T.textMuted, marginTop:2 }}>{svc.car} · {svc.plate}</p>
+              </div>
+              <div style={{ marginLeft:'auto', flexShrink:0 }}>
+                <StatusBadge status={svc.status} />
+              </div>
+            </div>
+            <p style={{ fontSize:12, color:T.textSecondary, marginBottom:svc.progress>0?10:0, lineHeight:1.4 }}>{svc.service}</p>
+            {svc.progress > 0 && <ProgressBar pct={svc.progress} color={svc.status==='andamento'?T.blue:T.textMuted} />}
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SCREEN: SERVICE LIST
+// ══════════════════════════════════════════════════════════════════════════════
+function ServiceListScreen({ onSelectService, onNav }) {
+  const T = useT();
+  const [filter, setFilter] = useState('all');
+  const [search, setSearch] = useState('');
+  const filters = [['all','Todos'],['andamento','Andamento'],['orcamento','Orçamento'],['aguardando','Aguardando'],['concluido','Concluído']];
+  const filtered = SERVICES.filter(s => {
+    const matchFilter = filter === 'all' || s.status === filter;
+    const matchSearch = !search || s.client.toLowerCase().includes(search.toLowerCase()) || s.id.includes(search) || s.plate.toLowerCase().includes(search.toLowerCase());
+    return matchFilter && matchSearch;
+  });
+
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', background:T.bg, overflow:'hidden' }}>
+      <div style={{ background:`linear-gradient(160deg,${T.navy},${T.navyMid})`, padding:'14px 18px 18px', color:'#fff', flexShrink:0 }}>
+        <p style={{ fontSize:18, fontWeight:700, marginBottom:12 }}>Atendimentos</p>
+        <div style={{ position:'relative' }}>
+          <div style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)' }}><Icon name="search" size={16} color={T.textMuted} /></div>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar cliente, placa, OS..." style={{ width:'100%', padding:'11px 12px 11px 38px', background:'rgba(255,255,255,0.12)', border:'1px solid rgba(255,255,255,0.15)', borderRadius:12, fontSize:13, color:'#fff', fontFamily:'DM Sans,sans-serif', outline:'none' }} />
+        </div>
+      </div>
+
+      {/* Filter chips */}
+      <div style={{ background:T.card, borderBottom:`1px solid ${T.border}`, padding:'10px 14px', display:'flex', gap:7, overflowX:'auto', flexShrink:0 }}>
+        {filters.map(([id, label]) => (
+          <button key={id} onClick={() => setFilter(id)} style={{ padding:'6px 13px', borderRadius:20, border:`1.5px solid ${filter===id?T.navy:T.border}`, background:filter===id?T.navy:'transparent', color:filter===id?'#fff':T.textMuted, fontSize:12, fontWeight:filter===id?600:400, cursor:'pointer', whiteSpace:'nowrap', fontFamily:'DM Sans,sans-serif', transition:'all .15s' }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ flex:1, overflowY:'auto', padding:14, paddingBottom:88 }}>
+        {filtered.length === 0 && (
+          <div style={{ textAlign:'center', padding:'40px 20px', color:T.textMuted }}>
+            <Icon name="list" size={32} color={T.border} />
+            <p style={{ fontSize:14, marginTop:12 }}>Nenhum atendimento encontrado</p>
+          </div>
+        )}
+        {filtered.map(svc => (
+          <Card key={svc.id} style={{ marginBottom:9 }} onClick={() => { onSelectService(svc); onNav('detail'); }}>
+            <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:8 }}>
+              <div style={{ flex:1 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3 }}>
+                  <p style={{ fontSize:13, fontWeight:700, color:T.textPrimary }}>{svc.client}</p>
+                  <span style={{ fontSize:10, color:T.textMuted, background:T.divider, padding:'2px 7px', borderRadius:20 }}>{svc.id}</span>
+                </div>
+                <p style={{ fontSize:11, color:T.textMuted }}>{svc.car} · {svc.plate}</p>
+              </div>
+              <StatusBadge status={svc.status} />
+            </div>
+            <p style={{ fontSize:12, color:T.textSecondary, marginBottom:10, lineHeight:1.4 }}>{svc.service}</p>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                <Avatar initials={svc.mechanic[0]||'?'} size={22} />
+                <span style={{ fontSize:11, color:T.textMuted }}>{svc.mechanic}</span>
+              </div>
+              <span style={{ fontSize:13, fontWeight:700, color:T.textPrimary }}>R$ {svc.value.toFixed(2)}</span>
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SCREEN: SERVICE DETAIL (Employee)
+// ══════════════════════════════════════════════════════════════════════════════
+function ServiceDetailScreen({ svc, onBack }) {
+  const T = useT();
+  const [tab, setTab] = useState('chat');
+  const [msgText, setMsgText] = useState('');
+  const [messages, setMessages] = useState(MESSAGES);
+  const [statusModal, setStatusModal] = useState(false);
+  const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    if (tab === 'chat' && messagesEndRef.current) {
+      messagesEndRef.current.scrollTop = messagesEndRef.current.scrollHeight;
+    }
+  }, [tab, messages]);
+
+  const sendMsg = () => {
+    if (!msgText.trim()) return;
+    setMessages(m => [...m, { id:Date.now(), from:'employee', text:msgText, time:'Agora', read:false }]);
+    setMsgText('');
+  };
+
+  const timeline = [
+    { title:'Veículo recebido', desc:'Check-in realizado', done:true,  active:false, time:'08:00' },
+    { title:'Diagnóstico',      desc:'Identificados: pastilhas, óleo vencido', done:true, active:false, time:'09:30' },
+    { title:'Orçamento enviado',desc:'Aprovado pelo cliente', done:true, active:false, time:'10:15' },
+    { title:'Em execução',      desc:'Trocas em andamento...', done:false, active:true, time:'14:00' },
+    { title:'Revisão final',    desc:'Teste e lavagem', done:false, active:false, time:'—' },
+    { title:'Pronto',           desc:'Aguardando retirada', done:false, active:false, time:'—' },
+  ];
+
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', background:T.bg, overflow:'hidden' }}>
+      {/* Header */}
+      <div style={{ background:`linear-gradient(160deg,${T.navy},${T.navyMid})`, padding:'12px 14px 16px', color:'#fff', flexShrink:0 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+          <button onClick={onBack} style={{ background:'none', border:'none', cursor:'pointer', padding:4 }}>
+            <Icon name="back" size={22} color="rgba(255,255,255,0.8)" />
+          </button>
+          <div style={{ flex:1 }}>
+            <p style={{ fontSize:15, fontWeight:700 }}>{svc.client}</p>
+            <p style={{ fontSize:11, opacity:0.55 }}>{svc.id} · {svc.car}</p>
+          </div>
+          <StatusBadge status={svc.status} />
+        </div>
+        {/* Quick actions */}
+        <div style={{ display:'flex', gap:8 }}>
+          <button onClick={()=>setStatusModal(true)} style={{ flex:1, background:'rgba(255,255,255,0.12)', border:'1px solid rgba(255,255,255,0.15)', borderRadius:10, padding:'8px 0', cursor:'pointer', fontSize:11, fontWeight:600, color:'#fff', fontFamily:'DM Sans,sans-serif', display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
+            <Icon name="edit" size={13} color="#fff" /> Atualizar status
+          </button>
+          <button style={{ flex:1, background:T.orange, border:'none', borderRadius:10, padding:'8px 0', cursor:'pointer', fontSize:11, fontWeight:600, color:'#fff', fontFamily:'DM Sans,sans-serif', display:'flex', alignItems:'center', justifyContent:'center', gap:5 }}>
+            <Icon name="money" size={13} color="#fff" /> Orçamento
+          </button>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display:'flex', background:T.card, borderBottom:`1px solid ${T.border}`, flexShrink:0 }}>
+        {[['chat','Mensagens'],['timeline','Timeline'],['info','Dados']].map(([id,label]) => (
+          <button key={id} onClick={()=>setTab(id)} style={{ flex:1, background:'none', border:'none', cursor:'pointer', padding:'11px 0', fontSize:12, fontWeight:tab===id?700:500, color:tab===id?T.orange:T.textMuted, fontFamily:'DM Sans,sans-serif', borderBottom:tab===id?`2px solid ${T.orange}`:'2px solid transparent', transition:'color .2s' }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Chat */}
+      {tab === 'chat' && (
+        <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+          <div ref={messagesEndRef} style={{ flex:1, overflowY:'auto', padding:'12px 14px', display:'flex', flexDirection:'column', gap:8 }}>
+            {messages.map(m => {
+              if (m.from === 'system') return (
+                <div key={m.id} style={{ textAlign:'center' }}>
+                  <span style={{ fontSize:10, color:T.textMuted, background:T.divider, padding:'4px 10px', borderRadius:20 }}>{m.text} · {m.time}</span>
+                </div>
+              );
+              const isMe = m.from === 'employee';
+              return (
+                <div key={m.id} style={{ display:'flex', justifyContent:isMe?'flex-end':'flex-start', gap:8 }}>
+                  {!isMe && <Avatar initials="C" size={28} color={`linear-gradient(135deg, ${T.teal}, ${T.teal}aa)`} />}
+                  <div style={{ maxWidth:'74%' }}>
+                    <div style={{ background:isMe?T.navy:T.card, borderRadius:isMe?'14px 14px 4px 14px':'14px 14px 14px 4px', padding:'9px 12px', boxShadow:'0 1px 3px rgba(0,0,0,0.07)' }}>
+                      <p style={{ fontSize:13, color:isMe?'#fff':T.textPrimary, lineHeight:1.5 }}>{m.text}</p>
+                    </div>
+                    <p style={{ fontSize:10, color:T.textMuted, marginTop:3, textAlign:isMe?'right':'left' }}>{m.time}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {/* Input */}
+          <div style={{ padding:'10px 12px 80px', background:T.card, borderTop:`1px solid ${T.border}`, display:'flex', gap:8, alignItems:'center' }}>
+            <input value={msgText} onChange={e=>setMsgText(e.target.value)}
+              onKeyDown={e=>e.key==='Enter'&&sendMsg()}
+              placeholder="Escreva uma mensagem..." style={{ flex:1, padding:'10px 13px', background:T.bg, border:`1.5px solid ${T.border}`, borderRadius:12, fontSize:13, color:T.textPrimary, fontFamily:'DM Sans,sans-serif', outline:'none' }} />
+            <button onClick={sendMsg} style={{ width:40, height:40, borderRadius:12, background:T.orange, border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              <Icon name="send" size={16} color="#fff" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Timeline */}
+      {tab === 'timeline' && (
+        <div style={{ flex:1, overflowY:'auto', padding:'14px 14px 88px' }}>
+          {timeline.map((step, i) => (
+            <div key={i} style={{ display:'flex', gap:12 }}>
+              <div style={{ display:'flex', flexDirection:'column', alignItems:'center', width:28, flexShrink:0 }}>
+                <div style={{ width:28, height:28, borderRadius:'50%', background:step.done?T.green:step.active?T.orange:T.border, display:'flex', alignItems:'center', justifyContent:'center', boxShadow:step.active?`0 0 0 5px ${T.orange}28`:'none', zIndex:1 }}>
+                  {step.done ? <Icon name="check" size={14} color="#fff" /> : <div style={{ width:8, height:8, borderRadius:'50%', background:step.active?'#fff':T.textMuted }} />}
+                </div>
+                {i < timeline.length-1 && <div style={{ width:2, flex:1, minHeight:24, background:step.done?T.green:T.border, margin:'4px 0' }} />}
+              </div>
+              <div style={{ flex:1, paddingBottom:18 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
+                  <p style={{ fontSize:13, fontWeight:step.active?700:600, color:step.done?T.textPrimary:step.active?T.orange:T.textMuted }}>{step.title}</p>
+                  <span style={{ fontSize:10, color:T.textMuted }}>{step.time}</span>
+                </div>
+                <p style={{ fontSize:12, color:step.active?T.textSecondary:T.textMuted, lineHeight:1.5 }}>{step.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Info */}
+      {tab === 'info' && (
+        <div style={{ flex:1, overflowY:'auto', padding:'14px 14px 88px' }}>
+          {[
+            { label:'Veículo', value:`${svc.car} (${svc.plate})` },
+            { label:'Serviço', value:svc.service },
+            { label:'Mecânico', value:svc.mechanic },
+            { label:'Entrada', value:svc.time !== '—' ? `Hoje, ${svc.time}` : '—' },
+            { label:'Valor', value:`R$ ${svc.value.toFixed(2)}` },
+          ].map(row => (
+            <Card key={row.label} style={{ marginBottom:8, padding:'12px 14px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <p style={{ fontSize:12, color:T.textMuted }}>{row.label}</p>
+              <p style={{ fontSize:13, fontWeight:600, color:T.textPrimary }}>{row.value}</p>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Status modal */}
+      {statusModal && (
+        <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,0.5)', display:'flex', alignItems:'flex-end', zIndex:200 }} onClick={()=>setStatusModal(false)}>
+          <div style={{ background:T.card, borderRadius:'20px 20px 0 0', padding:'20px 18px 40px', width:'100%', animation:'slideUp .25s ease' }} onClick={e=>e.stopPropagation()}>
+            <p style={{ fontSize:15, fontWeight:700, color:T.textPrimary, marginBottom:16 }}>Atualizar status</p>
+            {Object.entries(STATUS_MAP).map(([key, val]) => (
+              <button key={key} onClick={()=>setStatusModal(false)} style={{ width:'100%', display:'flex', alignItems:'center', gap:12, padding:'12px 4px', background:'none', border:'none', cursor:'pointer', borderBottom:`1px solid ${T.divider}`, fontFamily:'DM Sans,sans-serif' }}>
+                <div style={{ width:10, height:10, borderRadius:'50%', background:val.dot, flexShrink:0 }} />
+                <span style={{ fontSize:13, fontWeight:500, color:T.textPrimary }}>{val.label}</span>
+                {svc.status === key && <Icon name="check" size={16} color={T.green} />}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SCREEN: STOCK (Manager only)
+// ══════════════════════════════════════════════════════════════════════════════
+function StockScreen() {
+  const T = useT();
+  const [filter, setFilter] = useState('all');
+  const lowStock = PARTS.filter(p=>p.status==='low').length;
+  const filtered = filter==='all' ? PARTS : PARTS.filter(p=>p.status===filter);
+
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', background:T.bg, overflow:'hidden' }}>
+      <div style={{ background:`linear-gradient(160deg,${T.navy},${T.navyMid})`, padding:'14px 18px 20px', color:'#fff', flexShrink:0 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+          <div>
+            <p style={{ fontSize:18, fontWeight:700 }}>Estoque</p>
+            <p style={{ fontSize:12, opacity:0.5, marginTop:2 }}>{PARTS.length} itens cadastrados</p>
+          </div>
+          <button style={{ background:T.orange, border:'none', borderRadius:10, padding:'8px 12px', cursor:'pointer', display:'flex', alignItems:'center', gap:5, color:'#fff', fontSize:12, fontWeight:600, fontFamily:'DM Sans,sans-serif' }}>
+            <Icon name="plus" size={14} color="#fff" /> Adicionar
+          </button>
+        </div>
+        {lowStock > 0 && (
+          <div style={{ background:'rgba(220,38,38,0.18)', border:'1px solid rgba(220,38,38,0.3)', borderRadius:10, padding:'8px 12px', display:'flex', gap:8, alignItems:'center' }}>
+            <Icon name="alert" size={15} color={T.red} />
+            <p style={{ fontSize:12, color:'#fca5a5', fontWeight:500 }}>{lowStock} {lowStock===1?'item abaixo':'itens abaixo'} do estoque mínimo</p>
+          </div>
+        )}
+      </div>
+
+      <div style={{ background:T.card, borderBottom:`1px solid ${T.border}`, padding:'10px 14px', display:'flex', gap:7, flexShrink:0 }}>
+        {[['all','Todos'],['ok','Normal'],['low','Baixo']].map(([id,lbl]) => (
+          <button key={id} onClick={()=>setFilter(id)} style={{ padding:'6px 13px', borderRadius:20, border:`1.5px solid ${filter===id?T.navy:T.border}`, background:filter===id?T.navy:'transparent', color:filter===id?'#fff':T.textMuted, fontSize:12, fontWeight:filter===id?600:400, cursor:'pointer', fontFamily:'DM Sans,sans-serif', transition:'all .15s' }}>
+            {lbl}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ flex:1, overflowY:'auto', padding:14, paddingBottom:88 }}>
+        {filtered.map(part => {
+          const isLow = part.qty <= part.min;
+          const pct = Math.min(100, Math.round((part.qty / (part.min*2)) * 100));
+          return (
+            <Card key={part.id} style={{ marginBottom:9 }}>
+              <div style={{ display:'flex', alignItems:'flex-start', gap:10, marginBottom:10 }}>
+                <div style={{ width:38, height:38, borderRadius:10, background:isLow?T.redBg:T.greenBg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  <Icon name="tag" size={18} color={isLow?T.red:T.green} />
+                </div>
+                <div style={{ flex:1 }}>
+                  <p style={{ fontSize:13, fontWeight:600, color:T.textPrimary, lineHeight:1.3 }}>{part.name}</p>
+                  <p style={{ fontSize:11, color:T.textMuted, marginTop:2 }}>{part.cat} · {part.id}</p>
+                </div>
+                <div style={{ textAlign:'right', flexShrink:0 }}>
+                  <p style={{ fontSize:15, fontWeight:700, color:isLow?T.red:T.textPrimary }}>{part.qty}</p>
+                  <p style={{ fontSize:10, color:T.textMuted }}>{part.unit}</p>
+                </div>
+              </div>
+              <ProgressBar pct={pct} color={isLow?T.red:T.green} />
+              <div style={{ display:'flex', justifyContent:'space-between', marginTop:6 }}>
+                <span style={{ fontSize:10, color:isLow?T.red:T.textMuted }}>Mínimo: {part.min} {part.unit}</span>
+                <span style={{ fontSize:11, fontWeight:600, color:T.textSecondary }}>R$ {part.price.toFixed(2)}/{part.unit}</span>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SCREEN: REPORTS (Manager only)
+// ══════════════════════════════════════════════════════════════════════════════
+function ReportsScreen() {
+  const T = useT();
+  const r = REPORTS;
+  const total = r.byStatus.reduce((a,b)=>a+b.value,0);
+
+  return (
+    <div style={{ flex:1, overflowY:'auto', background:T.bg, paddingBottom:88 }}>
+      <div style={{ background:`linear-gradient(160deg,${T.navy},${T.navyMid})`, padding:'14px 18px 22px', color:'#fff' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div>
+            <p style={{ fontSize:18, fontWeight:700 }}>Relatórios</p>
+            <p style={{ fontSize:12, opacity:0.5, marginTop:2 }}>{r.month}</p>
+          </div>
+          <div style={{ background:'rgba(255,255,255,0.1)', borderRadius:10, padding:'6px 12px', fontSize:12, color:'rgba(255,255,255,0.7)' }}>Mensal</div>
+        </div>
+      </div>
+
+      <div style={{ padding:'14px 14px 0' }}>
+        {/* Revenue highlight */}
+        <div style={{ background:T.navy, borderRadius:16, padding:'18px 20px', marginBottom:12, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div>
+            <p style={{ fontSize:12, color:'rgba(255,255,255,0.55)', marginBottom:5 }}>Faturamento {r.month}</p>
+            <p style={{ fontSize:26, fontWeight:700, color:'#fff' }}>R$ {r.revenue.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
+          </div>
+          <div style={{ background:T.greenBg, borderRadius:12, padding:'8px 12px', display:'flex', alignItems:'center', gap:5 }}>
+            <Icon name="trending" size={15} color={T.green} />
+            <span style={{ fontSize:12, fontWeight:700, color:T.green }}>+{r.revenueGrowth}%</span>
+          </div>
+        </div>
+
+        {/* KPIs */}
+        <div style={{ display:'flex', gap:10, marginBottom:12 }}>
+          <KpiCard label="Serviços" value={r.services} sub={`+${r.servicesGrowth}`} icon={<Icon name="wrench" size={18} color={T.blue} />} iconBg={T.blueBg} />
+          <KpiCard label="Ticket médio" value={`R$ ${Math.round(r.avgTicket)}`} sub={`+${r.avgTicketGrowth}%`} icon={<Icon name="money" size={18} color={T.orange} />} iconBg={T.orangeLight} />
+        </div>
+
+        {/* By status */}
+        <Card style={{ marginBottom:12 }}>
+          <p style={{ fontSize:13, fontWeight:700, color:T.textPrimary, marginBottom:14 }}>Status dos serviços</p>
+          {r.byStatus.map(s => (
+            <div key={s.label} style={{ marginBottom:12 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:5 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+                  <div style={{ width:8, height:8, borderRadius:'50%', background:s.color }} />
+                  <span style={{ fontSize:12, color:T.textPrimary }}>{s.label}</span>
+                </div>
+                <span style={{ fontSize:12, fontWeight:600, color:T.textPrimary }}>{s.value} <span style={{ color:T.textMuted, fontWeight:400 }}>({Math.round(s.value/total*100)}%)</span></span>
+              </div>
+              <ProgressBar pct={Math.round(s.value/total*100)} color={s.color} />
+            </div>
+          ))}
+        </Card>
+
+        {/* Top services */}
+        <Card style={{ marginBottom:12 }}>
+          <p style={{ fontSize:13, fontWeight:700, color:T.textPrimary, marginBottom:14 }}>Serviços mais realizados</p>
+          {r.topServices.map((svc, i) => (
+            <div key={svc.name} style={{ display:'flex', alignItems:'center', gap:10, paddingBottom:i<r.topServices.length-1?10:0, marginBottom:i<r.topServices.length-1?10:0, borderBottom:i<r.topServices.length-1?`1px solid ${T.divider}`:'none' }}>
+              <div style={{ width:22, height:22, borderRadius:6, background:T.bg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <span style={{ fontSize:11, fontWeight:700, color:T.textMuted }}>{i+1}</span>
+              </div>
+              <p style={{ fontSize:13, color:T.textPrimary, flex:1 }}>{svc.name}</p>
+              <div style={{ textAlign:'right' }}>
+                <p style={{ fontSize:12, fontWeight:600, color:T.textPrimary }}>R$ {svc.revenue.toFixed(0)}</p>
+                <p style={{ fontSize:10, color:T.textMuted }}>{svc.count}x</p>
+              </div>
+            </div>
+          ))}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// INTERNAL APP SHELL (Employee / Manager)
+// ══════════════════════════════════════════════════════════════════════════════
+function InternalApp({ role, userName, onLogout }) {
+  const T = useT();
+  const [screen, setScreen] = useState('dash');
+  const [animKey, setAnimKey] = useState(0);
+  const [selectedSvc, setSelectedSvc] = useState(null);
+
+  const goTo = (s) => { setScreen(s); setAnimKey(k=>k+1); };
+  const selectSvc = (svc) => setSelectedSvc(svc);
+
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+      <div key={animKey} style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', animation:'fadeSlide .2s cubic-bezier(.4,0,.2,1)' }}>
+        {screen === 'dash'     && <EmpDashboard onNav={goTo} onSelectService={selectSvc} userName={userName} role={role} onLogout={onLogout} />}
+        {screen === 'services' && <ServiceListScreen onSelectService={selectSvc} onNav={goTo} />}
+        {screen === 'detail'   && selectedSvc && <ServiceDetailScreen svc={selectedSvc} onBack={() => goTo('services')} />}
+        {screen === 'chat'     && <ServiceListScreen onSelectService={selectSvc} onNav={goTo} />}
+        {screen === 'stock'    && <StockScreen />}
+        {screen === 'reports'  && <ReportsScreen />}
+      </div>
+      {screen !== 'detail' && <EmpNavBar active={screen} onNav={goTo} role={role} />}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TWEAKS PANEL
+// ══════════════════════════════════════════════════════════════════════════════
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "personality": "naval",
+  "darkMode": false
+}/*EDITMODE-END*/;
+
+const PERSONALITY_LABELS = {
+  naval:   { label:'Naval',   swatch:'#1C2F4A', accent:'#F97316' },
+  floresta:{ label:'Floresta',swatch:'#14532D', accent:'#F59E0B' },
+  grafite: { label:'Grafite', swatch:'#27272A', accent:'#F97316' },
+  vinho:   { label:'Vinho',   swatch:'#7F1D1D', accent:'#FB923C' },
+};
+
+function TweaksPanel({ tweaks, setTweak, onClose }) {
+  const bg    = '#1E293B';
+  const surf  = '#273447';
+  const txt   = '#F1F5F9';
+  const muted = '#94A3B8';
+
+  return (
+    <div style={{
+      position:'fixed', bottom:28, right:28, zIndex:2000,
+      background:bg, borderRadius:22, padding:'20px 22px',
+      boxShadow:'0 24px 64px rgba(0,0,0,0.45)', width:252,
+      fontFamily:'DM Sans,sans-serif', animation:'scaleIn .2s cubic-bezier(.34,1.56,.64,1)',
+      border:'1px solid rgba(255,255,255,0.07)',
+    }}>
+      {/* Header */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+        <p style={{ fontSize:14, fontWeight:700, color:txt }}>Tweaks</p>
+        <button onClick={onClose} style={{ background:'rgba(255,255,255,0.07)', border:'none', cursor:'pointer', width:28, height:28, borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <Icon name="close" size={15} color={muted} />
+        </button>
+      </div>
+
+      {/* Personalidade */}
+      <p style={{ fontSize:10, fontWeight:700, color:muted, letterSpacing:1, textTransform:'uppercase', marginBottom:10 }}>Personalidade</p>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:20 }}>
+        {Object.entries(PERSONALITY_LABELS).map(([key, p]) => {
+          const active = tweaks.personality === key;
+          return (
+            <button key={key} onClick={() => setTweak('personality', key)}
+              style={{ background: active ? p.swatch : surf, border: active ? `2px solid ${p.accent}` : '2px solid transparent', borderRadius:12, padding:'10px 8px', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:6, transition:'all .18s' }}>
+              <div style={{ display:'flex', gap:4 }}>
+                <div style={{ width:16, height:16, borderRadius:4, background:p.swatch, border:'1.5px solid rgba(255,255,255,0.15)' }} />
+                <div style={{ width:16, height:16, borderRadius:4, background:p.accent }} />
+              </div>
+              <span style={{ fontSize:11, fontWeight:active?700:500, color: active ? '#fff' : muted }}>{p.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Modo escuro */}
+      <p style={{ fontSize:10, fontWeight:700, color:muted, letterSpacing:1, textTransform:'uppercase', marginBottom:10 }}>Modo</p>
+      <div style={{ display:'flex', background:surf, borderRadius:12, padding:3, marginBottom:6 }}>
+        {[['false','☀️  Claro'],['true','🌙  Escuro']].map(([val, label]) => {
+          const active = String(tweaks.darkMode) === val;
+          return (
+            <button key={val} onClick={() => setTweak('darkMode', val === 'true')}
+              style={{ flex:1, padding:'8px 0', background:active?'rgba(255,255,255,0.1)':'transparent', border:'none', cursor:'pointer', borderRadius:9, fontSize:12, fontWeight:active?700:500, color:active?txt:muted, fontFamily:'DM Sans,sans-serif', transition:'all .18s' }}>
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      <p style={{ fontSize:10, color:muted, marginTop:14, lineHeight:1.6, textAlign:'center' }}>
+        Paleta e modo afetam todo o<br/>sistema em tempo real.
+      </p>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ROOT APP
+// ══════════════════════════════════════════════════════════════════════════════
+function App() {
+  const [auth, setAuth] = useState(null);
+  const [animKey, setAnimKey] = useState(0);
+  const [tweaks, setTweaksState] = useState(TWEAK_DEFAULTS);
+  const [showTweaks, setShowTweaks] = useState(false);
+
+  const setTweak = (key, val) => {
+    setTweaksState(prev => {
+      const next = { ...prev, [key]: val };
+      window.parent.postMessage({ type:'__edit_mode_set_keys', edits: { [key]: val } }, '*');
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    const onMsg = (e) => {
+      if (e.data?.type === '__activate_edit_mode')   setShowTweaks(true);
+      if (e.data?.type === '__deactivate_edit_mode') setShowTweaks(false);
+    };
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({ type:'__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  const theme = buildTheme(tweaks.personality, tweaks.darkMode);
+
+  const handleLogin = (role, userName) => {
+    setAuth({ role, userName });
+    setAnimKey(k=>k+1);
+  };
+
+  return (
+    <ThemeCtx.Provider value={theme}>
+      <div key={animKey} style={{ animation:'fadeSlide .25s ease', width:'100%', display:'flex', flexDirection:'column', alignItems:'center', gap:20 }}>
+        {!auth && (
+          <div style={{ display:'flex', gap:12 }}>
+            <div style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:12, padding:'8px 14px', textAlign:'center' }}>
+              <p style={{ fontSize:11, color:'rgba(255,255,255,0.5)', marginBottom:2 }}>Funcionário</p>
+              <p style={{ fontSize:10, color:'rgba(255,255,255,0.3)' }}>jose@tiao.com.br</p>
+            </div>
+            <div style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:12, padding:'8px 14px', textAlign:'center' }}>
+              <p style={{ fontSize:11, color:'rgba(255,255,255,0.5)', marginBottom:2 }}>Gerente</p>
+              <p style={{ fontSize:10, color:'rgba(255,255,255,0.3)' }}>gerente@tiao.com.br</p>
+            </div>
+          </div>
+        )}
+
+        {auth && (
+          <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+            <div style={{ background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:12, padding:'6px 14px', display:'flex', alignItems:'center', gap:8 }}>
+              <div style={{ width:8, height:8, borderRadius:'50%', background:BASE_T.green }} />
+              <span style={{ fontSize:12, color:'rgba(255,255,255,0.7)' }}>{auth.userName}</span>
+              <span style={{ fontSize:10, color:'rgba(255,255,255,0.4)', background:'rgba(255,255,255,0.08)', padding:'2px 8px', borderRadius:20, textTransform:'capitalize' }}>
+                {auth.role==='manager'?'Gerente':'Mecânico'}
+              </span>
+            </div>
+            <button onClick={() => { setAuth(null); setAnimKey(k=>k+1); }} style={{ background:'none', border:'1px solid rgba(255,255,255,0.15)', borderRadius:10, padding:'6px 12px', cursor:'pointer', display:'flex', alignItems:'center', gap:5, color:'rgba(255,255,255,0.5)', fontSize:12, fontFamily:'DM Sans,sans-serif' }}>
+              <Icon name="logout" size={14} color="rgba(255,255,255,0.5)" /> Sair
+            </button>
+          </div>
+        )}
+
+        <PhoneFrame label={!auth ? '🔐 Login' : auth.role === 'manager' ? '👔 Gerente' : '🔧 Funcionário'}>
+          {!auth
+            ? <LoginScreen onLogin={handleLogin} />
+            : <InternalApp role={auth.role} userName={auth.userName} onLogout={() => { setAuth(null); setAnimKey(k=>k+1); }} />
+
+          }
+        </PhoneFrame>
+      </div>
+
+      {showTweaks && (
+        <TweaksPanel tweaks={tweaks} setTweak={setTweak} onClose={() => {
+          setShowTweaks(false);
+          window.parent.postMessage({ type:'__edit_mode_dismissed' }, '*');
+        }} />
+      )}
+    </ThemeCtx.Provider>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
