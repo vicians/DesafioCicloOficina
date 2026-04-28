@@ -1,6 +1,6 @@
 import { getDb } from '../../config/database';
 import { v4 as uuidv4 } from 'uuid';
-import { hashPassword } from '../../utils/passwordHash';
+import { PasswordUtils } from '../../utils/passwordUtils';
 
 // IDs únicos gerados programaticamente
 const adminId = uuidv4();
@@ -13,9 +13,9 @@ export const runSeeds = async () => {
   console.log('Iniciando Seeds...');
 
   // Gerar hashes das senhas (variáveis em português do .env)
-  const adminSenhaHash = await hashPassword(process.env.ADMIN_SENHA as string);
-  const mecanicoSenhaHash = await hashPassword(process.env.MECANICO_SENHA as string);
-  const clienteSenhaHash = await hashPassword(process.env.CLIENTE_SENHA as string);
+  const adminSenhaHash = await PasswordUtils.hash(process.env.ADMIN_SENHA as string);
+  const mecanicoSenhaHash = await PasswordUtils.hash(process.env.MECANICO_SENHA as string);
+  const clienteSenhaHash = await PasswordUtils.hash(process.env.CLIENTE_SENHA as string);
 
   const usuarios = [
     {
