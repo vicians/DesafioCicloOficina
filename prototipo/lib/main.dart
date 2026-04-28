@@ -9,15 +9,20 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'services/firebase_messaging_service.dart';
 
-void main() async{
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
 
-  await FirebaseMessagingService.init();
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    await FirebaseMessagingService.init();
+  } catch (_) {
+    // Firebase indisponível neste ambiente (ex.: web sem projeto configurado).
+    // O app roda normalmente com dados mock.
+  }
 
   runApp(const TiaoApp());
 }
@@ -31,7 +36,7 @@ class TiaoApp extends StatelessWidget {
       title: 'Tião Oficina',
       theme: buildAppTheme(),
       debugShowCheckedModeBanner: false,
-      home: const AppSelector(),
+      home: const LoginScreen(),
     );
   }
 }

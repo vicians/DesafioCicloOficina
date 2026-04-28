@@ -10,7 +10,8 @@ import '../../../data/mock_data.dart';
 import 'service_detail_screen.dart';
 
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+  final VoidCallback? onLogout;
+  const HomeScreen({super.key, this.onLogout});
 
   @override
   Widget build(BuildContext context) {
@@ -20,7 +21,7 @@ class HomeScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _Header(svc: svc),
+          _Header(svc: svc, onLogout: onLogout),
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -52,6 +53,8 @@ class HomeScreen extends StatelessWidget {
                       padding: const EdgeInsets.only(bottom: 8),
                       child: _HistoryCard(item: h),
                     )),
+                // Espaço para o FAB não cobrir o último card
+                const SizedBox(height: 88),
               ],
             ),
           ),
@@ -63,7 +66,8 @@ class HomeScreen extends StatelessWidget {
 
 class _Header extends StatelessWidget {
   final ServiceModel svc;
-  const _Header({required this.svc});
+  final VoidCallback? onLogout;
+  const _Header({required this.svc, this.onLogout});
 
   @override
   Widget build(BuildContext context) {
@@ -105,7 +109,30 @@ class _Header extends StatelessWidget {
                   ],
                 ),
               ),
-              const AppAvatar(initials: 'CM', size: 42),
+              Row(
+                children: [
+                  const AppAvatar(initials: 'CM', size: 42),
+                  if (onLogout != null) ...[
+                    const SizedBox(width: 10),
+                    GestureDetector(
+                      onTap: onLogout,
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.logout_rounded,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ],
           ),
           const SizedBox(height: 16),
