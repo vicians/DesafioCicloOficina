@@ -102,6 +102,8 @@ class InternalService {
   final String time;
   final double value;
   final int progress;
+  final String openedAt;    // 'dd/MM/yyyy'
+  final String? finishedAt; // 'dd/MM/yyyy', presente quando concluido/cancelado
 
   const InternalService({
     required this.id,
@@ -114,6 +116,8 @@ class InternalService {
     required this.time,
     required this.value,
     required this.progress,
+    required this.openedAt,
+    this.finishedAt,
   });
 }
 
@@ -245,11 +249,16 @@ List<NotificationItem> get notificationsData => [
 // ── Sistema Interno Data ───────────────────────────────────────────────────
 
 final internalServices = [
-  const InternalService(id: 'OS-089', client: 'Carlos Mendes', car: 'Honda Civic 2019', plate: 'ABC-1234', service: 'Revisão completa + pastilhas', status: 'andamento', mechanic: 'José', time: '14:00', value: 439.90, progress: 65),
-  const InternalService(id: 'OS-090', client: 'Ana Paula Lima', car: 'Toyota Corolla 2021', plate: 'DEF-5678', service: 'Troca de óleo + filtros', status: 'orcamento', mechanic: 'Ricardo', time: '10:30', value: 195.00, progress: 20),
-  const InternalService(id: 'OS-091', client: 'Rafael Souza', car: 'Fiat Argo 2022', plate: 'GHI-9012', service: 'Alinhamento e balanceamento', status: 'aguardando', mechanic: '—', time: '—', value: 180.00, progress: 0),
-  const InternalService(id: 'OS-092', client: 'Mariana Costa', car: 'VW Polo 2020', plate: 'JKL-3456', service: 'Revisão de 30.000 km', status: 'revisao', mechanic: 'José', time: '16:00', value: 520.00, progress: 85),
-  const InternalService(id: 'OS-088', client: 'Pedro Alves', car: 'Chevrolet Onix 2018', plate: 'MNO-7890', service: 'Troca de bateria', status: 'concluido', mechanic: 'Ricardo', time: '11:00', value: 380.00, progress: 100),
+  // ── Ativos ─────────────────────────────────────────────────────────────────
+  const InternalService(id: 'OS-089', client: 'Carlos Mendes', car: 'Honda Civic 2019', plate: 'ABC-1234', service: 'Revisão completa + pastilhas', status: 'andamento', mechanic: 'José', time: '14:00', value: 439.90, progress: 65, openedAt: '22/04/2026'),
+  const InternalService(id: 'OS-090', client: 'Ana Paula Lima', car: 'Toyota Corolla 2021', plate: 'DEF-5678', service: 'Troca de óleo + filtros', status: 'orcamento', mechanic: 'Ricardo', time: '10:30', value: 195.00, progress: 20, openedAt: '25/04/2026'),
+  const InternalService(id: 'OS-091', client: 'Rafael Souza', car: 'Fiat Argo 2022', plate: 'GHI-9012', service: 'Alinhamento e balanceamento', status: 'aguardando', mechanic: '—', time: '—', value: 180.00, progress: 0, openedAt: '28/04/2026'),
+  const InternalService(id: 'OS-092', client: 'Mariana Costa', car: 'VW Polo 2020', plate: 'JKL-3456', service: 'Revisão de 30.000 km', status: 'revisao', mechanic: 'José', time: '16:00', value: 520.00, progress: 85, openedAt: '23/04/2026'),
+  // ── Finalizados ─────────────────────────────────────────────────────────────
+  const InternalService(id: 'OS-088', client: 'Pedro Alves', car: 'Chevrolet Onix 2018', plate: 'MNO-7890', service: 'Troca de bateria', status: 'concluido', mechanic: 'Ricardo', time: '11:00', value: 380.00, progress: 100, openedAt: '20/04/2026', finishedAt: '28/04/2026'),
+  const InternalService(id: 'OS-087', client: 'Fernanda Lima', car: 'Hyundai HB20 2021', plate: 'PQR-1122', service: 'Troca de pneus (4 unidades)', status: 'concluido', mechanic: 'José', time: '09:00', value: 960.00, progress: 100, openedAt: '22/04/2026', finishedAt: '24/04/2026'),
+  const InternalService(id: 'OS-085', client: 'Bruno Carvalho', car: 'Jeep Compass 2020', plate: 'STU-3344', service: 'Revisão de 60.000 km', status: 'concluido', mechanic: 'Ricardo', time: '08:30', value: 1250.00, progress: 100, openedAt: '05/04/2026', finishedAt: '07/04/2026'),
+  const InternalService(id: 'OS-080', client: 'Larissa Mendes', car: 'Renault Kwid 2022', plate: 'VWX-5566', service: 'Diagnóstico elétrico', status: 'cancelado', mechanic: '—', time: '—', value: 0.00, progress: 0, openedAt: '01/03/2026', finishedAt: '02/03/2026'),
 ];
 
 List<ChatMessage> get chatMessages => [
