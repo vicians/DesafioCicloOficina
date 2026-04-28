@@ -26,6 +26,24 @@ export class UsuarioModel {
     return result.rows[0];
   }
 
+  static async findByCpfCnpj(cpf_cnpj: string): Promise<UsuarioDTO | undefined> {
+    const db = getDb();
+    const result = await db.query(
+      'SELECT id, tipo_id, cpf_cnpj, nome, telefone, email, criado_em FROM usuarios WHERE cpf_cnpj = $1',
+      [cpf_cnpj]
+    );
+    return result.rows[0];
+  }
+
+  static async findByEmail(email: string): Promise<UsuarioDTO | undefined> {
+    const db = getDb();
+    const result = await db.query(
+      'SELECT id, tipo_id, cpf_cnpj, nome, telefone, email, criado_em FROM usuarios WHERE email = $1',
+      [email]
+    );
+    return result.rows[0];
+  }
+
   static async create(data: CreateUsuarioDTO): Promise<UsuarioDTO> {
     const db = getDb();
     const { tipo_id, cpf_cnpj, nome, telefone, email, senha_hash } = data;
