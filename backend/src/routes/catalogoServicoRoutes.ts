@@ -15,6 +15,8 @@ const catalogoServicoRouter = Router();
  *         description: Sucesso
  */
 catalogoServicoRouter.get('/', CatalogoServicoController.index);
+catalogoServicoRouter.get('/:id', CatalogoServicoController.show);
+
 
 /**
  * @openapi
@@ -28,5 +30,8 @@ catalogoServicoRouter.get('/', CatalogoServicoController.index);
  *         description: Criado
  */
 catalogoServicoRouter.post('/', CatalogoServicoController.store);
+catalogoServicoRouter.patch('/:id', CatalogoServicoController.update);
+catalogoServicoRouter.delete('/:id', CatalogoServicoController.destroy);
 
 export { catalogoServicoRouter };
+

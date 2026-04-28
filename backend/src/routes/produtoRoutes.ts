@@ -34,6 +34,7 @@ produtoRouter.get('/', ProdutoController.index);
  *         description: Sucesso
  */
 produtoRouter.get('/search/:nome', ProdutoController.search);
+produtoRouter.get('/:id', ProdutoController.show);
 
 /**
  * @openapi
@@ -47,5 +48,7 @@ produtoRouter.get('/search/:nome', ProdutoController.search);
  *         description: Criado
  */
 produtoRouter.post('/', ProdutoController.store);
+produtoRouter.patch('/:id', ProdutoController.update);
+produtoRouter.delete('/:id', ProdutoController.destroy);
 
 export { produtoRouter };

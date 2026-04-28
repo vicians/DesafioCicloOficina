@@ -37,25 +37,6 @@ usuarioRouter.get('/:id', UsuarioController.show);
 
 /**
  * @openapi
- * /usuarios/cpf/{cpf}:
- *   get:
- *     tags:
- *       - Usuários
- *     summary: Busca um usuário por CPF
- *     parameters:
- *       - in: path
- *         name: cpf
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Sucesso
- */
-usuarioRouter.get('/cpf/:cpf', UsuarioController.showByCpf);
-
-/**
- * @openapi
  * /usuarios:
  *   post:
  *     tags:
@@ -66,5 +47,7 @@ usuarioRouter.get('/cpf/:cpf', UsuarioController.showByCpf);
  *         description: Criado
  */
 usuarioRouter.post('/', UsuarioController.store);
+usuarioRouter.put('/:id', UsuarioController.update);
 
 export { usuarioRouter };
+

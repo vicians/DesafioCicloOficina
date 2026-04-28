@@ -7,14 +7,33 @@ export class CatalogoServicoController {
     return res.json(servicos);
   }
 
-  static async store(req: Request, res: Response) {
-    const data = req.body;
+  static async show(req: Request, res: Response) {
+    const servico = await CatalogoServicoModel.findById(req.params.id);
+    if (!servico) return res.status(404).json({ error: 'Serviço não encontrado' });
+    return res.json(servico);
+  }
 
-    if (!data.nome || !data.preco || !data.duracao_minutos) {
-      return res.status(400).json({ error: 'Nome, Preço e Duração são obrigatórios' });
+  static async store(req: Request, res: Response) {
+    const { nome, preco, duracao_minutos, descricao } = req.body;
+
+    if (!nome || !preco || !duracao_minutos) {
+      return res.status(400).json({ error: 'nome, preco e duracao_minutos são obrigatórios' });
     }
 
-    const servico = await CatalogoServicoModel.create(data);
+    const servico = await CatalogoServicoModel.create({ nome, preco, duracao_minutos, descricao });
     return res.status(201).json(servico);
   }
+
+  static async update(req: Request, res: Response) {
+    const servico = await CatalogoServicoModel.update(req.params.id, req.body);
+    if (!servico) return res.status(404).json({ error: 'Serviço não encontrado' });
+    return res.json(servico);
+  }
+
+  static async destroy(req: Request, res: Response) {
+    const servico = await CatalogoServicoModel.deactivate(req.params.id);
+    if (!servico) return res.status(404).json({ error: 'Serviço não encontrado' });
+    return res.status(204).send();
+  }
 }
+

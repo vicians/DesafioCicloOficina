@@ -18,6 +18,25 @@ veiculoRouter.get('/', VeiculoController.index);
 
 /**
  * @openapi
+ * /veiculos/cliente/{clienteId}:
+ *   get:
+ *     tags:
+ *       - Veículos
+ *     summary: Lista veículos por cliente
+ *     parameters:
+ *       - in: path
+ *         name: clienteId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Sucesso
+ */
+veiculoRouter.get('/cliente/:clienteId', VeiculoController.listByCliente);
+
+/**
+ * @openapi
  * /veiculos/{id}:
  *   get:
  *     tags:
@@ -56,25 +75,6 @@ veiculoRouter.get('/placa/:placa', VeiculoController.showByPlaca);
 
 /**
  * @openapi
- * /veiculos/cliente/{clienteId}:
- *   get:
- *     tags:
- *       - Veículos
- *     summary: Lista veículos por cliente
- *     parameters:
- *       - in: path
- *         name: clienteId
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Sucesso
- */
-veiculoRouter.get('/cliente/:clienteId', VeiculoController.listByCliente);
-
-/**
- * @openapi
  * /veiculos:
  *   post:
  *     tags:
@@ -87,3 +87,4 @@ veiculoRouter.get('/cliente/:clienteId', VeiculoController.listByCliente);
 veiculoRouter.post('/', VeiculoController.store);
 
 export { veiculoRouter };
+

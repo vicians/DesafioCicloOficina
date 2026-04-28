@@ -47,5 +47,7 @@ agendamentoRouter.get('/cliente/:clienteId', AgendamentoController.listByCliente
  *         description: Criado
  */
 agendamentoRouter.post('/', AgendamentoController.store);
+agendamentoRouter.patch('/:id/status', AgendamentoController.updateStatus);
+agendamentoRouter.patch('/:id/iniciar', AgendamentoController.iniciarExecucao);
 
 export { agendamentoRouter };
