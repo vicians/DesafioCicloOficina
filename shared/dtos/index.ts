@@ -1,0 +1,7 @@
+export * from './oficinaDto';
+export * from './usuarioDto';
+export * from './veiculoDto';
+export * from './catalogoServicoDto';
+export * from './produtoDto';
+export * from './agendamentoDto';
+export * from './orcamentoDto';
