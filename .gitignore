@@ -9,6 +9,14 @@ build/
 *.dart.js
 *.js_
 *.js.map
+# Android - Chaves de assinatura
+**/android/key.properties
+**/*.keystore
+**/*.jks
+
+# iOS - Configurações de ambiente geradas
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/flutter_export_environment.sh
 
 # ----------------------------------------------------------------ILH
 # Node.js (Backend & AI Service)
@@ -19,6 +27,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 dist/
+# TypeScript incremental build info
+*.tsbuildinfo
 
 # ----------------------------------------------------------------ILH
 # Ambiente e Segurança (Crítico para chaves de API e BD)
@@ -29,6 +39,8 @@ dist/
 .env.development.local
 .env.test.local
 .env.production.local
+.env-example
+.env.example
 
 # ----------------------------------------------------------------ILH
 # IDEs e Sistema Operativo
@@ -42,3 +54,21 @@ dist/
 *.sw?
 .DS_Store
 Thumbs.db
+
+# ----------------------------------------------------------------ILH
+# Logs genéricos
+# ----------------------------------------------------------------ILH
+*.log
+logs/
+*.log.*
+
+
+# ----------------------------------------------------------------ILH
+# Cache de ferramentas de linting
+# ----------------------------------------------------------------ILH
+.eslintcache
+
+# ----------------------------------------------------------------ILH
+# Google Antigravity (IA Agent Artifacts)
+# ----------------------------------------------------------------ILH
+.agent/

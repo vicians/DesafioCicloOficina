@@ -1,0 +1,24 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-client"
+}
+
+model ServiceOrder {
+  id              String   @id @default(uuid())
+  customerName    String
+  vehiclePlate    String
+  description     String
+  status          String   @default("OPEN")
+  createdAt       DateTime @default(now())
+}
+
+model ChatLog {
+  id        String   @id @default(uuid())
+  message   String
+  role      String   // 'user' ou 'assistant'
+  timestamp DateTime @default(now())
+}
