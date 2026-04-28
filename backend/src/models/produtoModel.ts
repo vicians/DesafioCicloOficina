@@ -8,6 +8,15 @@ export class ProdutoModel {
     return result.rows;
   }
 
+  static async findByNome(nome: string): Promise<ProdutoDTO[]> {
+    const db = getDb();
+    const result = await db.query(
+      'SELECT * FROM produtos WHERE nome ILIKE $1 AND ativo = true',
+      [`%${nome}%`]
+    );
+    return result.rows;
+  }
+
   static async create(data: CreateProdutoDTO): Promise<ProdutoDTO> {
     const db = getDb();
     const { nome, marca, valor, quantidade_estoque } = data;
