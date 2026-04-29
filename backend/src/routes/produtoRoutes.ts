@@ -10,11 +10,45 @@ const produtoRouter = Router();
  *     tags:
  *       - Produtos
  *     summary: Lista todos os produtos
+ *     description: Retorna a lista de produtos/peças em estoque (RN167, RN168)
  *     responses:
  *       200:
  *         description: Sucesso
  */
 produtoRouter.get('/', ProdutoController.index);
+
+/**
+ * @openapi
+ * /produtos:
+ *   post:
+ *     tags:
+ *       - Produtos
+ *     summary: Cria um novo produto
+ *     description: Adiciona um novo item ao estoque da oficina (RN168)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - nome
+ *               - valor
+ *               - quantidade_estoque
+ *             properties:
+ *               nome:
+ *                 type: string
+ *               marca:
+ *                 type: string
+ *               valor:
+ *                 type: number
+ *               quantidade_estoque:
+ *                 type: integer
+ *     responses:
+ *       201:
+ *         description: Criado
+ */
+produtoRouter.post('/', ProdutoController.store);
 
 /**
  * @openapi
@@ -34,21 +68,82 @@ produtoRouter.get('/', ProdutoController.index);
  *         description: Sucesso
  */
 produtoRouter.get('/search/:nome', ProdutoController.search);
+
+/**
+ * @openapi
+ * /produtos/{id}:
+ *   get:
+ *     tags:
+ *       - Produtos
+ *     summary: Busca um produto por ID
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Sucesso
+ */
 produtoRouter.get('/:id', ProdutoController.show);
 
 /**
  * @openapi
- * /produtos:
- *   post:
+ * /produtos/{id}:
+ *   patch:
  *     tags:
  *       - Produtos
- *     summary: Cria um novo produto
+ *     summary: Atualiza um produto
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               nome:
+ *                 type: string
+ *               marca:
+ *                 type: string
+ *               valor:
+ *                 type: number
+ *               quantidade_estoque:
+ *                 type: integer
+ *               ativo:
+ *                 type: boolean
  *     responses:
- *       201:
- *         description: Criado
+ *       200:
+ *         description: Atualizado com sucesso
  */
-produtoRouter.post('/', ProdutoController.store);
 produtoRouter.patch('/:id', ProdutoController.update);
+
+/**
+ * @openapi
+ * /produtos/{id}:
+ *   delete:
+ *     tags:
+ *       - Produtos
+ *     summary: Remove um produto
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       204:
+ *         description: Removido com sucesso
+ */
 produtoRouter.delete('/:id', ProdutoController.destroy);
 
 export { produtoRouter };
