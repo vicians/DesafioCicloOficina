@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/colors.dart';
+import '../../core/widgets/quick_action_fab.dart';
 import '../../data/mock_data.dart';
+import '../interno/screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/budget_approval_screen.dart';
 import 'screens/history_screen.dart';
@@ -17,11 +19,19 @@ class ClienteApp extends StatefulWidget {
 class _ClienteAppState extends State<ClienteApp> {
   int _currentIndex = 0;
 
-  static const _screens = [
-    HomeScreen(),
-    BudgetApprovalScreen(),
-    HistoryScreen(),
-    NotificationsScreen(),
+  void _logout() {
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (_) => false,
+    );
+  }
+
+  List<Widget> get _screens => [
+    HomeScreen(onLogout: _logout),
+    const BudgetApprovalScreen(),
+    const HistoryScreen(),
+    const NotificationsScreen(),
   ];
 
   static const _titles = [
@@ -59,6 +69,10 @@ class _ClienteAppState extends State<ClienteApp> {
           children: _screens,
         ),
       ),
+      floatingActionButton: _currentIndex == 0
+          ? const QuickActionFab()
+          : null,
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: _ClienteNavBar(
         currentIndex: _currentIndex,
         onTap: (i) => setState(() => _currentIndex = i),
