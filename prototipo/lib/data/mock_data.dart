@@ -246,6 +246,41 @@ List<NotificationItem> get notificationsData => [
   NotificationItem(id: 4, type: 'done', title: 'Serviço anterior concluído', body: 'Alinhamento e balanceamento finalizado.', time: '10 mar, 17:30', unread: false),
 ];
 
+List<NotificationItem> get internalNotificationsData => [
+  NotificationItem(
+    id: 101,
+    type: 'new_schedule',
+    title: 'Novo agendamento via IA',
+    body: 'Fiat Argo GHI-9012 agendado para hoje às 16:30.',
+    time: 'Agora há pouco',
+    unread: true,
+  ),
+  NotificationItem(
+    id: 102,
+    type: 'approved_budget',
+    title: 'Orçamento aprovado pelo cliente',
+    body: 'OS-090 aprovada por Ana Paula. Inicie o serviço quando possível.',
+    time: 'Hoje, 14:05',
+    unread: true,
+  ),
+  NotificationItem(
+    id: 103,
+    type: 'low_stock',
+    title: 'Peça com estoque baixo',
+    body: 'Bateria 60Ah MF está com 3 unid. (mínimo recomendado: 5).',
+    time: 'Hoje, 11:40',
+    unread: true,
+  ),
+  NotificationItem(
+    id: 104,
+    type: 'approved_budget',
+    title: 'Orçamento aprovado pelo cliente',
+    body: 'OS-089 aprovada por Carlos Mendes.',
+    time: 'Ontem, 17:22',
+    unread: false,
+  ),
+];
+
 // ── Sistema Interno Data ───────────────────────────────────────────────────
 
 final internalServices = [

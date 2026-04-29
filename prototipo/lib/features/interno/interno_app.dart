@@ -8,7 +8,9 @@ import 'screens/employee_dashboard_screen.dart';
 import 'screens/service_list_screen.dart';
 import 'screens/inventory_screen.dart';
 import 'screens/reports_screen.dart';
+import 'screens/internal_notifications_screen.dart';
 import 'screens/login_screen.dart';
+import '../../data/mock_data.dart';
 
 class InternoApp extends StatefulWidget {
   final bool isManager;
@@ -22,11 +24,13 @@ class InternoApp extends StatefulWidget {
 class _InternoAppState extends State<InternoApp> {
   int _currentIndex = 0;
   late final InternalFlowRepository _flowRepository;
+  late final List<NotificationItem> _internalNotifications;
 
   @override
   void initState() {
     super.initState();
     _flowRepository = InternalFlowMockRepository();
+    _internalNotifications = internalNotificationsData;
   }
 
   @override
@@ -43,6 +47,19 @@ class _InternoAppState extends State<InternoApp> {
     );
   }
 
+  int get _unreadInternalNotificationsCount =>
+      _internalNotifications.where((n) => n.unread).length;
+
+  void _markNotificationAsRead(int id) {
+    setState(() {
+      for (final notification in _internalNotifications) {
+        if (notification.id == id) {
+          notification.unread = false;
+        }
+      }
+    });
+  }
+
   List<Widget> get _screens {
     if (widget.isManager) {
       return [
@@ -56,6 +73,10 @@ class _InternoAppState extends State<InternoApp> {
         ServiceListScreen(repository: _flowRepository, initialFilter: null),
         const InventoryScreen(),
         const ReportsScreen(),
+        InternalNotificationsScreen(
+          items: _internalNotifications,
+          onMarkRead: _markNotificationAsRead,
+        ),
       ];
     }
     return [
@@ -68,6 +89,10 @@ class _InternoAppState extends State<InternoApp> {
       BudgetListScreen(repository: _flowRepository),
       ServiceListScreen(repository: _flowRepository, initialFilter: null),
       const _MessagesPlaceholder(),
+      InternalNotificationsScreen(
+        items: _internalNotifications,
+        onMarkRead: _markNotificationAsRead,
+      ),
     ];
   }
 
@@ -79,6 +104,11 @@ class _InternoAppState extends State<InternoApp> {
         _NavItem(label: 'Serviços', icon: Icons.build_rounded),
         _NavItem(label: 'Estoque', icon: Icons.inventory_2_rounded),
         _NavItem(label: 'Relatórios', icon: Icons.bar_chart_rounded),
+        _NavItem(
+          label: 'Alertas',
+          icon: Icons.notifications_rounded,
+          badgeCount: _unreadInternalNotificationsCount,
+        ),
       ];
     }
     return [
@@ -86,6 +116,11 @@ class _InternoAppState extends State<InternoApp> {
       _NavItem(label: 'Orçamentos', icon: Icons.receipt_long_rounded),
       _NavItem(label: 'Serviços', icon: Icons.build_rounded),
       _NavItem(label: 'Mensagens', icon: Icons.chat_bubble_rounded),
+      _NavItem(
+        label: 'Alertas',
+        icon: Icons.notifications_rounded,
+        badgeCount: _unreadInternalNotificationsCount,
+      ),
     ];
   }
 
@@ -112,7 +147,13 @@ class _InternoAppState extends State<InternoApp> {
 class _NavItem {
   final String label;
   final IconData icon;
-  const _NavItem({required this.label, required this.icon});
+  final int badgeCount;
+
+  const _NavItem({
+    required this.label,
+    required this.icon,
+    this.badgeCount = 0,
+  });
 }
 
 class _InternoNavBar extends StatelessWidget {
@@ -170,10 +211,52 @@ class _InternoNavBar extends StatelessWidget {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(
-                              item.icon,
-                              size: 22,
-                              color: isActive ? orange : textMuted,
+                            SizedBox(
+                              width: 28,
+                              height: 22,
+                              child: Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  Align(
+                                    alignment: Alignment.center,
+                                    child: Icon(
+                                      item.icon,
+                                      size: 22,
+                                      color: isActive ? orange : textMuted,
+                                    ),
+                                  ),
+                                  if (item.badgeCount > 0)
+                                    Positioned(
+                                      right: -4,
+                                      top: -2,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 5,
+                                          vertical: 1,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: orange,
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        constraints: const BoxConstraints(
+                                          minWidth: 16,
+                                          minHeight: 16,
+                                        ),
+                                        child: Text(
+                                          item.badgeCount > 9
+                                              ? '9+'
+                                              : item.badgeCount.toString(),
+                                          textAlign: TextAlign.center,
+                                          style: GoogleFonts.dmSans(
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
                             ),
                             const SizedBox(height: 3),
                             Text(
