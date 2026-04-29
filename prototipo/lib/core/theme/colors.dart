@@ -82,11 +82,24 @@ const statusMap = {
     backgroundColor: blueBg,
     dotColor: blue,
   ),
+  // Alias para o status EM_EXECUCAO do backend (integração futura)
+  'em_execucao': ServiceStatus(
+    label: 'Em execução',
+    textColor: blue,
+    backgroundColor: blueBg,
+    dotColor: blue,
+  ),
   'revisao': ServiceStatus(
     label: 'Em revisão',
     textColor: purple,
     backgroundColor: purpleBg,
     dotColor: purple,
+  ),
+  'aguardando_retirada': ServiceStatus(
+    label: 'Aguardando retirada',
+    textColor: orange,
+    backgroundColor: orangeLight,
+    dotColor: orange,
   ),
   'concluido': ServiceStatus(
     label: 'Concluído',

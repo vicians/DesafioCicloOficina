@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import { JWTUtils } from '../utils/JWTUtils';
+import jwt from 'jsonwebtoken';
+import { TokenPayload } from '../utils/JWTUtils';
 
 export const authMiddleware = (
   req: Request,
@@ -9,19 +10,34 @@ export const authMiddleware = (
   const authHeader = req.headers.authorization;
 
   if (!authHeader) {
-    return res.status(401).json({ error: 'Token not provided' });
+    return res.status(401).json({ error: 'Unauthorized: Token is missing' });
   }
 
-  const [, token] = authHeader.split(' ');
+  const parts = authHeader.split(' ');
+
+  if (parts.length !== 2 || parts[0] !== 'Bearer') {
+    return res.status(401).json({ error: 'Unauthorized: Token is malformed' });
+  }
+
+  const token = parts[1];
+  const secret = process.env.JWT_SECRET;
+
+  if (!secret) {
+    console.error('JWT_SECRET is not defined in environment variables');
+    return res.status(500).json({ error: 'Internal server error' });
+  }
 
   try {
-    const decoded = JWTUtils.verifyToken(token);
+    const decoded = jwt.verify(token, secret) as TokenPayload;
     
-    // Add user info to request (optional, but common)
-    // req.user = decoded; 
+    // Inject user context into the request
+    req.user = decoded;
     
     return next();
   } catch (error) {
-    return res.status(401).json({ error: 'Token invalid' });
+    if (error instanceof jwt.TokenExpiredError) {
+      return res.status(401).json({ error: 'Unauthorized: Token has expired' });
+    }
+    return res.status(401).json({ error: 'Unauthorized: Token is invalid or malformed' });
   }
 };

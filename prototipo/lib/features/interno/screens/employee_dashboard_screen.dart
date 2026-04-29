@@ -6,16 +6,17 @@ import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_progress_bar.dart';
 import '../../../core/widgets/status_badge.dart';
 import '../../../data/mock_data.dart';
-import 'service_list_screen.dart';
 
 class EmployeeDashboardScreen extends StatefulWidget {
   final bool isManager;
   final VoidCallback onLogout;
+  final VoidCallback? onOpenServices;
 
   const EmployeeDashboardScreen({
     super.key,
     required this.isManager,
     required this.onLogout,
+    this.onOpenServices,
   });
 
   @override
@@ -29,7 +30,10 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final activeServices = internalServices
-        .where((s) => s.status == 'andamento' || s.status == 'revisao')
+        .where((s) =>
+            s.status == 'andamento' ||
+            s.status == 'revisao' ||
+            s.status == 'aguardando_retirada')
         .toList();
     final waitingServices =
         internalServices.where((s) => s.status == 'aguardando').toList();
@@ -74,7 +78,10 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
                             s.status != 'cancelado')
                         .map((svc) => Padding(
                               padding: const EdgeInsets.only(bottom: 8),
-                              child: _ServiceCard(svc: svc),
+                              child: _ServiceCard(
+                                svc: svc,
+                                onTap: widget.onOpenServices,
+                              ),
                             )),
                   ],
                 ),
@@ -275,17 +282,14 @@ class _PendingBudgetBanner extends StatelessWidget {
 
 class _ServiceCard extends StatelessWidget {
   final InternalService svc;
-  const _ServiceCard({required this.svc});
+  final VoidCallback? onTap;
+
+  const _ServiceCard({required this.svc, this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return AppCard(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => ServiceListScreen(initialFilter: null),
-        ),
-      ),
+      onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
