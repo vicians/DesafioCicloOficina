@@ -6,13 +6,20 @@ import '../../../core/widgets/app_avatar.dart';
 import '../../../core/widgets/app_progress_bar.dart';
 import '../../../core/widgets/status_badge.dart';
 import '../../../data/mock_data.dart';
+import '../data/internal_flow_repository.dart';
 import 'internal_service_detail_screen.dart';
 
 // ── ServiceListScreen ─────────────────────────────────────────────────────────
 
 class ServiceListScreen extends StatefulWidget {
   final String? initialFilter;
-  const ServiceListScreen({super.key, this.initialFilter});
+  final InternalFlowRepository repository;
+
+  const ServiceListScreen({
+    super.key,
+    required this.repository,
+    this.initialFilter,
+  });
 
   @override
   State<ServiceListScreen> createState() => _ServiceListScreenState();
@@ -24,11 +31,11 @@ class _ServiceListScreenState extends State<ServiceListScreen>
   String _statusFilter = 'todos';
   String _periodFilter = 'todos';
   String _search = '';
+  late Future<List<InternalService>> _servicesFuture;
 
   final _statusFilters = const [
     ('todos', 'Todos'),
     ('aguardando', 'Aguardando'),
-    ('orcamento', 'Orçamento'),
     ('andamento', 'Andamento'),
     ('revisao', 'Em revisão'),
   ];
@@ -46,12 +53,21 @@ class _ServiceListScreenState extends State<ServiceListScreen>
     _tabCtrl = TabController(length: 2, vsync: this);
     _statusFilter = widget.initialFilter ?? 'todos';
     _tabCtrl.addListener(() => setState(() {}));
+    _servicesFuture = widget.repository.fetchServicos();
+    widget.repository.addListener(_reloadServices);
   }
 
   @override
   void dispose() {
+    widget.repository.removeListener(_reloadServices);
     _tabCtrl.dispose();
     super.dispose();
+  }
+
+  void _reloadServices() {
+    setState(() {
+      _servicesFuture = widget.repository.fetchServicos();
+    });
   }
 
   bool _matchesSearch(InternalService s) {
@@ -63,16 +79,16 @@ class _ServiceListScreenState extends State<ServiceListScreen>
         s.id.toLowerCase().contains(q);
   }
 
-  List<InternalService> get _ativos {
-    return internalServices
+  List<InternalService> _ativosFrom(List<InternalService> services) {
+    return services
         .where((s) => s.status != 'concluido' && s.status != 'cancelado')
         .where(_matchesSearch)
         .where((s) => _statusFilter == 'todos' || s.status == _statusFilter)
         .toList();
   }
 
-  List<InternalService> get _finalizados {
-    return internalServices
+  List<InternalService> _finalizadosFrom(List<InternalService> services) {
+    return services
         .where((s) => s.status == 'concluido' || s.status == 'cancelado')
         .where(_matchesSearch)
         .where((s) {
@@ -98,47 +114,66 @@ class _ServiceListScreenState extends State<ServiceListScreen>
   @override
   Widget build(BuildContext context) {
     final isAtivos = _tabCtrl.index == 0;
-    return Column(
-      children: [
-        _ScreenHeader(
-          search: _search,
-          onSearch: (v) => setState(() => _search = v),
-          tabCtrl: _tabCtrl,
-        ),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 200),
-          child: isAtivos
-              ? _FilterBar(
-                  key: const ValueKey('status'),
-                  filters: _statusFilters,
-                  active: _statusFilter,
-                  onSelect: (f) => setState(() => _statusFilter = f),
-                )
-              : _FilterBar(
-                  key: const ValueKey('period'),
-                  filters: _periodFilters,
-                  active: _periodFilter,
-                  onSelect: (f) => setState(() => _periodFilter = f),
-                ),
-        ),
-        Expanded(
-          child: TabBarView(
-            controller: _tabCtrl,
-            children: [
-              _ServiceListView(
-                items: _ativos,
-                showProgress: true,
-                emptyMessage: 'Nenhum serviço ativo no momento',
+    return FutureBuilder<List<InternalService>>(
+      future: _servicesFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Text(
+              'Erro ao carregar serviços',
+              style: GoogleFonts.dmSans(fontSize: 14, color: textSecondary),
+            ),
+          );
+        }
+
+        final services = snapshot.data ?? const <InternalService>[];
+        return Column(
+          children: [
+            _ScreenHeader(
+              search: _search,
+              onSearch: (v) => setState(() => _search = v),
+              tabCtrl: _tabCtrl,
+            ),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: isAtivos
+                  ? _FilterBar(
+                      key: const ValueKey('status'),
+                      filters: _statusFilters,
+                      active: _statusFilter,
+                      onSelect: (f) => setState(() => _statusFilter = f),
+                    )
+                  : _FilterBar(
+                      key: const ValueKey('period'),
+                      filters: _periodFilters,
+                      active: _periodFilter,
+                      onSelect: (f) => setState(() => _periodFilter = f),
+                    ),
+            ),
+            Expanded(
+              child: TabBarView(
+                controller: _tabCtrl,
+                children: [
+                  _ServiceListView(
+                    items: _ativosFrom(services),
+                    showProgress: true,
+                    emptyMessage: 'Nenhum serviço ativo no momento',
+                  ),
+                  _ServiceListView(
+                    items: _finalizadosFrom(services),
+                    showProgress: false,
+                    emptyMessage: 'Nenhum serviço finalizado encontrado',
+                  ),
+                ],
               ),
-              _ServiceListView(
-                items: _finalizados,
-                showProgress: false,
-                emptyMessage: 'Nenhum serviço finalizado encontrado',
-              ),
-            ],
-          ),
-        ),
-      ],
+            ),
+          ],
+        );
+      },
     );
   }
 }

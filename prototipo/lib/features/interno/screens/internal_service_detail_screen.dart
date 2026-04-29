@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_progress_bar.dart';
+import '../../../core/widgets/status_badge.dart';
 import '../../../data/mock_data.dart';
 
 class InternalServiceDetailScreen extends StatefulWidget {
@@ -24,6 +25,7 @@ class _InternalServiceDetailScreenState
   final _scrollCtrl = ScrollController();
   bool _showStatusSheet = false;
   late String _currentStatus;
+  late String _pendingStatus;
 
   final _statuses = [
     ('aguardando', 'Aguardando'),
@@ -40,6 +42,7 @@ class _InternalServiceDetailScreenState
     _tabCtrl.addListener(() => setState(() {}));
     _messages = chatMessages;
     _currentStatus = widget.service.status;
+    _pendingStatus = _currentStatus;
   }
 
   @override
@@ -94,7 +97,10 @@ class _InternalServiceDetailScreenState
                 service: widget.service,
                 tabCtrl: _tabCtrl,
                 currentStatus: _currentStatus,
-                onStatusTap: () => setState(() => _showStatusSheet = true),
+                onStatusTap: () => setState(() {
+                  _pendingStatus = _currentStatus;
+                  _showStatusSheet = true;
+                }),
               ),
               Expanded(
                 child: TabBarView(
@@ -124,9 +130,12 @@ class _InternalServiceDetailScreenState
               right: 0,
               child: _StatusSheet(
                 statuses: _statuses,
-                current: _currentStatus,
+                current: _pendingStatus,
                 onSelect: (s) => setState(() {
-                  _currentStatus = s;
+                  _pendingStatus = s;
+                }),
+                onConfirm: () => setState(() {
+                  _currentStatus = _pendingStatus;
                   _showStatusSheet = false;
                 }),
                 onCancel: () => setState(() => _showStatusSheet = false),
@@ -207,6 +216,9 @@ class _DetailHeader extends StatelessWidget {
                       ],
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  StatusBadge(status: currentStatus),
+                  const SizedBox(width: 8),
                   GestureDetector(
                     onTap: onStatusTap,
                     child: Container(
@@ -223,23 +235,6 @@ class _DetailHeader extends StatelessWidget {
                           fontWeight: FontWeight.w600,
                           color: Colors.white,
                         ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 7),
-                    decoration: BoxDecoration(
-                      color: orange,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      'Orçamento',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
                       ),
                     ),
                   ),
@@ -634,12 +629,14 @@ class _StatusSheet extends StatelessWidget {
   final List<(String, String)> statuses;
   final String current;
   final ValueChanged<String> onSelect;
+  final VoidCallback onConfirm;
   final VoidCallback onCancel;
 
   const _StatusSheet({
     required this.statuses,
     required this.current,
     required this.onSelect,
+    required this.onConfirm,
     required this.onCancel,
   });
 
@@ -711,7 +708,13 @@ class _StatusSheet extends StatelessWidget {
               ),
             );
           }),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
+          AppButton(
+            label: 'Confirmar mudança de status',
+            fullWidth: true,
+            onPressed: onConfirm,
+          ),
+          const SizedBox(height: 8),
           AppButton(
             label: 'Cancelar',
             fullWidth: true,

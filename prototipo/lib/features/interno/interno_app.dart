@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/colors.dart';
+import 'data/internal_flow_mock_repository.dart';
+import 'data/internal_flow_repository.dart';
+import 'screens/budget_list_screen.dart';
 import 'screens/employee_dashboard_screen.dart';
 import 'screens/service_list_screen.dart';
 import 'screens/inventory_screen.dart';
@@ -18,6 +21,19 @@ class InternoApp extends StatefulWidget {
 
 class _InternoAppState extends State<InternoApp> {
   int _currentIndex = 0;
+  late final InternalFlowRepository _flowRepository;
+
+  @override
+  void initState() {
+    super.initState();
+    _flowRepository = InternalFlowMockRepository();
+  }
+
+  @override
+  void dispose() {
+    _flowRepository.dispose();
+    super.dispose();
+  }
 
   void _logout() {
     Navigator.pushAndRemoveUntil(
@@ -31,16 +47,24 @@ class _InternoAppState extends State<InternoApp> {
     if (widget.isManager) {
       return [
         EmployeeDashboardScreen(
-            isManager: true, onLogout: _logout),
-        const ServiceListScreen(initialFilter: null),
+          isManager: true,
+          onLogout: _logout,
+          onOpenServices: () => setState(() => _currentIndex = 2),
+        ),
+        BudgetListScreen(repository: _flowRepository),
+        ServiceListScreen(repository: _flowRepository, initialFilter: null),
         const InventoryScreen(),
         const ReportsScreen(),
       ];
     }
     return [
       EmployeeDashboardScreen(
-          isManager: false, onLogout: _logout),
-      const ServiceListScreen(initialFilter: null),
+        isManager: false,
+        onLogout: _logout,
+        onOpenServices: () => setState(() => _currentIndex = 2),
+      ),
+      BudgetListScreen(repository: _flowRepository),
+      ServiceListScreen(repository: _flowRepository, initialFilter: null),
       const _MessagesPlaceholder(),
     ];
   }
@@ -49,6 +73,7 @@ class _InternoAppState extends State<InternoApp> {
     if (widget.isManager) {
       return [
         _NavItem(label: 'Dashboard', icon: Icons.dashboard_rounded),
+        _NavItem(label: 'Orçamentos', icon: Icons.receipt_long_rounded),
         _NavItem(label: 'Serviços', icon: Icons.build_rounded),
         _NavItem(label: 'Estoque', icon: Icons.inventory_2_rounded),
         _NavItem(label: 'Relatórios', icon: Icons.bar_chart_rounded),
@@ -56,6 +81,7 @@ class _InternoAppState extends State<InternoApp> {
     }
     return [
       _NavItem(label: 'Dashboard', icon: Icons.dashboard_rounded),
+      _NavItem(label: 'Orçamentos', icon: Icons.receipt_long_rounded),
       _NavItem(label: 'Serviços', icon: Icons.build_rounded),
       _NavItem(label: 'Mensagens', icon: Icons.chat_bubble_rounded),
     ];
