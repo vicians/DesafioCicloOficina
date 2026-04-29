@@ -11,12 +11,14 @@ class EmployeeDashboardScreen extends StatefulWidget {
   final bool isManager;
   final VoidCallback onLogout;
   final VoidCallback? onOpenServices;
+  final VoidCallback? onOpenBudgets;
 
   const EmployeeDashboardScreen({
     super.key,
     required this.isManager,
     required this.onLogout,
     this.onOpenServices,
+    this.onOpenBudgets,
   });
 
   @override
@@ -29,17 +31,42 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final activeServices = internalServices
+    final now = DateTime.now();
+    
+    // Filtros baseados no status do banco de dados (schema)
+    final activeExecutions = internalServices
         .where((s) =>
             s.status == 'andamento' ||
             s.status == 'revisao' ||
             s.status == 'aguardando_retirada')
         .toList();
-    final waitingServices =
+    
+    final openAppointments =
         internalServices.where((s) => s.status == 'aguardando').toList();
-    final todayServices = internalServices.length;
-    final pendingBudget =
+        
+    final pendingBudgets =
         internalServices.where((s) => s.status == 'orcamento').toList();
+
+    // Faturamento previsto: soma de serviços ativos + orçamentos pendentes
+    final predictedRevenue = internalServices
+        .where((s) => s.status != 'concluido' && s.status != 'cancelado')
+        .fold<double>(0, (sum, item) => sum + item.value);
+
+    // Lógica simples de atraso: aberto há mais de 2 dias e não concluído
+    final delayedServices = internalServices.where((s) {
+      if (s.status == 'concluido' || s.status == 'cancelado') return false;
+      try {
+        final parts = s.openedAt.split('/');
+        final openedDate = DateTime(
+          int.parse(parts[2]),
+          int.parse(parts[1]),
+          int.parse(parts[0]),
+        );
+        return now.difference(openedDate).inDays > 2;
+      } catch (_) {
+        return false;
+      }
+    }).toList();
 
     return Stack(
       children: [
@@ -49,9 +76,10 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
             children: [
               _DashboardHeader(
                 isManager: widget.isManager,
-                activeCount: activeServices.length,
-                waitingCount: waitingServices.length,
-                todayCount: todayServices,
+                activeExecutions: activeExecutions.length,
+                openAppointments: openAppointments.length,
+                pendingBudgets: pendingBudgets.length,
+                predictedRevenue: predictedRevenue,
                 onLogoutTap: () => setState(() => _showLogoutSheet = true),
               ),
               Padding(
@@ -59,10 +87,13 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (pendingBudget.isNotEmpty) ...[
-                      _PendingBudgetBanner(service: pendingBudget.first),
-                      const SizedBox(height: 14),
-                    ],
+                    _AlertBanner(
+                      delayedCount: delayedServices.length,
+                      pendingBudgets: pendingBudgets,
+                      onOpenBudgets: widget.onOpenBudgets,
+                      onOpenServices: widget.onOpenServices,
+                    ),
+                    const SizedBox(height: 14),
                     Text(
                       'Atendimentos ativos',
                       style: GoogleFonts.dmSans(
@@ -111,23 +142,25 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
 
 class _DashboardHeader extends StatelessWidget {
   final bool isManager;
-  final int activeCount;
-  final int waitingCount;
-  final int todayCount;
+  final int activeExecutions;
+  final int openAppointments;
+  final int pendingBudgets;
+  final double predictedRevenue;
   final VoidCallback onLogoutTap;
 
   const _DashboardHeader({
     required this.isManager,
-    required this.activeCount,
-    required this.waitingCount,
-    required this.todayCount,
+    required this.activeExecutions,
+    required this.openAppointments,
+    required this.pendingBudgets,
+    required this.predictedRevenue,
     required this.onLogoutTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 24),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -183,12 +216,62 @@ class _DashboardHeader extends StatelessWidget {
           const SizedBox(height: 16),
           Row(
             children: [
-              _KpiBox(label: 'Ativos', value: '$activeCount'),
+              _KpiBox(label: 'Ativos', value: '$activeExecutions'),
               const SizedBox(width: 8),
-              _KpiBox(label: 'Aguardando', value: '$waitingCount'),
+              _KpiBox(label: 'Agendados', value: '$openAppointments'),
               const SizedBox(width: 8),
-              _KpiBox(label: 'Hoje', value: '$todayCount'),
+              _KpiBox(label: 'Orçamentos', value: '$pendingBudgets'),
             ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Faturamento Previsto',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 12,
+                        color: Colors.white.withValues(alpha: 0.6),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'R\$ ${predictedRevenue.toStringAsFixed(2).replaceAll('.', ',')}',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: orange.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    'Hoje',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: orange,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -234,49 +317,109 @@ class _KpiBox extends StatelessWidget {
   }
 }
 
-class _PendingBudgetBanner extends StatelessWidget {
-  final InternalService service;
-  const _PendingBudgetBanner({required this.service});
+class _AlertBanner extends StatelessWidget {
+  final int delayedCount;
+  final List<InternalService> pendingBudgets;
+  final VoidCallback? onOpenBudgets;
+  final VoidCallback? onOpenServices;
+
+  const _AlertBanner({
+    required this.delayedCount,
+    required this.pendingBudgets,
+    this.onOpenBudgets,
+    this.onOpenServices,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: yellowBg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: yellow.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.warning_amber_rounded, color: yellow, size: 20),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Orçamento aguardando aprovação',
-                  style: GoogleFonts.dmSans(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: yellow,
-                  ),
-                ),
-                Text(
-                  '${service.client} · ${service.id}',
-                  style: GoogleFonts.dmSans(
-                    fontSize: 12,
-                    color: textPrimary,
-                  ),
-                ),
-              ],
-            ),
+    if (delayedCount > 0) {
+      return GestureDetector(
+        onTap: onOpenServices,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: redBg,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: red.withValues(alpha: 0.3)),
           ),
-          const Icon(Icons.chevron_right_rounded, color: yellow),
-        ],
-      ),
-    );
+          child: Row(
+            children: [
+              const Icon(Icons.timer_off_rounded, color: red, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Serviços com atraso crítico',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: red,
+                      ),
+                    ),
+                    Text(
+                      '$delayedCount serviços necessitam atenção imediata',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 12,
+                        color: textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: red),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (pendingBudgets.isNotEmpty) {
+      final service = pendingBudgets.first;
+      return GestureDetector(
+        onTap: onOpenBudgets,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: yellowBg,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: yellow.withValues(alpha: 0.3)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: yellow, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Orçamento aguardando aprovação',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: yellow,
+                      ),
+                    ),
+                    Text(
+                      '${service.client} · ${service.id}',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 12,
+                        color: textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: yellow),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 }
 
