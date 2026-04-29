@@ -104,6 +104,8 @@ class InternalService {
   final int progress;
   final String openedAt;    // 'dd/MM/yyyy'
   final String? finishedAt; // 'dd/MM/yyyy', presente quando concluido/cancelado
+  final List<InternalOsItem> osItems;
+  final String mechanicNotes;
 
   const InternalService({
     required this.id,
@@ -118,7 +120,43 @@ class InternalService {
     required this.progress,
     required this.openedAt,
     this.finishedAt,
+    this.osItems = const [],
+    this.mechanicNotes = '',
   });
+
+  InternalService copyWith({
+    String? id,
+    String? client,
+    String? car,
+    String? plate,
+    String? service,
+    String? status,
+    String? mechanic,
+    String? time,
+    double? value,
+    int? progress,
+    String? openedAt,
+    String? finishedAt,
+    List<InternalOsItem>? osItems,
+    String? mechanicNotes,
+  }) {
+    return InternalService(
+      id: id ?? this.id,
+      client: client ?? this.client,
+      car: car ?? this.car,
+      plate: plate ?? this.plate,
+      service: service ?? this.service,
+      status: status ?? this.status,
+      mechanic: mechanic ?? this.mechanic,
+      time: time ?? this.time,
+      value: value ?? this.value,
+      progress: progress ?? this.progress,
+      openedAt: openedAt ?? this.openedAt,
+      finishedAt: finishedAt ?? this.finishedAt,
+      osItems: osItems ?? this.osItems,
+      mechanicNotes: mechanicNotes ?? this.mechanicNotes,
+    );
+  }
 }
 
 class ChatMessage {
@@ -157,6 +195,24 @@ class PartItem {
     required this.price,
     required this.status,
   });
+}
+
+class InternalOsItem {
+  final String id;
+  final String type; // 'peca' | 'servico'
+  final String description;
+  final int quantity;
+  final double unitPrice;
+
+  const InternalOsItem({
+    required this.id,
+    required this.type,
+    required this.description,
+    required this.quantity,
+    required this.unitPrice,
+  });
+
+  double get total => quantity * unitPrice;
 }
 
 class ReportData {

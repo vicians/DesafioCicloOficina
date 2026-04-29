@@ -48,4 +48,19 @@ class InternalFlowApiRepository extends InternalFlowRepository {
   Future<InternalService> updateServicoStatus(String serviceId, String status) async {
     throw UnsupportedError('Atualizar status da OS via API ainda não implementado.');
   }
+
+  @override
+  Future<InternalService> addServicoItem(String serviceId, InternalOsItem item) async {
+    throw UnsupportedError('Adicionar item na OS via API ainda não implementado.');
+  }
+
+  @override
+  Future<InternalService> removeServicoItem(String serviceId, String itemId) async {
+    throw UnsupportedError('Remover item da OS via API ainda não implementado.');
+  }
+
+  @override
+  Future<InternalService> updateServicoObservacoes(String serviceId, String notes) async {
+    throw UnsupportedError('Salvar observações da OS via API ainda não implementado.');
+  }
 }

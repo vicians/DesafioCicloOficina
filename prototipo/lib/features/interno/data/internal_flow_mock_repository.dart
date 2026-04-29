@@ -138,24 +138,82 @@ class InternalFlowMockRepository extends InternalFlowRepository {
     }
 
     final current = _services[index];
-    final updated = InternalService(
-      id: current.id,
-      client: current.client,
-      car: current.car,
-      plate: current.plate,
-      service: current.service,
+    final updated = current.copyWith(
       status: status,
-      mechanic: current.mechanic,
-      time: current.time,
-      value: current.value,
       progress: _progressForStatus(status),
-      openedAt: current.openedAt,
       finishedAt: _finishedAtForStatus(status, current.finishedAt),
     );
 
     _services[index] = updated;
     notifyListeners();
     return updated;
+  }
+
+  @override
+  Future<InternalService> addServicoItem(String serviceId, InternalOsItem item) async {
+    final index = _services.indexWhere((service) => service.id == serviceId);
+    if (index < 0) {
+      throw StateError('OS não encontrada: $serviceId');
+    }
+
+    final current = _services[index];
+    final updatedItems = [...current.osItems, item];
+    final baseValue = _baseServiceValue(current);
+    final updated = current.copyWith(
+      osItems: updatedItems,
+      value: baseValue + _totalFromItems(updatedItems),
+    );
+
+    _services[index] = updated;
+    notifyListeners();
+    return updated;
+  }
+
+  @override
+  Future<InternalService> removeServicoItem(String serviceId, String itemId) async {
+    final index = _services.indexWhere((service) => service.id == serviceId);
+    if (index < 0) {
+      throw StateError('OS não encontrada: $serviceId');
+    }
+
+    final current = _services[index];
+    final updatedItems = current.osItems.where((item) => item.id != itemId).toList();
+    final baseValue = _baseServiceValue(current);
+    final updated = current.copyWith(
+      osItems: updatedItems,
+      value: baseValue + _totalFromItems(updatedItems),
+    );
+
+    _services[index] = updated;
+    notifyListeners();
+    return updated;
+  }
+
+  @override
+  Future<InternalService> updateServicoObservacoes(String serviceId, String notes) async {
+    final index = _services.indexWhere((service) => service.id == serviceId);
+    if (index < 0) {
+      throw StateError('OS não encontrada: $serviceId');
+    }
+
+    final current = _services[index];
+    final updated = current.copyWith(mechanicNotes: notes.trim());
+    _services[index] = updated;
+    notifyListeners();
+    return updated;
+  }
+
+  double _totalFromItems(List<InternalOsItem> items) {
+    var total = 0.0;
+    for (final item in items) {
+      total += item.total;
+    }
+    return total;
+  }
+
+  double _baseServiceValue(InternalService service) {
+    final baseValue = service.value - _totalFromItems(service.osItems);
+    return baseValue < 0 ? 0 : baseValue;
   }
 
   int _progressForStatus(String status) {

@@ -28,8 +28,10 @@ class _InternalServiceDetailScreenState
   late TabController _tabCtrl;
   late List<ChatMessage> _messages;
   final _msgCtrl = TextEditingController();
+  final _notesCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
   bool _showStatusSheet = false;
+  bool _savingNotes = false;
   late InternalService _service;
   late String _currentStatus;
   late String _pendingStatus;
@@ -52,6 +54,7 @@ class _InternalServiceDetailScreenState
     _service = widget.service;
     _currentStatus = _service.status;
     _pendingStatus = _currentStatus;
+    _notesCtrl.text = _service.mechanicNotes;
     widget.repository.addListener(_reloadService);
   }
 
@@ -60,6 +63,7 @@ class _InternalServiceDetailScreenState
     widget.repository.removeListener(_reloadService);
     _tabCtrl.dispose();
     _msgCtrl.dispose();
+    _notesCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
   }
@@ -71,6 +75,7 @@ class _InternalServiceDetailScreenState
       _service = latest;
       _currentStatus = latest.status;
       _pendingStatus = latest.status;
+      _notesCtrl.text = latest.mechanicNotes;
     });
   }
 
@@ -86,6 +91,44 @@ class _InternalServiceDetailScreenState
       _pendingStatus = updated.status;
       _showStatusSheet = false;
     });
+  }
+
+  Future<void> _addServicoItem(InternalOsItem item) async {
+    final updated = await widget.repository.addServicoItem(_service.id, item);
+    if (!mounted) return;
+    setState(() {
+      _service = updated;
+    });
+  }
+
+  Future<void> _removeServicoItem(String itemId) async {
+    final updated = await widget.repository.removeServicoItem(_service.id, itemId);
+    if (!mounted) return;
+    setState(() {
+      _service = updated;
+    });
+  }
+
+  Future<void> _saveObservacoes() async {
+    final notes = _notesCtrl.text.trim();
+    setState(() => _savingNotes = true);
+    try {
+      final updated = await widget.repository.updateServicoObservacoes(
+        _service.id,
+        notes,
+      );
+      if (!mounted) return;
+      setState(() {
+        _service = updated;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Observações salvas.')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _savingNotes = false);
+      }
+    }
   }
 
   List<TimelineStep> _timelineFor(InternalService svc) {
@@ -204,6 +247,33 @@ class _InternalServiceDetailScreenState
     return '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
   }
 
+  Future<void> _openAddItemSheet() async {
+    final selected = await showModalBottomSheet<InternalOsItem>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return _AddOsItemSheet(nextId: _nextItemId(_service.osItems));
+      },
+    );
+
+    if (selected != null) {
+      await _addServicoItem(selected);
+    }
+  }
+
+  String _nextItemId(List<InternalOsItem> items) {
+    var maxId = 0;
+    for (final item in items) {
+      final raw = item.id.replaceFirst('IT-', '');
+      final parsed = int.tryParse(raw);
+      if (parsed != null && parsed > maxId) {
+        maxId = parsed;
+      }
+    }
+    return 'IT-${(maxId + 1).toString().padLeft(3, '0')}';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -232,7 +302,14 @@ class _InternalServiceDetailScreenState
                       onSend: _sendMessage,
                     ),
                     _TimelineTab(steps: _timelineFor(_service)),
-                    _DataTab(svc: _service),
+                    _DataTab(
+                      svc: _service,
+                      notesCtrl: _notesCtrl,
+                      savingNotes: _savingNotes,
+                      onSaveNotes: _saveObservacoes,
+                      onAddItem: _openAddItemSheet,
+                      onRemoveItem: _removeServicoItem,
+                    ),
                   ],
                 ),
               ),
@@ -639,26 +716,62 @@ class _TimelineTab extends StatelessWidget {
   }
 }
 
-class _DataTab extends StatelessWidget {
+class _DataTab extends StatefulWidget {
   final InternalService svc;
-  const _DataTab({required this.svc});
+  final TextEditingController notesCtrl;
+  final bool savingNotes;
+  final Future<void> Function() onSaveNotes;
+  final Future<void> Function() onAddItem;
+  final Future<void> Function(String itemId) onRemoveItem;
+
+  const _DataTab({
+    required this.svc,
+    required this.notesCtrl,
+    required this.savingNotes,
+    required this.onSaveNotes,
+    required this.onAddItem,
+    required this.onRemoveItem,
+  });
+
+  @override
+  State<_DataTab> createState() => _DataTabState();
+}
+
+class _DataTabState extends State<_DataTab> {
+  bool _editingNotes = false;
+
+  @override
+  void didUpdateWidget(_DataTab old) {
+    super.didUpdateWidget(old);
+    if (old.svc.mechanicNotes != widget.svc.mechanicNotes &&
+        !widget.savingNotes) {
+      setState(() => _editingNotes = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final rows = [
-      ('Cliente', svc.client),
-      ('Ordem de serviço', svc.id),
-      ('Veículo', svc.car),
-      ('Placa', svc.plate),
-      ('Serviço', svc.service),
-      ('Mecânico', svc.mechanic),
-      ('Horário', svc.time),
-      ('Valor', 'R\$ ${svc.value.toStringAsFixed(2).replaceAll('.', ',')}'),
+      ('Cliente', widget.svc.client),
+      ('Ordem de serviço', widget.svc.id),
+      ('Veículo', widget.svc.car),
+      ('Placa', widget.svc.plate),
+      ('Serviço', widget.svc.service),
+      ('Mecânico', widget.svc.mechanic),
+      ('Horário', widget.svc.time),
+      (
+        'Valor',
+        'R\$ ${widget.svc.value.toStringAsFixed(2).replaceAll('.', ',')}'
+      ),
     ];
+
+    final showEditor =
+        _editingNotes || widget.svc.mechanicNotes.trim().isEmpty;
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        // ── Card 1: dados + observações ──────────────────────────────
         Container(
           decoration: BoxDecoration(
             color: cardWhite,
@@ -666,48 +779,275 @@ class _DataTab extends StatelessWidget {
             boxShadow: const [cardShadow],
           ),
           child: Column(
-            children: List.generate(rows.length, (i) {
-              return Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            rows[i].$1,
-                            style: GoogleFonts.dmSans(
-                              fontSize: 13,
-                              color: textSecondary,
+            children: [
+              ...List.generate(rows.length, (i) {
+                return Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            flex: 2,
+                            child: Text(
+                              rows[i].$1,
+                              style: GoogleFonts.dmSans(
+                                  fontSize: 13, color: textSecondary),
                             ),
                           ),
-                        ),
-                        Expanded(
-                          flex: 3,
-                          child: Text(
-                            rows[i].$2,
-                            style: GoogleFonts.dmSans(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: textPrimary,
+                          Expanded(
+                            flex: 3,
+                            child: Text(
+                              rows[i].$2,
+                              style: GoogleFonts.dmSans(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: textPrimary,
+                              ),
+                              textAlign: TextAlign.right,
                             ),
-                            textAlign: TextAlign.right,
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  if (i < rows.length - 1)
                     const Divider(
                         height: 1, thickness: 1, color: dividerColor),
-                ],
-              );
-            }),
+                  ],
+                );
+              }),
+              // Observações — read-only
+              if (!showEditor)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: Text(
+                          'Observações',
+                          style: GoogleFonts.dmSans(
+                              fontSize: 13, color: textSecondary),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 3,
+                        child: Text(
+                          widget.svc.mechanicNotes,
+                          style: GoogleFonts.dmSans(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: textPrimary,
+                          ),
+                          textAlign: TextAlign.right,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      GestureDetector(
+                        onTap: () => setState(() => _editingNotes = true),
+                        child: const Icon(Icons.edit_outlined,
+                            size: 16, color: textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+              // Observações — editor
+              if (showEditor)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Observações',
+                        style: GoogleFonts.dmSans(
+                            fontSize: 13, color: textSecondary),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: widget.notesCtrl,
+                        minLines: 3,
+                        maxLines: 5,
+                        style: GoogleFonts.dmSans(
+                            fontSize: 13, color: textPrimary),
+                        decoration: InputDecoration(
+                          hintText:
+                              'Registre observações técnicas deste serviço...',
+                          hintStyle: GoogleFonts.dmSans(
+                              fontSize: 12, color: textMuted),
+                          filled: true,
+                          fillColor: bgPage,
+                          contentPadding: const EdgeInsets.all(12),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide:
+                                const BorderSide(color: dividerColor),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide:
+                                const BorderSide(color: dividerColor),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: navyDark),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: AppButton(
+                          label:
+                              widget.savingNotes ? 'Salvando...' : 'Salvar',
+                          onPressed: widget.savingNotes
+                              ? null
+                              : () async {
+                                  await widget.onSaveNotes();
+                                  if (mounted) {
+                                    setState(() => _editingNotes = false);
+                                  }
+                                },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
           ),
         ),
         const SizedBox(height: 12),
+        // ── Card 2: itens da OS ──────────────────────────────────────
+        Container(
+          decoration: BoxDecoration(
+            color: cardWhite,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: const [cardShadow],
+          ),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 12),
+                child: Row(
+                  children: [
+                    Text(
+                      'Itens da OS',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: textPrimary,
+                      ),
+                    ),
+                    const Spacer(),
+                    GestureDetector(
+                      onTap: widget.onAddItem,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: orange,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.add_rounded,
+                                color: Colors.white, size: 14),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Adicionar',
+                              style: GoogleFonts.dmSans(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1, thickness: 1, color: dividerColor),
+              if (widget.svc.osItems.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 12),
+                  child: Text(
+                    'Nenhum item lançado nesta OS.',
+                    style:
+                        GoogleFonts.dmSans(fontSize: 12, color: textMuted),
+                  ),
+                )
+              else
+                ...List.generate(widget.svc.osItems.length, (i) {
+                  final item = widget.svc.osItems[i];
+                  return Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 10),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    item.description,
+                                    style: GoogleFonts.dmSans(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: textPrimary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${item.type == 'peca' ? 'Peça' : 'Serviço'} · ${item.quantity}x · R\$ ${item.unitPrice.toStringAsFixed(2).replaceAll('.', ',')}',
+                                    style: GoogleFonts.dmSans(
+                                        fontSize: 11, color: textSecondary),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Text(
+                              'R\$ ${item.total.toStringAsFixed(2).replaceAll('.', ',')}',
+                              style: GoogleFonts.dmSans(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: textPrimary,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            GestureDetector(
+                              onTap: () => widget.onRemoveItem(item.id),
+                              child: const Padding(
+                                padding: EdgeInsets.all(4),
+                                child: Icon(
+                                  Icons.delete_outline_rounded,
+                                  color: red,
+                                  size: 18,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (i < widget.svc.osItems.length - 1)
+                        const Divider(
+                            height: 1, thickness: 1, color: dividerColor),
+                    ],
+                  );
+                }),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        // ── Card 3: progresso ────────────────────────────────────────
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -727,16 +1067,198 @@ class _DataTab extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 10),
-              AppProgressBar(percent: svc.progress.toDouble()),
+              AppProgressBar(percent: widget.svc.progress.toDouble()),
               const SizedBox(height: 6),
               Text(
-                '${svc.progress}% concluído',
-                style: GoogleFonts.dmSans(fontSize: 12, color: textSecondary),
+                '${widget.svc.progress}% concluído',
+                style:
+                    GoogleFonts.dmSans(fontSize: 12, color: textSecondary),
               ),
             ],
           ),
         ),
       ],
+    );
+  }
+}
+
+class _AddOsItemSheet extends StatefulWidget {
+  final String nextId;
+
+  const _AddOsItemSheet({required this.nextId});
+
+  @override
+  State<_AddOsItemSheet> createState() => _AddOsItemSheetState();
+}
+
+class _AddOsItemSheetState extends State<_AddOsItemSheet> {
+  String _type = 'peca';
+  final _descriptionCtrl = TextEditingController();
+  final _qtyCtrl = TextEditingController(text: '1');
+  final _unitPriceCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _descriptionCtrl.dispose();
+    _qtyCtrl.dispose();
+    _unitPriceCtrl.dispose();
+    super.dispose();
+  }
+
+  void _fillFromInventory(PartItem part) {
+    setState(() {
+      _type = 'peca';
+      _descriptionCtrl.text = part.name;
+      _unitPriceCtrl.text = part.price.toStringAsFixed(2).replaceAll('.', ',');
+    });
+  }
+
+  void _confirm() {
+    final description = _descriptionCtrl.text.trim();
+    final quantity = int.tryParse(_qtyCtrl.text.trim());
+    final unitPrice = double.tryParse(_unitPriceCtrl.text.replaceAll(',', '.'));
+
+    if (description.isEmpty || quantity == null || quantity <= 0 || unitPrice == null) {
+      return;
+    }
+
+    Navigator.pop(
+      context,
+      InternalOsItem(
+        id: widget.nextId,
+        type: _type,
+        description: description,
+        quantity: quantity,
+        unitPrice: unitPrice,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: cardWhite,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        16,
+        16,
+        16 + MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Adicionar item na OS',
+              style: GoogleFonts.dmSans(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: textPrimary,
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 38,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: partsInventory.length,
+                separatorBuilder: (_, index) => const SizedBox(width: 8),
+                itemBuilder: (_, i) {
+                  final part = partsInventory[i];
+                  return GestureDetector(
+                    onTap: () => _fillFromInventory(part),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: bgPage,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: dividerColor),
+                      ),
+                      child: Text(
+                        part.name,
+                        style: GoogleFonts.dmSans(fontSize: 11, color: textPrimary),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 10),
+            DropdownButtonFormField<String>(
+              initialValue: _type,
+              items: const [
+                DropdownMenuItem(value: 'peca', child: Text('Peça')),
+                DropdownMenuItem(value: 'servico', child: Text('Serviço')),
+              ],
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() => _type = value);
+                }
+              },
+              decoration: const InputDecoration(
+                labelText: 'Tipo',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _descriptionCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Descrição',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _qtyCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Quantidade',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    controller: _unitPriceCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Valor unitário',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: AppButton(
+                    label: 'Cancelar',
+                    variant: AppButtonVariant.ghost,
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: AppButton(
+                    label: 'Adicionar',
+                    onPressed: _confirm,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
