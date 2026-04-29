@@ -30,7 +30,10 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final activeServices = internalServices
-        .where((s) => s.status == 'andamento' || s.status == 'revisao')
+        .where((s) =>
+            s.status == 'andamento' ||
+            s.status == 'revisao' ||
+            s.status == 'aguardando_retirada')
         .toList();
     final waitingServices =
         internalServices.where((s) => s.status == 'aguardando').toList();

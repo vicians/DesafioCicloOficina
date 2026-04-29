@@ -25,6 +25,11 @@ class InternalFlowApiRepository extends InternalFlowRepository {
   }
 
   @override
+  Future<InternalService?> fetchServicoById(String serviceId) async {
+    throw UnsupportedError('Buscar OS por ID via API ainda não implementado.');
+  }
+
+  @override
   Future<InternalBudgetItem> updateOrcamento(InternalBudgetItem budget) async {
     throw UnsupportedError('Editar orçamento via API ainda não implementado.');
   }
@@ -37,5 +42,10 @@ class InternalFlowApiRepository extends InternalFlowRepository {
   @override
   Future<InternalService> approveOrcamento(String budgetId) async {
     throw UnsupportedError('Aprovar orçamento via API ainda não implementado.');
+  }
+
+  @override
+  Future<InternalService> updateServicoStatus(String serviceId, String status) async {
+    throw UnsupportedError('Atualizar status da OS via API ainda não implementado.');
   }
 }

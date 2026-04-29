@@ -62,6 +62,16 @@ class InternalFlowMockRepository extends InternalFlowRepository {
   }
 
   @override
+  Future<InternalService?> fetchServicoById(String serviceId) async {
+    for (final service in _services) {
+      if (service.id == serviceId) {
+        return service;
+      }
+    }
+    return null;
+  }
+
+  @override
   Future<InternalBudgetItem> updateOrcamento(InternalBudgetItem budget) async {
     final index = _budgets.indexWhere((item) => item.id == budget.id);
     if (index < 0) {
@@ -118,6 +128,60 @@ class InternalFlowMockRepository extends InternalFlowRepository {
     _services.insert(0, newService);
     notifyListeners();
     return newService;
+  }
+
+  @override
+  Future<InternalService> updateServicoStatus(String serviceId, String status) async {
+    final index = _services.indexWhere((service) => service.id == serviceId);
+    if (index < 0) {
+      throw StateError('OS não encontrada: $serviceId');
+    }
+
+    final current = _services[index];
+    final updated = InternalService(
+      id: current.id,
+      client: current.client,
+      car: current.car,
+      plate: current.plate,
+      service: current.service,
+      status: status,
+      mechanic: current.mechanic,
+      time: current.time,
+      value: current.value,
+      progress: _progressForStatus(status),
+      openedAt: current.openedAt,
+      finishedAt: _finishedAtForStatus(status, current.finishedAt),
+    );
+
+    _services[index] = updated;
+    notifyListeners();
+    return updated;
+  }
+
+  int _progressForStatus(String status) {
+    switch (status) {
+      case 'aguardando':
+        return 0;
+      case 'andamento':
+        return 55;
+      case 'revisao':
+        return 85;
+      case 'aguardando_retirada':
+        return 95;
+      case 'concluido':
+        return 100;
+      case 'cancelado':
+        return 0;
+      default:
+        return 0;
+    }
+  }
+
+  String? _finishedAtForStatus(String status, String? currentFinishedAt) {
+    if (status == 'concluido' || status == 'cancelado') {
+      return currentFinishedAt ?? _todayDdMmYyyy();
+    }
+    return null;
   }
 
   String _nextOsId() {

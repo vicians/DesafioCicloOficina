@@ -38,6 +38,7 @@ class _ServiceListScreenState extends State<ServiceListScreen>
     ('aguardando', 'Aguardando'),
     ('andamento', 'Andamento'),
     ('revisao', 'Em revisão'),
+    ('aguardando_retirada', 'Aguardando retirada'),
   ];
 
   final _periodFilters = const [
@@ -162,11 +163,13 @@ class _ServiceListScreenState extends State<ServiceListScreen>
                     items: _ativosFrom(services),
                     showProgress: true,
                     emptyMessage: 'Nenhum serviço ativo no momento',
+                    repository: widget.repository,
                   ),
                   _ServiceListView(
                     items: _finalizadosFrom(services),
                     showProgress: false,
                     emptyMessage: 'Nenhum serviço finalizado encontrado',
+                    repository: widget.repository,
                   ),
                 ],
               ),
@@ -332,11 +335,13 @@ class _ServiceListView extends StatelessWidget {
   final List<InternalService> items;
   final bool showProgress;
   final String emptyMessage;
+  final InternalFlowRepository repository;
 
   const _ServiceListView({
     required this.items,
     required this.showProgress,
     required this.emptyMessage,
+    required this.repository,
   });
 
   @override
@@ -360,8 +365,11 @@ class _ServiceListView extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       itemCount: items.length,
       separatorBuilder: (_, __) => const SizedBox(height: 8),
-      itemBuilder: (_, i) =>
-          _ServiceCard(svc: items[i], showProgress: showProgress),
+      itemBuilder: (_, i) => _ServiceCard(
+        svc: items[i],
+        showProgress: showProgress,
+        repository: repository,
+      ),
     );
   }
 }
@@ -371,7 +379,13 @@ class _ServiceListView extends StatelessWidget {
 class _ServiceCard extends StatelessWidget {
   final InternalService svc;
   final bool showProgress;
-  const _ServiceCard({required this.svc, required this.showProgress});
+  final InternalFlowRepository repository;
+
+  const _ServiceCard({
+    required this.svc,
+    required this.showProgress,
+    required this.repository,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -379,7 +393,10 @@ class _ServiceCard extends StatelessWidget {
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => InternalServiceDetailScreen(service: svc),
+          builder: (_) => InternalServiceDetailScreen(
+            service: svc,
+            repository: repository,
+          ),
         ),
       ),
       child: Column(

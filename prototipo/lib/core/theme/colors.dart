@@ -95,6 +95,12 @@ const statusMap = {
     backgroundColor: purpleBg,
     dotColor: purple,
   ),
+  'aguardando_retirada': ServiceStatus(
+    label: 'Aguardando retirada',
+    textColor: orange,
+    backgroundColor: orangeLight,
+    dotColor: orange,
+  ),
   'concluido': ServiceStatus(
     label: 'Concluído',
     textColor: green,
