@@ -3,12 +3,19 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_progress_bar.dart';
+import '../../../core/widgets/status_badge.dart';
 import '../../../data/mock_data.dart';
+import '../data/internal_flow_repository.dart';
 
 class InternalServiceDetailScreen extends StatefulWidget {
   final InternalService service;
+  final InternalFlowRepository repository;
 
-  const InternalServiceDetailScreen({super.key, required this.service});
+  const InternalServiceDetailScreen({
+    super.key,
+    required this.service,
+    required this.repository,
+  });
 
   @override
   State<InternalServiceDetailScreen> createState() =>
@@ -23,12 +30,15 @@ class _InternalServiceDetailScreenState
   final _msgCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
   bool _showStatusSheet = false;
+  late InternalService _service;
   late String _currentStatus;
+  late String _pendingStatus;
 
   final _statuses = [
     ('aguardando', 'Aguardando'),
     ('andamento', 'Em andamento'),
     ('revisao', 'Em revisão'),
+    ('aguardando_retirada', 'Aguardando retirada'),
     ('concluido', 'Concluído'),
     ('cancelado', 'Cancelado'),
   ];
@@ -39,15 +49,127 @@ class _InternalServiceDetailScreenState
     _tabCtrl = TabController(length: 3, vsync: this);
     _tabCtrl.addListener(() => setState(() {}));
     _messages = chatMessages;
-    _currentStatus = widget.service.status;
+    _service = widget.service;
+    _currentStatus = _service.status;
+    _pendingStatus = _currentStatus;
+    widget.repository.addListener(_reloadService);
   }
 
   @override
   void dispose() {
+    widget.repository.removeListener(_reloadService);
     _tabCtrl.dispose();
     _msgCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _reloadService() async {
+    final latest = await widget.repository.fetchServicoById(widget.service.id);
+    if (!mounted || latest == null) return;
+    setState(() {
+      _service = latest;
+      _currentStatus = latest.status;
+      _pendingStatus = latest.status;
+    });
+  }
+
+  Future<void> _confirmStatusChange() async {
+    final updated = await widget.repository.updateServicoStatus(
+      _service.id,
+      _pendingStatus,
+    );
+    if (!mounted) return;
+    setState(() {
+      _service = updated;
+      _currentStatus = updated.status;
+      _pendingStatus = updated.status;
+      _showStatusSheet = false;
+    });
+  }
+
+  List<TimelineStep> _timelineFor(InternalService svc) {
+    final openedDate = _shortDate(svc.openedAt);
+    final finishedDate = svc.finishedAt != null ? _shortDate(svc.finishedAt!) : '—';
+    final isWaiting = svc.status == 'aguardando';
+    final isInProgress = svc.status == 'andamento';
+    final isReview = svc.status == 'revisao';
+    final isAwaitingPickup = svc.status == 'aguardando_retirada';
+    final isDone = svc.status == 'concluido';
+    final isCanceled = svc.status == 'cancelado';
+
+    return [
+      TimelineStep(
+        id: 1,
+        time: svc.time == '—' ? '08:00' : svc.time,
+        date: openedDate,
+        title: 'OS aberta',
+        desc: 'Atendimento registrado para ${svc.client}',
+        done: true,
+        active: false,
+      ),
+      TimelineStep(
+        id: 2,
+        time: isWaiting ? '—' : '09:30',
+        date: isWaiting ? '—' : openedDate,
+        title: 'Triagem inicial',
+        desc: 'Veículo identificado e serviço confirmado',
+        done: !isWaiting,
+        active: false,
+      ),
+      TimelineStep(
+        id: 3,
+        time: isInProgress || isReview || isAwaitingPickup || isDone ? '14:00' : '—',
+        date: isInProgress || isReview || isAwaitingPickup || isDone ? openedDate : '—',
+        title: 'Serviço em execução',
+        desc: 'Equipe técnica executando o serviço principal',
+        done: isReview || isAwaitingPickup || isDone,
+        active: isInProgress,
+      ),
+      TimelineStep(
+        id: 4,
+        time: isReview || isAwaitingPickup || isDone ? '16:30' : '—',
+        date: isReview || isAwaitingPickup || isDone ? openedDate : '—',
+        title: 'Revisão final',
+        desc: 'Conferência de qualidade e verificação final',
+        done: isAwaitingPickup || isDone,
+        active: isReview,
+      ),
+      TimelineStep(
+        id: 5,
+        time: isAwaitingPickup || isDone || isCanceled ? '17:10' : '—',
+        date: isAwaitingPickup || isDone || isCanceled
+            ? (isAwaitingPickup ? openedDate : finishedDate)
+            : '—',
+        title: isCanceled ? 'OS cancelada' : 'Pronto para retirada',
+        desc: isCanceled
+            ? 'Atendimento encerrado sem execução completa'
+            : 'Cliente notificado para retirada do veículo',
+        done: isDone || isCanceled,
+        active: isAwaitingPickup,
+      ),
+    ];
+  }
+
+  String _shortDate(String rawDate) {
+    final parts = rawDate.split('/');
+    if (parts.length != 3) return rawDate;
+    final month = switch (parts[1]) {
+      '01' => 'jan',
+      '02' => 'fev',
+      '03' => 'mar',
+      '04' => 'abr',
+      '05' => 'mai',
+      '06' => 'jun',
+      '07' => 'jul',
+      '08' => 'ago',
+      '09' => 'set',
+      '10' => 'out',
+      '11' => 'nov',
+      '12' => 'dez',
+      _ => parts[1],
+    };
+    return '${int.tryParse(parts[0]) ?? parts[0]} $month';
   }
 
   void _sendMessage() {
@@ -91,10 +213,13 @@ class _InternalServiceDetailScreenState
           Column(
             children: [
               _DetailHeader(
-                service: widget.service,
+                service: _service,
                 tabCtrl: _tabCtrl,
                 currentStatus: _currentStatus,
-                onStatusTap: () => setState(() => _showStatusSheet = true),
+                onStatusTap: () => setState(() {
+                  _pendingStatus = _currentStatus;
+                  _showStatusSheet = true;
+                }),
               ),
               Expanded(
                 child: TabBarView(
@@ -106,8 +231,8 @@ class _InternalServiceDetailScreenState
                       msgCtrl: _msgCtrl,
                       onSend: _sendMessage,
                     ),
-                    _TimelineTab(svc: currentService),
-                    _DataTab(svc: widget.service),
+                    _TimelineTab(steps: _timelineFor(_service)),
+                    _DataTab(svc: _service),
                   ],
                 ),
               ),
@@ -124,11 +249,11 @@ class _InternalServiceDetailScreenState
               right: 0,
               child: _StatusSheet(
                 statuses: _statuses,
-                current: _currentStatus,
+                current: _pendingStatus,
                 onSelect: (s) => setState(() {
-                  _currentStatus = s;
-                  _showStatusSheet = false;
+                  _pendingStatus = s;
                 }),
+                onConfirm: _confirmStatusChange,
                 onCancel: () => setState(() => _showStatusSheet = false),
               ),
             ),
@@ -207,6 +332,9 @@ class _DetailHeader extends StatelessWidget {
                       ],
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  StatusBadge(status: currentStatus),
+                  const SizedBox(width: 8),
                   GestureDetector(
                     onTap: onStatusTap,
                     child: Container(
@@ -223,23 +351,6 @@ class _DetailHeader extends StatelessWidget {
                           fontWeight: FontWeight.w600,
                           color: Colors.white,
                         ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 7),
-                    decoration: BoxDecoration(
-                      color: orange,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      'Orçamento',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
                       ),
                     ),
                   ),
@@ -411,16 +522,16 @@ class _ChatBubble extends StatelessWidget {
 }
 
 class _TimelineTab extends StatelessWidget {
-  final ServiceModel svc;
-  const _TimelineTab({required this.svc});
+  final List<TimelineStep> steps;
+  const _TimelineTab({required this.steps});
 
   @override
   Widget build(BuildContext context) {
     return ListView(
       padding: const EdgeInsets.all(16),
-      children: List.generate(svc.timeline.length, (i) {
-        final step = svc.timeline[i];
-        final isLast = i == svc.timeline.length - 1;
+      children: List.generate(steps.length, (i) {
+        final step = steps[i];
+        final isLast = i == steps.length - 1;
 
         Color circleColor;
         Widget icon;
@@ -634,12 +745,14 @@ class _StatusSheet extends StatelessWidget {
   final List<(String, String)> statuses;
   final String current;
   final ValueChanged<String> onSelect;
+  final VoidCallback onConfirm;
   final VoidCallback onCancel;
 
   const _StatusSheet({
     required this.statuses,
     required this.current,
     required this.onSelect,
+    required this.onConfirm,
     required this.onCancel,
   });
 
@@ -711,7 +824,13 @@ class _StatusSheet extends StatelessWidget {
               ),
             );
           }),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
+          AppButton(
+            label: 'Confirmar mudança de status',
+            fullWidth: true,
+            onPressed: onConfirm,
+          ),
+          const SizedBox(height: 8),
           AppButton(
             label: 'Cancelar',
             fullWidth: true,
