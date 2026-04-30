@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { ProdutoModel } from '../models/produtoModel';
 import { NotificationModel } from '../models/notificationModel';
+import { sendPushToUsers } from '../services/pushService';
 
 const ESTOQUE_BAIXO_LIMIAR = 5;
 
@@ -40,13 +41,16 @@ export class ProdutoController {
     if (produto.quantidade_estoque <= ESTOQUE_BAIXO_LIMIAR) {
       try {
         const internalUserIds = await NotificationModel.findInternalUserIds();
-        await NotificationModel.createForUsers(internalUserIds, {
+        const titulo = 'Peça com estoque baixo';
+        const mensagem = `${produto.nome} está com ${produto.quantidade_estoque} unid. em estoque.`;
+        const notifIds = await NotificationModel.createForUsers(internalUserIds, {
           tipo: 'low_stock',
-          titulo: 'Peça com estoque baixo',
-          mensagem: `${produto.nome} está com ${produto.quantidade_estoque} unid. em estoque.`,
+          titulo,
+          mensagem,
           referencia_id: produto.id,
           referencia_tipo: 'produto',
         });
+        await sendPushToUsers(internalUserIds, notifIds, titulo, mensagem);
       } catch (error) {
         // Não interrompe atualização de produto por falha de notificação.
         console.error('Falha ao criar notificações internas de estoque baixo:', error);

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { AgendamentoModel } from '../models/agendamentoModel';
 import { NotificationModel } from '../models/notificationModel';
+import { sendPushToUsers } from '../services/pushService';
 
 const STATUS_PERMITIDOS = ['CONFIRMADO', 'CANCELADO'] as const;
 type StatusPermitido = typeof STATUS_PERMITIDOS[number];
@@ -42,13 +43,16 @@ export class AgendamentoController {
 
     try {
       const internalUserIds = await NotificationModel.findInternalUserIds();
-      await NotificationModel.createForUsers(internalUserIds, {
+      const titulo = 'Novo agendamento recebido';
+      const mensagem = `Agendamento ${agendamento.id} criado para ${new Date(agendado_para).toLocaleString('pt-BR')}.`;
+      const notifIds = await NotificationModel.createForUsers(internalUserIds, {
         tipo: 'new_schedule',
-        titulo: 'Novo agendamento recebido',
-        mensagem: `Agendamento ${agendamento.id} criado para ${new Date(agendado_para).toLocaleString('pt-BR')}.`,
+        titulo,
+        mensagem,
         referencia_id: agendamento.id,
         referencia_tipo: 'agendamento',
       });
+      await sendPushToUsers(internalUserIds, notifIds, titulo, mensagem);
     } catch (error) {
       // Não interrompe o fluxo principal de agendamento por falha de notificação.
       console.error('Falha ao criar notificações internas de agendamento:', error);

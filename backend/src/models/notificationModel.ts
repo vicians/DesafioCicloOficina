@@ -14,10 +14,10 @@ export class NotificationModel {
   static async createForUsers(
     usuarioIds: string[],
     data: Omit<CreateNotificationDTO, 'usuario_id'>
-  ): Promise<void> {
-    if (usuarioIds.length === 0) return;
+  ): Promise<string[]> {
+    if (usuarioIds.length === 0) return [];
 
-    await Promise.all(
+    const notifications = await Promise.all(
       usuarioIds.map((usuario_id) =>
         this.create({
           usuario_id,
@@ -25,6 +25,7 @@ export class NotificationModel {
         })
       )
     );
+    return notifications.map((n) => n.id);
   }
 
   static async findAll(usuario_id: string): Promise<NotificationDTO[]> {
