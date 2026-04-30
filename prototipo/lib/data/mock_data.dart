@@ -23,7 +23,17 @@ class TimelineStep {
 class BudgetItem {
   final String label;
   final double total;
-  const BudgetItem({required this.label, required this.total});
+  final int? qty;
+  final double? unitPrice;
+  final String type; // 'part' | 'labor'
+
+  const BudgetItem({
+    required this.label,
+    required this.total,
+    this.qty,
+    this.unitPrice,
+    this.type = 'part',
+  });
 }
 
 class ServiceModel {
@@ -223,13 +233,14 @@ final currentService = ServiceModel(
     TimelineStep(id: 6, time: '—', date: '—', title: 'Pronto para retirada', desc: 'Notificação enviada ao cliente', done: false, active: false),
   ],
   budgetItems: const [
-    BudgetItem(label: 'Troca de óleo (5W30 sintético)', total: 89.90),
-    BudgetItem(label: 'Filtro de óleo', total: 35.00),
-    BudgetItem(label: 'Filtro de ar', total: 45.00),
-    BudgetItem(label: 'Pastilhas de freio (par diant.)', total: 120.00),
-    BudgetItem(label: 'Mão de obra', total: 150.00),
+    BudgetItem(label: 'Óleo Motor 5W30 Sintético (1L)', total: 90.00, qty: 4, unitPrice: 22.50, type: 'part'),
+    BudgetItem(label: 'Filtro de Óleo Universal', total: 35.00, qty: 1, unitPrice: 35.00, type: 'part'),
+    BudgetItem(label: 'Filtro de Ar Esportivo', total: 45.00, qty: 1, unitPrice: 45.00, type: 'part'),
+    BudgetItem(label: 'Pastilhas de Freio Dianteira (par)', total: 120.00, qty: 1, unitPrice: 120.00, type: 'part'),
+    BudgetItem(label: 'Troca de óleo e filtros', total: 80.00, type: 'labor'),
+    BudgetItem(label: 'Substituição de pastilhas (diant.)', total: 70.00, type: 'labor'),
   ],
-  budgetTotal: 439.90,
+  budgetTotal: 440.00,
 );
 
 final serviceHistory = [

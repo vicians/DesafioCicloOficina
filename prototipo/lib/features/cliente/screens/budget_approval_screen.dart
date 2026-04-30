@@ -52,6 +52,8 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
     setState(() => _showRefuseCard = !_showRefuseCard);
   }
 
+  String _fmt(double v) => 'R\$ ${v.toStringAsFixed(2).replaceAll('.', ',')}';
+
   @override
   Widget build(BuildContext context) {
     final svc = currentService;
@@ -90,8 +92,8 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
                     const SizedBox(height: 8),
                     Text(
                       'O serviço será iniciado em breve.',
-                      style: GoogleFonts.dmSans(
-                          fontSize: 14, color: textSecondary),
+                      style:
+                          GoogleFonts.dmSans(fontSize: 14, color: textSecondary),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 32),
@@ -109,12 +111,17 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
       );
     }
 
+    final parts = svc.budgetItems.where((i) => i.type == 'part').toList();
+    final labor = svc.budgetItems.where((i) => i.type == 'labor').toList();
+    final partsTotal = parts.fold(0.0, (s, i) => s + i.total);
+    final laborTotal = labor.fold(0.0, (s, i) => s + i.total);
+
     return Scaffold(
       backgroundColor: bgPage,
       body: SafeArea(
         child: Column(
           children: [
-            _buildHeader(context),
+            _buildHeader(svc),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
@@ -123,19 +130,19 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
                   children: [
                     _buildAlertBanner(),
                     const SizedBox(height: 14),
-                    _buildItemsCard(svc),
+                    _buildItemsCard(parts, labor, partsTotal, laborTotal),
                     const SizedBox(height: 12),
                     _buildTotalCard(svc),
                     const SizedBox(height: 24),
                     AppButton(
-                      label: 'Aprovar orçamento',
+                      label: 'Aprovar Tudo',
                       fullWidth: true,
                       loading: _loading,
                       onPressed: _loading ? null : _handleApprove,
                     ),
                     const SizedBox(height: 10),
                     AppButton(
-                      label: 'Recusar',
+                      label: 'Rejeitar',
                       fullWidth: true,
                       variant: AppButtonVariant.outline,
                       onPressed: _handleRefuse,
@@ -144,6 +151,7 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
                       const SizedBox(height: 12),
                       _buildRefuseCard(),
                     ],
+                    const SizedBox(height: 16),
                   ],
                 ),
               ),
@@ -154,9 +162,9 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildHeader(ServiceModel svc) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -164,28 +172,31 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
           colors: [navyDark, navyMid],
         ),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          GestureDetector(
-            onTap: () => Navigator.pop(context),
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(Icons.chevron_left_rounded,
-                  color: Colors.white, size: 24),
-            ),
-          ),
-          const SizedBox(width: 12),
           Text(
-            'Aprovação de orçamento',
+            'Aprovação de Orçamento',
             style: GoogleFonts.dmSans(
               fontSize: 18,
               fontWeight: FontWeight.w700,
               color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            svc.id,
+            style: GoogleFonts.dmSans(
+              fontSize: 11,
+              color: Colors.white.withValues(alpha: 0.5),
+            ),
+          ),
+          Text(
+            '${svc.car} · ${svc.plate}',
+            style: GoogleFonts.dmSans(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: Colors.white.withValues(alpha: 0.85),
             ),
           ),
         ],
@@ -220,7 +231,12 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
     );
   }
 
-  Widget _buildItemsCard(ServiceModel svc) {
+  Widget _buildItemsCard(
+    List<BudgetItem> parts,
+    List<BudgetItem> labor,
+    double partsTotal,
+    double laborTotal,
+  ) {
     return Container(
       decoration: BoxDecoration(
         color: cardWhite,
@@ -242,39 +258,18 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
             ),
           ),
           const Divider(height: 1, thickness: 1, color: dividerColor),
-          ...List.generate(svc.budgetItems.length, (i) {
-            final item = svc.budgetItems[i];
-            return Column(
-              children: [
-                Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          item.label,
-                          style:
-                              GoogleFonts.dmSans(fontSize: 13, color: textPrimary),
-                        ),
-                      ),
-                      Text(
-                        'R\$ ${item.total.toStringAsFixed(2).replaceAll('.', ',')}',
-                        style: GoogleFonts.dmSans(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: textPrimary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (i < svc.budgetItems.length - 1)
-                  const Divider(height: 1, thickness: 1, color: dividerColor),
-              ],
-            );
-          }),
+
+          // ── Peças ─────────────────────────────────────────────────────────
+          _SectionHeader(label: 'Peças'),
+          ...parts.map((item) => _PartRow(item: item, fmt: _fmt)),
+          _SubtotalRow(label: 'Subtotal peças', value: _fmt(partsTotal)),
+
+          const Divider(height: 1, thickness: 1, color: dividerColor),
+
+          // ── Mão de obra ───────────────────────────────────────────────────
+          _SectionHeader(label: 'Mão de obra'),
+          ...labor.map((item) => _LaborRow(item: item, fmt: _fmt)),
+          _SubtotalRow(label: 'Subtotal mão de obra', value: _fmt(laborTotal)),
         ],
       ),
     );
@@ -282,7 +277,7 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
 
   Widget _buildTotalCard(ServiceModel svc) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
       decoration: BoxDecoration(
         color: navyDark,
         borderRadius: BorderRadius.circular(16),
@@ -294,27 +289,36 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Total',
+                'Total do orçamento',
                 style: GoogleFonts.dmSans(
                   fontSize: 12,
                   color: Colors.white.withValues(alpha: 0.6),
                 ),
               ),
               Text(
-                'R\$ ${svc.budgetTotal.toStringAsFixed(2).replaceAll('.', ',')}',
+                _fmt(svc.budgetTotal),
                 style: GoogleFonts.dmSans(
-                  fontSize: 24,
+                  fontSize: 26,
                   fontWeight: FontWeight.w700,
                   color: Colors.white,
                 ),
               ),
             ],
           ),
-          Text(
-            'Pendente',
-            style: GoogleFonts.dmSans(
-              fontSize: 13,
-              color: Colors.white.withValues(alpha: 0.6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: yellow.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: yellow.withValues(alpha: 0.4)),
+            ),
+            child: Text(
+              'Pendente',
+              style: GoogleFonts.dmSans(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: yellow,
+              ),
             ),
           ),
         ],
@@ -360,6 +364,152 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Sub-widgets ───────────────────────────────────────────────────────────────
+
+class _SectionHeader extends StatelessWidget {
+  final String label;
+  const _SectionHeader({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Text(
+        label.toUpperCase(),
+        style: GoogleFonts.dmSans(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: textMuted,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+}
+
+class _PartRow extends StatelessWidget {
+  final BudgetItem item;
+  final String Function(double) fmt;
+  const _PartRow({required this.item, required this.fmt});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasDetail = item.qty != null && item.unitPrice != null;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.label,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: textPrimary,
+                  ),
+                ),
+                if (hasDetail)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      '${item.qty} × ${fmt(item.unitPrice!)}',
+                      style: GoogleFonts.dmSans(
+                          fontSize: 12, color: textSecondary),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            fmt(item.total),
+            style: GoogleFonts.dmSans(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: textPrimary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LaborRow extends StatelessWidget {
+  final BudgetItem item;
+  final String Function(double) fmt;
+  const _LaborRow({required this.item, required this.fmt});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              item.label,
+              style: GoogleFonts.dmSans(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: textPrimary,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            fmt(item.total),
+            style: GoogleFonts.dmSans(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: textPrimary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SubtotalRow extends StatelessWidget {
+  final String label;
+  final String value;
+  const _SubtotalRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      color: dividerColor,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.dmSans(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: textSecondary,
+            ),
+          ),
+          Text(
+            value,
+            style: GoogleFonts.dmSans(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: textPrimary,
+            ),
           ),
         ],
       ),
