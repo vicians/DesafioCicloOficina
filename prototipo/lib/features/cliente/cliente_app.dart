@@ -3,11 +3,19 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/colors.dart';
 import '../../core/widgets/quick_action_fab.dart';
 import '../../data/mock_data.dart';
+import '../../services/firebase_messaging_service.dart';
 import '../interno/screens/login_screen.dart';
+import 'data/client_notification_api_repository.dart';
+import 'data/client_notification_fallback_repository.dart';
+import 'data/client_notification_mock_repository.dart';
+import 'data/client_notification_repository.dart';
 import 'screens/home_screen.dart';
 import 'screens/budget_approval_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/notifications_screen.dart';
+
+const _kApiBaseUrl = 'http://10.0.2.2:3000'; // Android emulator → localhost
+const _kEnableDevClientSeedOnStartup = true;
 
 class ClienteApp extends StatefulWidget {
   const ClienteApp({super.key});
@@ -18,6 +26,38 @@ class ClienteApp extends StatefulWidget {
 
 class _ClienteAppState extends State<ClienteApp> {
   int _currentIndex = 0;
+  late final ClientNotificationRepository _notificationRepository;
+  List<NotificationItem> _clientNotifications = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _notificationRepository = ClientNotificationFallbackRepository(
+      primary: ClientNotificationApiRepository(baseUrl: _kApiBaseUrl),
+      fallback: ClientNotificationMockRepository(),
+    );
+    _loadNotifications();
+    _configureClientPushAndDevSeed();
+  }
+
+  Future<void> _loadNotifications() async {
+    final items = await _notificationRepository.fetchNotifications();
+    if (!mounted) return;
+    setState(() => _clientNotifications = List.of(items));
+  }
+
+  Future<void> _markNotificationAsRead(String id) async {
+    await _notificationRepository.markAsRead(id);
+    await _loadNotifications();
+  }
+
+  Future<void> _configureClientPushAndDevSeed() async {
+    await FirebaseMessagingService.configureClientNotifications(
+      baseUrl: _kApiBaseUrl,
+      triggerDevClientSeed: _kEnableDevClientSeedOnStartup,
+    );
+    await _loadNotifications();
+  }
 
   void _logout() {
     Navigator.pushAndRemoveUntil(
@@ -31,37 +71,20 @@ class _ClienteAppState extends State<ClienteApp> {
     HomeScreen(onLogout: _logout),
     const BudgetApprovalScreen(),
     const HistoryScreen(),
-    const NotificationsScreen(),
-  ];
-
-  static const _titles = [
-    'Tião Oficina',
-    'Orçamento',
-    'Histórico',
-    'Alertas',
+    NotificationsScreen(
+      items: _clientNotifications,
+      onMarkRead: _markNotificationAsRead,
+    ),
   ];
 
   @override
   Widget build(BuildContext context) {
-    final unreadCount = notificationsData.where((n) => n.unread).length;
+    final unreadCount = _clientNotifications.where((n) => n.unread).length;
     final hasPendingBudget = currentService.status == 'orcamento';
 
     return Scaffold(
       backgroundColor: bgPage,
-      appBar: _currentIndex != 1
-          ? null
-          : AppBar(
-              automaticallyImplyLeading: false,
-              backgroundColor: navyDark,
-              title: Text(
-                _titles[_currentIndex],
-                style: GoogleFonts.dmSans(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-              ),
-            ),
+      appBar: null,
       body: SafeArea(
         bottom: false,
         child: IndexedStack(

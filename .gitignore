@@ -33,6 +33,10 @@ dist/
 # ----------------------------------------------------------------ILH
 # Ambiente e Segurança (Crítico para chaves de API e BD)
 # ----------------------------------------------------------------ILH
+# Firebase service account — NUNCA subir para o repositório
+**/firebase-service-account*.json
+!**/firebase-service-account.example.json
+**/service-account*.json
 .env
 .env*
 .env.local

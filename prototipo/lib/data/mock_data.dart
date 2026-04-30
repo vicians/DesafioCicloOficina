@@ -23,7 +23,17 @@ class TimelineStep {
 class BudgetItem {
   final String label;
   final double total;
-  const BudgetItem({required this.label, required this.total});
+  final int? qty;
+  final double? unitPrice;
+  final String type; // 'part' | 'labor'
+
+  const BudgetItem({
+    required this.label,
+    required this.total,
+    this.qty,
+    this.unitPrice,
+    this.type = 'part',
+  });
 }
 
 class ServiceModel {
@@ -74,7 +84,7 @@ class HistoryItem {
 }
 
 class NotificationItem {
-  final int id;
+  final String id;
   final String type;
   final String title;
   final String body;
@@ -223,13 +233,14 @@ final currentService = ServiceModel(
     TimelineStep(id: 6, time: '—', date: '—', title: 'Pronto para retirada', desc: 'Notificação enviada ao cliente', done: false, active: false),
   ],
   budgetItems: const [
-    BudgetItem(label: 'Troca de óleo (5W30 sintético)', total: 89.90),
-    BudgetItem(label: 'Filtro de óleo', total: 35.00),
-    BudgetItem(label: 'Filtro de ar', total: 45.00),
-    BudgetItem(label: 'Pastilhas de freio (par diant.)', total: 120.00),
-    BudgetItem(label: 'Mão de obra', total: 150.00),
+    BudgetItem(label: 'Óleo Motor 5W30 Sintético (1L)', total: 90.00, qty: 4, unitPrice: 22.50, type: 'part'),
+    BudgetItem(label: 'Filtro de Óleo Universal', total: 35.00, qty: 1, unitPrice: 35.00, type: 'part'),
+    BudgetItem(label: 'Filtro de Ar Esportivo', total: 45.00, qty: 1, unitPrice: 45.00, type: 'part'),
+    BudgetItem(label: 'Pastilhas de Freio Dianteira (par)', total: 120.00, qty: 1, unitPrice: 120.00, type: 'part'),
+    BudgetItem(label: 'Troca de óleo e filtros', total: 80.00, type: 'labor'),
+    BudgetItem(label: 'Substituição de pastilhas (diant.)', total: 70.00, type: 'labor'),
   ],
-  budgetTotal: 439.90,
+  budgetTotal: 440.00,
 );
 
 final serviceHistory = [
@@ -240,10 +251,45 @@ final serviceHistory = [
 ];
 
 List<NotificationItem> get notificationsData => [
-  NotificationItem(id: 1, type: 'progress', title: 'Serviço atualizado', body: 'Trocas de filtros concluídas. Iniciando freios.', time: 'Agora há pouco', unread: true),
-  NotificationItem(id: 2, type: 'budget', title: 'Orçamento disponível', body: 'Seu orçamento está pronto para aprovação.', time: '22 abr, 10:10', unread: false),
-  NotificationItem(id: 3, type: 'checkin', title: 'Veículo recebido', body: 'Honda Civic ABC-1234 deu entrada na oficina.', time: '22 abr, 08:05', unread: false),
-  NotificationItem(id: 4, type: 'done', title: 'Serviço anterior concluído', body: 'Alinhamento e balanceamento finalizado.', time: '10 mar, 17:30', unread: false),
+  NotificationItem(id: 'mock-1', type: 'progress', title: 'Serviço atualizado', body: 'Trocas de filtros concluídas. Iniciando freios.', time: 'Agora há pouco', unread: true),
+  NotificationItem(id: 'mock-2', type: 'budget', title: 'Orçamento disponível', body: 'Seu orçamento está pronto para aprovação.', time: '22 abr, 10:10', unread: false),
+  NotificationItem(id: 'mock-3', type: 'checkin', title: 'Veículo recebido', body: 'Honda Civic ABC-1234 deu entrada na oficina.', time: '22 abr, 08:05', unread: false),
+  NotificationItem(id: 'mock-4', type: 'done', title: 'Serviço anterior concluído', body: 'Alinhamento e balanceamento finalizado.', time: '10 mar, 17:30', unread: false),
+];
+
+List<NotificationItem> get internalNotificationsData => [
+  NotificationItem(
+    id: 'mock-101',
+    type: 'new_schedule',
+    title: 'Novo agendamento via IA',
+    body: 'Fiat Argo GHI-9012 agendado para hoje às 16:30.',
+    time: 'Agora há pouco',
+    unread: true,
+  ),
+  NotificationItem(
+    id: 'mock-102',
+    type: 'approved_budget',
+    title: 'Orçamento aprovado pelo cliente',
+    body: 'OS-090 aprovada por Ana Paula. Inicie o serviço quando possível.',
+    time: 'Hoje, 14:05',
+    unread: true,
+  ),
+  NotificationItem(
+    id: 'mock-103',
+    type: 'low_stock',
+    title: 'Peça com estoque baixo',
+    body: 'Bateria 60Ah MF está com 3 unid. (mínimo recomendado: 5).',
+    time: 'Hoje, 11:40',
+    unread: true,
+  ),
+  NotificationItem(
+    id: 'mock-104',
+    type: 'approved_budget',
+    title: 'Orçamento aprovado pelo cliente',
+    body: 'OS-089 aprovada por Carlos Mendes.',
+    time: 'Ontem, 17:22',
+    unread: false,
+  ),
 ];
 
 // ── Sistema Interno Data ───────────────────────────────────────────────────

@@ -1,5 +1,10 @@
 import { Request, Response } from 'express';
 import { ProdutoModel } from '../models/produtoModel';
+import { NotificationModel } from '../models/notificationModel';
+import { sendPushToUsers } from '../services/pushService';
+import { RagSyncService } from '../services/ragSyncService';
+
+const ESTOQUE_BAIXO_LIMIAR = 5;
 
 export class ProdutoController {
   static async index(req: Request, res: Response) {
@@ -27,12 +32,34 @@ export class ProdutoController {
     }
 
     const produto = await ProdutoModel.create({ nome, marca, valor, quantidade_estoque });
+    RagSyncService.syncProduto(produto); // fire-and-forget: indexa no Vector DB
     return res.status(201).json(produto);
   }
 
   static async update(req: Request, res: Response) {
     const produto = await ProdutoModel.update(req.params.id, req.body);
     if (!produto) return res.status(404).json({ error: 'Produto não encontrado' });
+
+    if (produto.quantidade_estoque <= ESTOQUE_BAIXO_LIMIAR) {
+      try {
+        const internalUserIds = await NotificationModel.findInternalUserIds();
+        const titulo = 'Peça com estoque baixo';
+        const mensagem = `${produto.nome} está com ${produto.quantidade_estoque} unid. em estoque.`;
+        const notifIds = await NotificationModel.createForUsers(internalUserIds, {
+          tipo: 'low_stock',
+          titulo,
+          mensagem,
+          referencia_id: produto.id,
+          referencia_tipo: 'produto',
+        });
+        await sendPushToUsers(internalUserIds, notifIds, titulo, mensagem);
+      } catch (error) {
+        // Não interrompe atualização de produto por falha de notificação.
+        console.error('Falha ao criar notificações internas de estoque baixo:', error);
+      }
+    }
+
+    RagSyncService.syncProduto(produto); // fire-and-forget: atualiza no Vector DB
     return res.json(produto);
   }
 
@@ -42,4 +69,3 @@ export class ProdutoController {
     return res.status(204).send();
   }
 }
-
