@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/widgets/app_button.dart';
@@ -12,10 +13,10 @@ class BudgetApprovalScreen extends StatefulWidget {
 }
 
 class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
-    with TickerProviderStateMixin {
+    with SingleTickerProviderStateMixin {
   bool _loading = false;
   bool _approved = false;
-  bool _showRefuseCard = false;
+  bool _refused = false;
 
   late AnimationController _approvedCtrl;
   late Animation<double> _approvedScale;
@@ -41,6 +42,7 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
   void _handleApprove() async {
     setState(() => _loading = true);
     await Future.delayed(const Duration(milliseconds: 1400));
+    if (!mounted) return;
     setState(() {
       _loading = false;
       _approved = true;
@@ -49,7 +51,20 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
   }
 
   void _handleRefuse() {
-    setState(() => _showRefuseCard = !_showRefuseCard);
+    HapticFeedback.heavyImpact();
+    setState(() => _refused = true);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Recusa registrada. Entre em contato com a oficina.',
+          style: GoogleFonts.dmSans(fontSize: 13, color: Colors.white),
+        ),
+        backgroundColor: red,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   String _fmt(double v) => 'R\$ ${v.toStringAsFixed(2).replaceAll('.', ',')}';
@@ -57,60 +72,6 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
   @override
   Widget build(BuildContext context) {
     final svc = currentService;
-
-    if (_approved) {
-      return Scaffold(
-        backgroundColor: bgPage,
-        body: SafeArea(
-          child: Center(
-            child: ScaleTransition(
-              scale: _approvedScale,
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 80,
-                      height: 80,
-                      decoration: const BoxDecoration(
-                        color: green,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.check_rounded,
-                          color: Colors.white, size: 44),
-                    ),
-                    const SizedBox(height: 20),
-                    Text(
-                      'Orçamento aprovado!',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        color: textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'O serviço será iniciado em breve.',
-                      style:
-                          GoogleFonts.dmSans(fontSize: 14, color: textSecondary),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 32),
-                    AppButton(
-                      label: 'Voltar ao início',
-                      fullWidth: true,
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
     final parts = svc.budgetItems.where((i) => i.type == 'part').toList();
     final labor = svc.budgetItems.where((i) => i.type == 'labor').toList();
     final partsTotal = parts.fold(0.0, (s, i) => s + i.total);
@@ -128,29 +89,15 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _buildAlertBanner(),
-                    const SizedBox(height: 14),
+                    if (!_approved && !_refused) ...[
+                      _buildAlertBanner(),
+                      const SizedBox(height: 14),
+                    ],
                     _buildItemsCard(parts, labor, partsTotal, laborTotal),
                     const SizedBox(height: 12),
                     _buildTotalCard(svc),
                     const SizedBox(height: 24),
-                    AppButton(
-                      label: 'Aprovar Tudo',
-                      fullWidth: true,
-                      loading: _loading,
-                      onPressed: _loading ? null : _handleApprove,
-                    ),
-                    const SizedBox(height: 10),
-                    AppButton(
-                      label: 'Rejeitar',
-                      fullWidth: true,
-                      variant: AppButtonVariant.outline,
-                      onPressed: _handleRefuse,
-                    ),
-                    if (_showRefuseCard) ...[
-                      const SizedBox(height: 12),
-                      _buildRefuseCard(),
-                    ],
+                    _buildActions(),
                     const SizedBox(height: 16),
                   ],
                 ),
@@ -159,6 +106,136 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildActions() {
+    if (_approved) {
+      return ScaleTransition(
+        scale: _approvedScale,
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: greenBg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: green.withValues(alpha: 0.3)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: const BoxDecoration(
+                    color: green, shape: BoxShape.circle),
+                child: const Icon(Icons.check_rounded,
+                    color: Colors.white, size: 28),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Orçamento aprovado!',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: green,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'O serviço será iniciado em breve.',
+                      style: GoogleFonts.dmSans(
+                          fontSize: 13, color: textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_refused) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: redBg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: red.withValues(alpha: 0.3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: red.withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.phone_rounded,
+                          color: red, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Entre em contato com a oficina',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: red,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Recusa registrada. Ligue para discutir o orçamento com o responsável.',
+                  style: GoogleFonts.dmSans(
+                      fontSize: 13, color: textPrimary),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  '(11) 99999-8888',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: red,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AppButton(
+          label: 'Aprovar Tudo',
+          fullWidth: true,
+          loading: _loading,
+          onPressed: _loading ? null : _handleApprove,
+        ),
+        const SizedBox(height: 10),
+        AppButton(
+          label: 'Rejeitar',
+          fullWidth: true,
+          variant: AppButtonVariant.outline,
+          onPressed: _handleRefuse,
+        ),
+      ],
     );
   }
 
@@ -258,15 +335,10 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
             ),
           ),
           const Divider(height: 1, thickness: 1, color: dividerColor),
-
-          // ── Peças ─────────────────────────────────────────────────────────
           _SectionHeader(label: 'Peças'),
           ...parts.map((item) => _PartRow(item: item, fmt: _fmt)),
           _SubtotalRow(label: 'Subtotal peças', value: _fmt(partsTotal)),
-
           const Divider(height: 1, thickness: 1, color: dividerColor),
-
-          // ── Mão de obra ───────────────────────────────────────────────────
           _SectionHeader(label: 'Mão de obra'),
           ...labor.map((item) => _LaborRow(item: item, fmt: _fmt)),
           _SubtotalRow(label: 'Subtotal mão de obra', value: _fmt(laborTotal)),
@@ -276,6 +348,10 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
   }
 
   Widget _buildTotalCard(ServiceModel svc) {
+    final badgeColor = _approved ? green : (_refused ? red : yellow);
+    final badgeBg = _approved ? greenBg : (_refused ? redBg : yellowBg);
+    final badgeLabel = _approved ? 'Aprovado' : (_refused ? 'Recusado' : 'Pendente');
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
       decoration: BoxDecoration(
@@ -305,65 +381,22 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
               ),
             ],
           ),
-          Container(
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: yellow.withValues(alpha: 0.18),
+              color: badgeBg.withValues(alpha: 0.9),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: yellow.withValues(alpha: 0.4)),
+              border: Border.all(color: badgeColor.withValues(alpha: 0.5)),
             ),
             child: Text(
-              'Pendente',
+              badgeLabel,
               style: GoogleFonts.dmSans(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: yellow,
+                color: badgeColor,
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRefuseCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: redBg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: red.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Entre em contato para discutir',
-            style: GoogleFonts.dmSans(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: red,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Ligue para a oficina e fale diretamente com o responsável.',
-            style: GoogleFonts.dmSans(fontSize: 13, color: textPrimary),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              const Icon(Icons.phone_rounded, color: red, size: 18),
-              const SizedBox(width: 8),
-              Text(
-                '(11) 99999-8888',
-                style: GoogleFonts.dmSans(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: red,
-                ),
-              ),
-            ],
           ),
         ],
       ),
