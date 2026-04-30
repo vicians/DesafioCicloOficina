@@ -34,9 +34,14 @@ export const sendPushToTokens = async (
   }
 };
 
+/** Máximo de pushes FCM enviados por usuário por dia (RN049). */
+const PUSH_DAILY_LIMIT = 5;
+
 /**
- * Busca todos os FCM tokens ativos dos usuários informados e envia o push.
- * Marca as notificações como push_enviado=true após o envio.
+ * Busca FCM tokens apenas dos usuários que ainda não atingiram o limite diário
+ * de push (RN049: 1 push/usuário/dia). A notificação interna já foi gravada no
+ * DB antes desta chamada — o limite afeta apenas o disparo FCM, não o alerta.
+ * Marca as notificações dos usuários que receberam o push como push_enviado=true.
  */
 export const sendPushToUsers = async (
   userIds: string[],
@@ -49,24 +54,37 @@ export const sendPushToUsers = async (
 
   const db = getDb();
 
+  // Busca tokens junto com a contagem de pushes enviados hoje para cada usuário,
+  // filtrando direto no SQL para evitar N queries.
   const { rows: tokenRows } = await db.query<{ usuario_id: string; fcm_registration_token: string }>(
-    `SELECT usuario_id, fcm_registration_token
-       FROM user_push_tokens
-      WHERE usuario_id = ANY($1::uuid[])`,
-    [userIds],
+    `SELECT upt.usuario_id, upt.fcm_registration_token
+       FROM user_push_tokens upt
+      WHERE upt.usuario_id = ANY($1::uuid[])
+        AND (
+          SELECT COUNT(*)
+            FROM notifications n
+           WHERE n.usuario_id = upt.usuario_id
+             AND n.push_enviado = true
+             AND DATE(n.push_enviado_em) = CURRENT_DATE
+        ) < $2`,
+    [userIds, PUSH_DAILY_LIMIT],
   );
 
   if (tokenRows.length === 0) return;
 
+  const elegibleUserIds = tokenRows.map((r) => r.usuario_id);
   const tokens = tokenRows.map((r) => r.fcm_registration_token);
+
   await sendPushToTokens(tokens, title, body, data);
 
-  if (notificationIds.length > 0) {
+  // Marca apenas as notificações dos usuários que efetivamente receberam o push.
+  if (notificationIds.length > 0 && elegibleUserIds.length > 0) {
     await db.query(
       `UPDATE notifications
           SET push_enviado = true, push_enviado_em = NOW()
-        WHERE id = ANY($1::uuid[])`,
-      [notificationIds],
+        WHERE id = ANY($1::uuid[])
+          AND usuario_id = ANY($2::uuid[])`,
+      [notificationIds, elegibleUserIds],
     );
   }
 };
