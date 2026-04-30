@@ -3,6 +3,10 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/colors.dart';
 import 'data/internal_flow_mock_repository.dart';
 import 'data/internal_flow_repository.dart';
+import 'data/notification_repository.dart';
+import 'data/notification_mock_repository.dart';
+import 'data/notification_api_repository.dart';
+import 'data/notification_fallback_repository.dart';
 import 'screens/budget_list_screen.dart';
 import 'screens/employee_dashboard_screen.dart';
 import 'screens/service_list_screen.dart';
@@ -11,6 +15,9 @@ import 'screens/reports_screen.dart';
 import 'screens/internal_notifications_screen.dart';
 import 'screens/login_screen.dart';
 import '../../data/mock_data.dart';
+
+// TODO(prod): substituir pela URL real de produção e autenticação adequada.
+const _kApiBaseUrl = 'http://10.0.2.2:3000'; // Android emulator → localhost
 
 class InternoApp extends StatefulWidget {
   final bool isManager;
@@ -24,13 +31,27 @@ class InternoApp extends StatefulWidget {
 class _InternoAppState extends State<InternoApp> {
   int _currentIndex = 0;
   late final InternalFlowRepository _flowRepository;
-  late final List<NotificationItem> _internalNotifications;
+  late final NotificationRepository _notificationRepository;
+  List<NotificationItem> _internalNotifications = [];
 
   @override
   void initState() {
     super.initState();
     _flowRepository = InternalFlowMockRepository();
-    _internalNotifications = internalNotificationsData;
+    // TODO(prod): passar o usuarioId real vindo da sessão autenticada.
+    _notificationRepository = NotificationFallbackRepository(
+      primary: NotificationApiRepository(
+        baseUrl: _kApiBaseUrl,
+        usuarioId: 'mock-usuario-id',
+      ),
+      fallback: NotificationMockRepository(),
+    );
+    _loadNotifications();
+  }
+
+  Future<void> _loadNotifications() async {
+    final items = await _notificationRepository.fetchNotifications();
+    if (mounted) setState(() => _internalNotifications = List.of(items));
   }
 
   @override
@@ -50,14 +71,10 @@ class _InternoAppState extends State<InternoApp> {
   int get _unreadInternalNotificationsCount =>
       _internalNotifications.where((n) => n.unread).length;
 
-  void _markNotificationAsRead(int id) {
-    setState(() {
-      for (final notification in _internalNotifications) {
-        if (notification.id == id) {
-          notification.unread = false;
-        }
-      }
-    });
+  Future<void> _markNotificationAsRead(String id) async {
+    await _notificationRepository.markAsRead(id);
+    final items = await _notificationRepository.fetchNotifications();
+    if (mounted) setState(() => _internalNotifications = List.of(items));
   }
 
   List<Widget> get _screens {

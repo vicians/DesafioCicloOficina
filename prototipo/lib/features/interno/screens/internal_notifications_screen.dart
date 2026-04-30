@@ -5,7 +5,7 @@ import '../../../data/mock_data.dart';
 
 class InternalNotificationsScreen extends StatelessWidget {
   final List<NotificationItem> items;
-  final ValueChanged<int> onMarkRead;
+  final ValueChanged<String> onMarkRead;
 
   const InternalNotificationsScreen({
     super.key,

@@ -74,7 +74,7 @@ class HistoryItem {
 }
 
 class NotificationItem {
-  final int id;
+  final String id;
   final String type;
   final String title;
   final String body;
@@ -240,15 +240,15 @@ final serviceHistory = [
 ];
 
 List<NotificationItem> get notificationsData => [
-  NotificationItem(id: 1, type: 'progress', title: 'Serviço atualizado', body: 'Trocas de filtros concluídas. Iniciando freios.', time: 'Agora há pouco', unread: true),
-  NotificationItem(id: 2, type: 'budget', title: 'Orçamento disponível', body: 'Seu orçamento está pronto para aprovação.', time: '22 abr, 10:10', unread: false),
-  NotificationItem(id: 3, type: 'checkin', title: 'Veículo recebido', body: 'Honda Civic ABC-1234 deu entrada na oficina.', time: '22 abr, 08:05', unread: false),
-  NotificationItem(id: 4, type: 'done', title: 'Serviço anterior concluído', body: 'Alinhamento e balanceamento finalizado.', time: '10 mar, 17:30', unread: false),
+  NotificationItem(id: 'mock-1', type: 'progress', title: 'Serviço atualizado', body: 'Trocas de filtros concluídas. Iniciando freios.', time: 'Agora há pouco', unread: true),
+  NotificationItem(id: 'mock-2', type: 'budget', title: 'Orçamento disponível', body: 'Seu orçamento está pronto para aprovação.', time: '22 abr, 10:10', unread: false),
+  NotificationItem(id: 'mock-3', type: 'checkin', title: 'Veículo recebido', body: 'Honda Civic ABC-1234 deu entrada na oficina.', time: '22 abr, 08:05', unread: false),
+  NotificationItem(id: 'mock-4', type: 'done', title: 'Serviço anterior concluído', body: 'Alinhamento e balanceamento finalizado.', time: '10 mar, 17:30', unread: false),
 ];
 
 List<NotificationItem> get internalNotificationsData => [
   NotificationItem(
-    id: 101,
+    id: 'mock-101',
     type: 'new_schedule',
     title: 'Novo agendamento via IA',
     body: 'Fiat Argo GHI-9012 agendado para hoje às 16:30.',
@@ -256,7 +256,7 @@ List<NotificationItem> get internalNotificationsData => [
     unread: true,
   ),
   NotificationItem(
-    id: 102,
+    id: 'mock-102',
     type: 'approved_budget',
     title: 'Orçamento aprovado pelo cliente',
     body: 'OS-090 aprovada por Ana Paula. Inicie o serviço quando possível.',
@@ -264,7 +264,7 @@ List<NotificationItem> get internalNotificationsData => [
     unread: true,
   ),
   NotificationItem(
-    id: 103,
+    id: 'mock-103',
     type: 'low_stock',
     title: 'Peça com estoque baixo',
     body: 'Bateria 60Ah MF está com 3 unid. (mínimo recomendado: 5).',
@@ -272,7 +272,7 @@ List<NotificationItem> get internalNotificationsData => [
     unread: true,
   ),
   NotificationItem(
-    id: 104,
+    id: 'mock-104',
     type: 'approved_budget',
     title: 'Orçamento aprovado pelo cliente',
     body: 'OS-089 aprovada por Carlos Mendes.',
