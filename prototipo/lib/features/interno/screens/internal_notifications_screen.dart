@@ -3,31 +3,51 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/colors.dart';
 import '../../../data/mock_data.dart';
 
-class NotificationsScreen extends StatefulWidget {
+class InternalNotificationsScreen extends StatelessWidget {
   final List<NotificationItem> items;
   final ValueChanged<String> onMarkRead;
 
-  const NotificationsScreen({
+  const InternalNotificationsScreen({
     super.key,
     required this.items,
     required this.onMarkRead,
   });
 
   @override
-  State<NotificationsScreen> createState() => _NotificationsScreenState();
-}
-
-class _NotificationsScreenState extends State<NotificationsScreen> {
-  @override
   Widget build(BuildContext context) {
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: widget.items.length,
-      separatorBuilder: (ctx, _) => const SizedBox(height: 8),
-      itemBuilder: (_, i) => _NotifCard(
-        item: widget.items[i],
-        onTap: () => widget.onMarkRead(widget.items[i].id),
-      ),
+    return Column(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [navyDark, navyMid],
+            ),
+          ),
+          child: Text(
+            'Alertas',
+            style: GoogleFonts.dmSans(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
+        ),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: items.length,
+            separatorBuilder: (_, index) => const SizedBox(height: 8),
+            itemBuilder: (_, i) => _NotifCard(
+              item: items[i],
+              onTap: () => onMarkRead(items[i].id),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -123,14 +143,12 @@ class _NotifCard extends StatelessWidget {
 
   IconData _iconFor(String type) {
     switch (type) {
-      case 'progress':
-        return Icons.build_rounded;
-      case 'budget':
+      case 'new_schedule':
+        return Icons.event_available_rounded;
+      case 'approved_budget':
         return Icons.receipt_long_rounded;
-      case 'checkin':
-        return Icons.directions_car_rounded;
-      case 'done':
-        return Icons.check_circle_rounded;
+      case 'low_stock':
+        return Icons.inventory_2_rounded;
       default:
         return Icons.notifications_rounded;
     }
@@ -138,14 +156,12 @@ class _NotifCard extends StatelessWidget {
 
   Color _bgFor(String type) {
     switch (type) {
-      case 'progress':
+      case 'new_schedule':
         return blueBg;
-      case 'budget':
-        return yellowBg;
-      case 'checkin':
-        return purpleBg;
-      case 'done':
+      case 'approved_budget':
         return greenBg;
+      case 'low_stock':
+        return yellowBg;
       default:
         return dividerColor;
     }
@@ -153,14 +169,12 @@ class _NotifCard extends StatelessWidget {
 
   Color _colorFor(String type) {
     switch (type) {
-      case 'progress':
+      case 'new_schedule':
         return blue;
-      case 'budget':
-        return yellow;
-      case 'checkin':
-        return purple;
-      case 'done':
+      case 'approved_budget':
         return green;
+      case 'low_stock':
+        return yellow;
       default:
         return textMuted;
     }

@@ -81,7 +81,7 @@ agendamentoRouter.get('/cliente/:clienteId', AgendamentoController.listByCliente
  *     tags:
  *       - Agendamentos
  *     summary: Atualiza o status do agendamento
- *     description: Altera o estado de um agendamento (Ex: PENDENTE, CONFIRMADO, CANCELADO)
+ *     description: "Altera o estado de um agendamento (Ex: PENDENTE, CONFIRMADO, CANCELADO)"
  *     parameters:
  *       - in: path
  *         name: id
