@@ -11,6 +11,15 @@ export class NotificationModel {
     return result.rows.map((row: { id: string }) => row.id);
   }
 
+  static async findClientUserIds(): Promise<string[]> {
+    const db = getDb();
+    const result = await db.query(
+      `SELECT id FROM usuarios WHERE tipo_id = 2`
+    );
+
+    return result.rows.map((row: { id: string }) => row.id);
+  }
+
   static async createForUsers(
     usuarioIds: string[],
     data: Omit<CreateNotificationDTO, 'usuario_id'>

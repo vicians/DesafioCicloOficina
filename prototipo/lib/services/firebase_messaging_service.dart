@@ -88,6 +88,33 @@ class FirebaseMessagingService {
     }
   }
 
+  static Future<void> configureClientNotifications({
+    required String baseUrl,
+    bool triggerDevClientSeed = false,
+  }) async {
+    const clientUserTypeId = 2;
+    final userId = await _resolveInternalUserId(
+      baseUrl: baseUrl,
+      internalUserTypeId: clientUserTypeId,
+    );
+    if (userId == null) return;
+
+    _currentBaseUrl = baseUrl;
+    _currentUserId = userId;
+
+    await _registerCurrentToken(baseUrl: baseUrl, usuarioId: userId);
+
+    if (!_listenersConfigured) {
+      _configureListeners();
+      _listenersConfigured = true;
+    }
+
+    if (triggerDevClientSeed && !_devSeedTriggeredForType.contains(clientUserTypeId)) {
+      _devSeedTriggeredForType.add(clientUserTypeId);
+      await _triggerDevClientSeed(baseUrl: baseUrl);
+    }
+  }
+
   static void _configureListeners() {
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       debugPrint('[FCM][foreground] ${message.messageId} ${message.notification?.title}');
@@ -192,6 +219,22 @@ class FirebaseMessagingService {
 
     if (response.statusCode != 201) {
       debugPrint('[FCM] Seed DEV low_stock não executada: ${response.statusCode}');
+    }
+  }
+
+  static Future<void> _triggerDevClientSeed({
+    required String baseUrl,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/notifications/dev/seed-client-alert'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'source': 'cliente-app-startup',
+      }),
+    );
+
+    if (response.statusCode != 201) {
+      debugPrint('[FCM] Seed DEV client não executada: ${response.statusCode}');
     }
   }
 

@@ -4,38 +4,29 @@ import '../../../core/theme/colors.dart';
 import '../../../data/mock_data.dart';
 
 class NotificationsScreen extends StatefulWidget {
-  const NotificationsScreen({super.key});
+  final List<NotificationItem> items;
+  final ValueChanged<String> onMarkRead;
+
+  const NotificationsScreen({
+    super.key,
+    required this.items,
+    required this.onMarkRead,
+  });
 
   @override
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
-  late List<NotificationItem> _items;
-
-  @override
-  void initState() {
-    super.initState();
-    _items = notificationsData;
-  }
-
-  void _markRead(String id) {
-    setState(() {
-      for (final n in _items) {
-        if (n.id == id) n.unread = false;
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return ListView.separated(
       padding: const EdgeInsets.all(16),
-      itemCount: _items.length,
+      itemCount: widget.items.length,
       separatorBuilder: (ctx, _) => const SizedBox(height: 8),
       itemBuilder: (_, i) => _NotifCard(
-        item: _items[i],
-        onTap: () => _markRead(_items[i].id),
+        item: widget.items[i],
+        onTap: () => widget.onMarkRead(widget.items[i].id),
       ),
     );
   }

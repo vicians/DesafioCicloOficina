@@ -264,7 +264,7 @@ class _InternoNavBar extends StatelessWidget {
                                           vertical: 1,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: orange,
+                                          color: red,
                                           borderRadius: BorderRadius.circular(10),
                                         ),
                                         constraints: const BoxConstraints(

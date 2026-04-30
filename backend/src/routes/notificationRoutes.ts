@@ -110,5 +110,7 @@ notificationRouter.patch('/read-all', NotificationController.markAllAsRead);
 
 // TODO(prod): remover endpoint DEV após finalizar validações locais.
 notificationRouter.post('/dev/seed-low-stock', NotificationController.devSeedLowStock);
+// TODO(prod): remover endpoint DEV após finalizar validações locais.
+notificationRouter.post('/dev/seed-client-alert', NotificationController.devSeedClientAlert);
 
 export { notificationRouter };

@@ -92,4 +92,37 @@ export class NotificationController {
       notification_ids: notifIds,
     });
   }
+
+  static async devSeedClientAlert(req: Request, res: Response) {
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(403).json({ error: 'Endpoint disponível apenas fora de produção' });
+    }
+
+    const clientUserIds = await NotificationModel.findClientUserIds();
+    if (clientUserIds.length === 0) {
+      return res.status(404).json({ error: 'Nenhum cliente encontrado para seed' });
+    }
+
+    const titulo = 'Orçamento pronto para revisão';
+    const mensagem = 'Seu orçamento está pronto para aprovação no app.';
+
+    const notifIds = await NotificationModel.createForUsers(clientUserIds, {
+      tipo: 'budget',
+      titulo,
+      mensagem,
+      referencia_tipo: 'orcamento',
+    });
+
+    await sendPushToUsers(clientUserIds, notifIds, titulo, mensagem, {
+      tipo: 'budget',
+      seed: 'true',
+      audience: 'client',
+    });
+
+    return res.status(201).json({
+      message: 'Seed de alerta do cliente enviada',
+      created_for_users: clientUserIds.length,
+      notification_ids: notifIds,
+    });
+  }
 }
