@@ -15,9 +15,12 @@ import 'screens/reports_screen.dart';
 import 'screens/internal_notifications_screen.dart';
 import 'screens/login_screen.dart';
 import '../../data/mock_data.dart';
+import '../../services/firebase_messaging_service.dart';
 
 // TODO(prod): substituir pela URL real de produção e autenticação adequada.
 const _kApiBaseUrl = 'http://10.0.2.2:3000'; // Android emulator → localhost
+// TODO(prod): desativar seed DEV automático antes de publicar.
+const _kEnableDevLowStockSeedOnStartup = true;
 
 class InternoApp extends StatefulWidget {
   final bool isManager;
@@ -38,15 +41,24 @@ class _InternoAppState extends State<InternoApp> {
   void initState() {
     super.initState();
     _flowRepository = InternalFlowMockRepository();
-    // TODO(prod): passar o usuarioId real vindo da sessão autenticada.
     _notificationRepository = NotificationFallbackRepository(
       primary: NotificationApiRepository(
         baseUrl: _kApiBaseUrl,
-        usuarioId: 'mock-usuario-id',
+        internalUserTypeId: widget.isManager ? 1 : 3,
       ),
       fallback: NotificationMockRepository(),
     );
     _loadNotifications();
+    _configurePushAndDevSeed();
+  }
+
+  Future<void> _configurePushAndDevSeed() async {
+    await FirebaseMessagingService.configureInternalNotifications(
+      baseUrl: _kApiBaseUrl,
+      internalUserTypeId: widget.isManager ? 1 : 3,
+      triggerDevLowStockSeed: _kEnableDevLowStockSeedOnStartup,
+    );
+    await _loadNotifications();
   }
 
   Future<void> _loadNotifications() async {

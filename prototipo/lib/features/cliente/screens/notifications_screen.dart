@@ -19,7 +19,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     _items = notificationsData;
   }
 
-  void _markRead(int id) {
+  void _markRead(String id) {
     setState(() {
       for (final n in _items) {
         if (n.id == id) n.unread = false;

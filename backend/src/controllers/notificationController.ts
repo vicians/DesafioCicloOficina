@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { NotificationModel } from '../models/notificationModel';
+import { sendPushToUsers } from '../services/pushService';
 
 export class NotificationController {
   static async index(req: Request, res: Response) {
@@ -50,5 +51,45 @@ export class NotificationController {
 
     await NotificationModel.markAllAsRead(usuario_id);
     return res.status(204).send();
+  }
+
+  static async devSeedLowStock(req: Request, res: Response) {
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(403).json({ error: 'Endpoint disponível apenas fora de produção' });
+    }
+
+    const { produto_nome, quantidade_estoque } = req.body ?? {};
+    const productName = typeof produto_nome === 'string' && produto_nome.trim().length > 0
+      ? produto_nome.trim()
+      : 'Bateria 60Ah MF';
+    const stockQty = Number.isFinite(Number(quantidade_estoque))
+      ? Number(quantidade_estoque)
+      : 2;
+
+    const internalUserIds = await NotificationModel.findInternalUserIds();
+    if (internalUserIds.length === 0) {
+      return res.status(404).json({ error: 'Nenhum usuário interno encontrado para seed' });
+    }
+
+    const titulo = 'Peça com estoque baixo';
+    const mensagem = `${productName} está com ${stockQty} unid. em estoque.`;
+
+    const notifIds = await NotificationModel.createForUsers(internalUserIds, {
+      tipo: 'low_stock',
+      titulo,
+      mensagem,
+      referencia_tipo: 'produto',
+    });
+
+    await sendPushToUsers(internalUserIds, notifIds, titulo, mensagem, {
+      tipo: 'low_stock',
+      seed: 'true',
+    });
+
+    return res.status(201).json({
+      message: 'Seed de low_stock enviada para usuários internos',
+      created_for_users: internalUserIds.length,
+      notification_ids: notifIds,
+    });
   }
 }
