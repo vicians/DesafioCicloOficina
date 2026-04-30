@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { ProdutoModel } from '../models/produtoModel';
 import { NotificationModel } from '../models/notificationModel';
 import { sendPushToUsers } from '../services/pushService';
+import { RagSyncService } from '../services/ragSyncService';
 
 const ESTOQUE_BAIXO_LIMIAR = 5;
 
@@ -31,6 +32,7 @@ export class ProdutoController {
     }
 
     const produto = await ProdutoModel.create({ nome, marca, valor, quantidade_estoque });
+    RagSyncService.syncProduto(produto); // fire-and-forget: indexa no Vector DB
     return res.status(201).json(produto);
   }
 
@@ -57,6 +59,7 @@ export class ProdutoController {
       }
     }
 
+    RagSyncService.syncProduto(produto); // fire-and-forget: atualiza no Vector DB
     return res.json(produto);
   }
 
@@ -66,4 +69,3 @@ export class ProdutoController {
     return res.status(204).send();
   }
 }
-
