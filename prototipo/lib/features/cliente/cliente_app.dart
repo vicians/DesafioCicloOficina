@@ -85,12 +85,9 @@ class _ClienteAppState extends State<ClienteApp> {
     return Scaffold(
       backgroundColor: bgPage,
       appBar: null,
-      body: SafeArea(
-        bottom: false,
-        child: IndexedStack(
-          index: _currentIndex,
-          children: _screens,
-        ),
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _screens,
       ),
       floatingActionButton: _currentIndex == 0
           ? const QuickActionFab()
