@@ -1,0 +1,64 @@
+import { getDb } from '../config/database';
+import type { NotificationDTO, CreateNotificationDTO } from '../../../shared/dtos/notificationDto';
+
+export class NotificationModel {
+  static async findAll(usuario_id: string): Promise<NotificationDTO[]> {
+    const db = getDb();
+    const result = await db.query(
+      'SELECT * FROM notifications WHERE usuario_id = $1 ORDER BY criado_em DESC',
+      [usuario_id]
+    );
+    return result.rows;
+  }
+
+  static async findUnread(usuario_id: string): Promise<NotificationDTO[]> {
+    const db = getDb();
+    const result = await db.query(
+      'SELECT * FROM notifications WHERE usuario_id = $1 AND lida = false ORDER BY criado_em DESC',
+      [usuario_id]
+    );
+    return result.rows;
+  }
+
+  static async countUnreadToday(usuario_id: string): Promise<number> {
+    const db = getDb();
+    const result = await db.query(
+      `SELECT COUNT(*) FROM notifications
+       WHERE usuario_id = $1
+         AND lida = false
+         AND DATE(criado_em) = CURRENT_DATE`,
+      [usuario_id]
+    );
+    return parseInt(result.rows[0].count, 10);
+  }
+
+  static async create(data: CreateNotificationDTO): Promise<NotificationDTO> {
+    const db = getDb();
+    const { usuario_id, tipo, titulo, mensagem, referencia_id, referencia_tipo } = data;
+    const result = await db.query(
+      `INSERT INTO notifications (usuario_id, tipo, titulo, mensagem, referencia_id, referencia_tipo)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [usuario_id, tipo, titulo, mensagem, referencia_id ?? null, referencia_tipo ?? null]
+    );
+    return result.rows[0];
+  }
+
+  static async markAsRead(id: string, usuario_id: string): Promise<NotificationDTO | null> {
+    const db = getDb();
+    const result = await db.query(
+      `UPDATE notifications SET lida = true, lido_em = CURRENT_TIMESTAMP
+       WHERE id = $1 AND usuario_id = $2 RETURNING *`,
+      [id, usuario_id]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  static async markAllAsRead(usuario_id: string): Promise<void> {
+    const db = getDb();
+    await db.query(
+      `UPDATE notifications SET lida = true, lido_em = CURRENT_TIMESTAMP
+       WHERE usuario_id = $1 AND lida = false`,
+      [usuario_id]
+    );
+  }
+}

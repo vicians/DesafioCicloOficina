@@ -5,3 +5,4 @@ export * from './catalogoServicoDto';
 export * from './produtoDto';
 export * from './agendamentoDto';
 export * from './orcamentoDto';
+export * from './notificationDto';
