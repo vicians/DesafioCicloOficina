@@ -185,6 +185,37 @@ export const runMigrations = async () => {
     )
   `);
 
+  // ========================================
+  // TABELA: notifications
+  // ========================================
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      usuario_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+      tipo VARCHAR NOT NULL,
+      titulo VARCHAR NOT NULL,
+      mensagem TEXT NOT NULL,
+      referencia_id UUID,
+      referencia_tipo VARCHAR,
+      lida BOOLEAN DEFAULT false,
+      lido_em TIMESTAMP,
+      criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // ========================================
+  // TABELA: user_push_tokens
+  // ========================================
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS user_push_tokens (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      usuario_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+      token TEXT NOT NULL UNIQUE,
+      criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   console.log('Migrations concluídas com sucesso!');
   process.exit(0);
 };
