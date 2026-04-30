@@ -34,13 +34,6 @@ class _ClienteAppState extends State<ClienteApp> {
     const NotificationsScreen(),
   ];
 
-  static const _titles = [
-    'Tião Oficina',
-    'Orçamento',
-    'Histórico',
-    'Alertas',
-  ];
-
   @override
   Widget build(BuildContext context) {
     final unreadCount = notificationsData.where((n) => n.unread).length;
@@ -48,20 +41,7 @@ class _ClienteAppState extends State<ClienteApp> {
 
     return Scaffold(
       backgroundColor: bgPage,
-      appBar: _currentIndex != 1
-          ? null
-          : AppBar(
-              automaticallyImplyLeading: false,
-              backgroundColor: navyDark,
-              title: Text(
-                _titles[_currentIndex],
-                style: GoogleFonts.dmSans(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-              ),
-            ),
+      appBar: null,
       body: SafeArea(
         bottom: false,
         child: IndexedStack(
