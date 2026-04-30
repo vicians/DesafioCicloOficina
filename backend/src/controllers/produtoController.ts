@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { ProdutoModel } from '../models/produtoModel';
+import { RagSyncService } from '../services/ragSyncService';
 
 export class ProdutoController {
   static async index(req: Request, res: Response) {
@@ -27,12 +28,14 @@ export class ProdutoController {
     }
 
     const produto = await ProdutoModel.create({ nome, marca, valor, quantidade_estoque });
+    RagSyncService.syncProduto(produto); // fire-and-forget: indexa no Vector DB
     return res.status(201).json(produto);
   }
 
   static async update(req: Request, res: Response) {
     const produto = await ProdutoModel.update(req.params.id, req.body);
     if (!produto) return res.status(404).json({ error: 'Produto não encontrado' });
+    RagSyncService.syncProduto(produto); // fire-and-forget: atualiza no Vector DB
     return res.json(produto);
   }
 
@@ -42,4 +45,3 @@ export class ProdutoController {
     return res.status(204).send();
   }
 }
-
