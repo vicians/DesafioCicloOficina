@@ -34,11 +34,17 @@ class ConversationModel {
 }
 
 class InternalMessagesScreen extends StatefulWidget {
-  final ValueChanged<int> onUnreadCountChanged;
+  final ValueChanged<int>? onUnreadCountChanged;
+  final String? initialClientName;
+  final String? initialPlate;
+  final bool autoOpenMatchingConversation;
 
   const InternalMessagesScreen({
     super.key,
-    required this.onUnreadCountChanged,
+    this.onUnreadCountChanged,
+    this.initialClientName,
+    this.initialPlate,
+    this.autoOpenMatchingConversation = false,
   });
 
   @override
@@ -47,7 +53,7 @@ class InternalMessagesScreen extends StatefulWidget {
 
 class _InternalMessagesScreenState extends State<InternalMessagesScreen> {
   String _search = '';
-  final List<ConversationModel> _allConversations = [
+  static final List<ConversationModel> _sharedConversations = [
     ConversationModel(
       id: '1',
       clientName: 'Carlos Mendes',
@@ -107,6 +113,8 @@ class _InternalMessagesScreenState extends State<InternalMessagesScreen> {
     ),
   ];
 
+  List<ConversationModel> get _allConversations => _sharedConversations;
+
   List<ConversationModel> get _filteredConversations {
     if (_search.length < 3) return _allConversations;
     final q = _search.toLowerCase();
@@ -126,7 +134,29 @@ class _InternalMessagesScreenState extends State<InternalMessagesScreen> {
           .length;
 
   void _notifyUnreadCountChanged() {
-    widget.onUnreadCountChanged(_unreadConversationsCount);
+    widget.onUnreadCountChanged?.call(_unreadConversationsCount);
+  }
+
+  ConversationModel? _findMatchingConversation() {
+    final plate = widget.initialPlate?.trim().toLowerCase();
+    final clientName = widget.initialClientName?.trim().toLowerCase();
+
+    for (final conversation in _allConversations) {
+      final conversationPlate = conversation.plate.trim().toLowerCase();
+      final conversationClient = conversation.clientName.trim().toLowerCase();
+      final matchByPlate = plate != null && plate.isNotEmpty && conversationPlate == plate;
+      final matchByClient = clientName != null &&
+          clientName.isNotEmpty &&
+          (conversationClient == clientName ||
+              conversationClient.contains(clientName) ||
+              clientName.contains(conversationClient));
+
+      if (matchByPlate || matchByClient) {
+        return conversation;
+      }
+    }
+
+    return null;
   }
 
   @override
@@ -135,6 +165,15 @@ class _InternalMessagesScreenState extends State<InternalMessagesScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _notifyUnreadCountChanged();
+
+      if (!widget.autoOpenMatchingConversation) return;
+      final conversation = _findMatchingConversation();
+      if (conversation != null) {
+        _openChat(
+          conversation,
+          closeScreenAfterChatClosed: true,
+        );
+      }
     });
   }
 
@@ -146,7 +185,10 @@ class _InternalMessagesScreenState extends State<InternalMessagesScreen> {
     }
   }
 
-  void _openChat(ConversationModel conversation) {
+  void _openChat(
+    ConversationModel conversation, {
+    bool closeScreenAfterChatClosed = false,
+  }) {
     setState(() => _markConversationAsRead(conversation));
     _notifyUnreadCountChanged();
     Navigator.push(
@@ -154,7 +196,16 @@ class _InternalMessagesScreenState extends State<InternalMessagesScreen> {
       MaterialPageRoute(
         builder: (_) => InternalChatScreen(conversation: conversation),
       ),
-    ).then((_) => setState(() {}));
+    ).then((_) {
+      if (!mounted) return;
+
+      if (closeScreenAfterChatClosed) {
+        Navigator.pop(context);
+        return;
+      }
+
+      setState(() {});
+    });
   }
 
   @override
