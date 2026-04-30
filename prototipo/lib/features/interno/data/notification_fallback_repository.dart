@@ -1,6 +1,5 @@
 import '../../../data/mock_data.dart';
 import 'notification_repository.dart';
-import 'notification_mock_repository.dart';
 
 /// Tenta executar cada operação no [primary] (API real).
 /// Se houver qualquer erro de rede/servidor, cai silenciosamente no [fallback] (mock).
