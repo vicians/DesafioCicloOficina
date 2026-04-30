@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { AgendamentoModel } from '../models/agendamentoModel';
+import { NotificationModel } from '../models/notificationModel';
 
 const STATUS_PERMITIDOS = ['CONFIRMADO', 'CANCELADO'] as const;
 type StatusPermitido = typeof STATUS_PERMITIDOS[number];
@@ -38,6 +39,21 @@ export class AgendamentoController {
     const agendamento = await AgendamentoModel.create({
       cliente_id, veiculo_id, funcionario_id, agendado_para, duracao_total_minutos, notas_cliente,
     });
+
+    try {
+      const internalUserIds = await NotificationModel.findInternalUserIds();
+      await NotificationModel.createForUsers(internalUserIds, {
+        tipo: 'new_schedule',
+        titulo: 'Novo agendamento recebido',
+        mensagem: `Agendamento ${agendamento.id} criado para ${new Date(agendado_para).toLocaleString('pt-BR')}.`,
+        referencia_id: agendamento.id,
+        referencia_tipo: 'agendamento',
+      });
+    } catch (error) {
+      // Não interrompe o fluxo principal de agendamento por falha de notificação.
+      console.error('Falha ao criar notificações internas de agendamento:', error);
+    }
+
     return res.status(201).json(agendamento);
   }
 

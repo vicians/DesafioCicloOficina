@@ -2,6 +2,31 @@ import { getDb } from '../config/database';
 import type { NotificationDTO, CreateNotificationDTO } from '../../../shared/dtos/notificationDto';
 
 export class NotificationModel {
+  static async findInternalUserIds(): Promise<string[]> {
+    const db = getDb();
+    const result = await db.query(
+      `SELECT id FROM usuarios WHERE tipo_id IN (1, 3)`
+    );
+
+    return result.rows.map((row: { id: string }) => row.id);
+  }
+
+  static async createForUsers(
+    usuarioIds: string[],
+    data: Omit<CreateNotificationDTO, 'usuario_id'>
+  ): Promise<void> {
+    if (usuarioIds.length === 0) return;
+
+    await Promise.all(
+      usuarioIds.map((usuario_id) =>
+        this.create({
+          usuario_id,
+          ...data,
+        })
+      )
+    );
+  }
+
   static async findAll(usuario_id: string): Promise<NotificationDTO[]> {
     const db = getDb();
     const result = await db.query(

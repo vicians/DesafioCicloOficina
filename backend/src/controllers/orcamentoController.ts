@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { OrcamentoModel } from '../models/orcamentoModel';
 import { CatalogoServicoModel } from '../models/catalogoServicoModel';
 import { ProdutoModel } from '../models/produtoModel';
+import { NotificationModel } from '../models/notificationModel';
 
 export class OrcamentoController {
   static async index(req: Request, res: Response) {
@@ -107,6 +108,20 @@ export class OrcamentoController {
       return res.status(409).json({
         error: 'Orçamento não encontrado ou já está em status final (APROVADO, REJEITADO ou PAGO)',
       });
+    }
+
+    try {
+      const internalUserIds = await NotificationModel.findInternalUserIds();
+      await NotificationModel.createForUsers(internalUserIds, {
+        tipo: 'approved_budget',
+        titulo: 'Orçamento aprovado pelo cliente',
+        mensagem: `Orçamento ${orcamento.id} foi aprovado e está pronto para execução.`,
+        referencia_id: orcamento.id,
+        referencia_tipo: 'orcamento',
+      });
+    } catch (error) {
+      // Não interrompe o fluxo principal de aprovação por falha de notificação.
+      console.error('Falha ao criar notificações internas de orçamento aprovado:', error);
     }
 
     return res.json(orcamento);
