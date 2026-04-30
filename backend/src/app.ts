@@ -2,6 +2,7 @@ import 'express-async-errors';
 import express from 'express';
 import cors from 'cors';
 import routes from './routes';
+import webhookRoutes from './webhook';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger';
 
@@ -15,5 +16,7 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 app.use(routes);
+
+app.use('/whatsapp', webhookRoutes);
 
 export { app };

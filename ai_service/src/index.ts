@@ -1,6 +1,9 @@
 import 'express-async-errors';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import { PrismaClient } from '@prisma/client';
+import { Pool } from 'pg';
+import { PrismaPg } from '@prisma/adapter-pg';
 import dotenv from 'dotenv';
 import { ChatOpenAI } from '@langchain/openai';
 import { upsertProduto, queryProdutos, ProdutoPayload } from './vectorstore/productVectorStore';
@@ -23,17 +26,18 @@ const model = new ChatOpenAI({
   temperature: 0.3,
 });
 
-// ── Health ────────────────────────────────────────────────────────────────────
-
-app.get('/health', (_req: Request, res: Response) => {
+// 4. Rotas de Monitorização e Processamento
+app.get('/health', (req: Request, res: Response) => {
   res.json({
     status: 'ok',
     service: 'CicloOficina AI Service',
-    model: process.env.AI_MODEL,
+    model: process.env.AI_MODEL
   });
 });
 
-// ── RAG: sincronizar produto no Vector DB ─────────────────────────────────────
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter });
 
 /**
  * Chamado pelo backend sempre que um produto é criado ou atualizado.
@@ -64,28 +68,54 @@ app.post('/ai/produtos/sync', async (req: Request, res: Response) => {
 // ── Análise de mensagem com contexto RAG ──────────────────────────────────────
 
 app.post('/ai/analyze', async (req: Request, res: Response) => {
-  const { message } = req.body;
+  const { message, number } = req.body;
 
-  if (!message) {
-    return res.status(400).json({ error: 'A mensagem é obrigatória.' });
+  // 1. Validação de entrada (Ambas as branches pediam message, feat pedia number)
+  if (!message || !number) {
+    return res.status(400).json({ error: "Mensagem e número são obrigatórios." });
   }
 
-  // Busca produtos relevantes no Vector DB para enriquecer a resposta
-  const ragDocs = await queryProdutos(message);
-  const contextBlock =
-    ragDocs.length > 0
-      ? `\n\nProdutos e preços disponíveis na oficina:\n${ragDocs.map((d) => `- ${d}`).join('\n')}`
-      : '';
+  try {
+    // 2. Consulta o status do cliente no Prisma (Lógica da feat/AiWebhook)
+    let customer = await prisma.customer.findUnique({
+      where: { whatsappNumber: number }
+    });
 
-  const response = await model.invoke([
-    [
-      'system',
-      `És o assistente virtual da CicloOficina. O teu objetivo é identificar se o cliente precisa de Borracharia ou Oficina Mecânica com base no texto, e informar preços de produtos quando solicitado.${contextBlock}`,
-    ],
-    ['user', message],
-  ]);
+    // 3. Bloqueio se o atendimento for humano
+    if (customer?.status === 'HUMAN') {
+      return res.json({
+        result: null,
+        action: 'MANUAL_WAIT',
+        info: 'O atendimento está sendo realizado por um humano.'
+      });
+    }
 
-  return res.json({ result: response.content });
+    // 4. Busca de contexto no Vector DB (Lógica RAG da developer)
+    const ragDocs = await queryProdutos(message);
+    const contextBlock =
+      ragDocs.length > 0
+        ? `\n\nProdutos e preços disponíveis na oficina:\n${ragDocs.map((d) => `- ${d}`).join('\n')}`
+        : '';
+
+    // 5. Chamada do Modelo com System Prompt unificado
+    const response = await model.invoke([
+      [
+        'system',
+        `És o assistente virtual da CicloOficina. O teu objetivo é identificar se o cliente precisa de Borracharia ou Oficina Mecânica com base no texto, e informar preços de produtos quando solicitado.${contextBlock}`,
+      ],
+      ['user', message],
+    ]);
+
+    // 6. Retorno formatado (Unindo o conteúdo da IA com a estrutura de ação)
+    return res.json({ 
+      result: response.content,
+      action: 'REPLY' 
+    });
+
+  } catch (error) {
+    console.error("Erro no fluxo do ai_service:", error);
+    return res.status(500).json({ error: "Erro ao processar consulta." });
+  }
 });
 
 // ── Error handler ─────────────────────────────────────────────────────────────
