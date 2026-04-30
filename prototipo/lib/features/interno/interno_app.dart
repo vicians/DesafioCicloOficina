@@ -14,6 +14,7 @@ import 'screens/inventory_screen.dart';
 import 'screens/reports_screen.dart';
 import 'screens/internal_notifications_screen.dart';
 import 'screens/login_screen.dart';
+import 'screens/internal_messages_screen.dart';
 import '../../data/mock_data.dart';
 import '../../services/firebase_messaging_service.dart';
 
@@ -117,7 +118,7 @@ class _InternoAppState extends State<InternoApp> {
       ),
       BudgetListScreen(repository: _flowRepository),
       ServiceListScreen(repository: _flowRepository, initialFilter: null),
-      const _MessagesPlaceholder(),
+      const InternalMessagesScreen(),
       InternalNotificationsScreen(
         items: _internalNotifications,
         onMarkRead: _markNotificationAsRead,
@@ -313,56 +314,3 @@ class _InternoNavBar extends StatelessWidget {
   }
 }
 
-class _MessagesPlaceholder extends StatelessWidget {
-  const _MessagesPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [navyDark, navyMid],
-            ),
-          ),
-          child: Row(
-            children: [
-              Text(
-                'Mensagens',
-                style: GoogleFonts.dmSans(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.chat_bubble_outline_rounded,
-                    size: 48, color: textMuted),
-                const SizedBox(height: 12),
-                Text(
-                  'Selecione um atendimento\npara acessar o chat',
-                  style: GoogleFonts.dmSans(
-                    fontSize: 14,
-                    color: textSecondary,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
