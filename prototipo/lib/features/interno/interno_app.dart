@@ -37,6 +37,7 @@ class _InternoAppState extends State<InternoApp> {
   late final InternalFlowRepository _flowRepository;
   late final NotificationRepository _notificationRepository;
   List<NotificationItem> _internalNotifications = [];
+  int _unreadInternalChatsCount = 0;
 
   @override
   void initState() {
@@ -90,6 +91,11 @@ class _InternoAppState extends State<InternoApp> {
     if (mounted) setState(() => _internalNotifications = List.of(items));
   }
 
+  void _updateUnreadChatsCount(int count) {
+    if (!mounted || _unreadInternalChatsCount == count) return;
+    setState(() => _unreadInternalChatsCount = count);
+  }
+
   List<Widget> get _screens {
     if (widget.isManager) {
       return [
@@ -118,7 +124,7 @@ class _InternoAppState extends State<InternoApp> {
       ),
       BudgetListScreen(repository: _flowRepository),
       ServiceListScreen(repository: _flowRepository, initialFilter: null),
-      const InternalMessagesScreen(),
+      InternalMessagesScreen(onUnreadCountChanged: _updateUnreadChatsCount),
       InternalNotificationsScreen(
         items: _internalNotifications,
         onMarkRead: _markNotificationAsRead,
@@ -145,7 +151,11 @@ class _InternoAppState extends State<InternoApp> {
       _NavItem(label: 'Dashboard', icon: Icons.dashboard_rounded),
       _NavItem(label: 'Orçamentos', icon: Icons.receipt_long_rounded),
       _NavItem(label: 'Serviços', icon: Icons.build_rounded),
-      _NavItem(label: 'Mensagens', icon: Icons.chat_bubble_rounded),
+      _NavItem(
+        label: 'Mensagens',
+        icon: Icons.chat_bubble_rounded,
+        badgeCount: _unreadInternalChatsCount,
+      ),
       _NavItem(
         label: 'Alertas',
         icon: Icons.notifications_rounded,

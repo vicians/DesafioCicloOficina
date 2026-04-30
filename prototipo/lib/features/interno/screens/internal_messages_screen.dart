@@ -34,7 +34,12 @@ class ConversationModel {
 }
 
 class InternalMessagesScreen extends StatefulWidget {
-  const InternalMessagesScreen({super.key});
+  final ValueChanged<int> onUnreadCountChanged;
+
+  const InternalMessagesScreen({
+    super.key,
+    required this.onUnreadCountChanged,
+  });
 
   @override
   State<InternalMessagesScreen> createState() => _InternalMessagesScreenState();
@@ -111,7 +116,39 @@ class _InternalMessagesScreenState extends State<InternalMessagesScreen> {
     }).toList();
   }
 
+  int get _unreadConversationsCount =>
+      _allConversations
+          .where(
+            (conversation) => conversation.messages.any(
+              (message) => message.from == 'client' && !message.read,
+            ),
+          )
+          .length;
+
+  void _notifyUnreadCountChanged() {
+    widget.onUnreadCountChanged(_unreadConversationsCount);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _notifyUnreadCountChanged();
+    });
+  }
+
+  void _markConversationAsRead(ConversationModel conversation) {
+    for (final message in conversation.messages) {
+      if (message.from == 'client' && !message.read) {
+        message.read = true;
+      }
+    }
+  }
+
   void _openChat(ConversationModel conversation) {
+    setState(() => _markConversationAsRead(conversation));
+    _notifyUnreadCountChanged();
     Navigator.push(
       context,
       MaterialPageRoute(
