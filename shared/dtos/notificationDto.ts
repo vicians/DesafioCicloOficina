@@ -6,6 +6,8 @@ export interface NotificationDTO {
   mensagem: string;
   referencia_id?: string;
   referencia_tipo?: string;
+  push_enviado: boolean;
+  push_enviado_em?: Date;
   lida: boolean;
   lido_em?: Date;
   criado_em: Date;

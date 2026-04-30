@@ -7,6 +7,7 @@ import { orcamentoRouter } from './orcamentoRoutes';
 import { catalogoServicoRouter } from './catalogoServicoRoutes';
 import { execucaoServicoRouter } from './execucaoServicoRoutes';
 import { notificationRouter } from './notificationRoutes';
+import { pushTokenRouter } from './pushTokenRoutes';
 
 const routes = Router();
 
@@ -18,5 +19,6 @@ routes.use('/orcamentos', orcamentoRouter);
 routes.use('/servicos', catalogoServicoRouter);
 routes.use('/execucoes', execucaoServicoRouter);
 routes.use('/notifications', notificationRouter);
+routes.use('/push-tokens', pushTokenRouter);
 
 export default routes;

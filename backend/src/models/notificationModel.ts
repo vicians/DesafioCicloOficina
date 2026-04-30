@@ -20,13 +20,13 @@ export class NotificationModel {
     return result.rows;
   }
 
-  static async countUnreadToday(usuario_id: string): Promise<number> {
+  static async countPushSentToday(usuario_id: string): Promise<number> {
     const db = getDb();
     const result = await db.query(
       `SELECT COUNT(*) FROM notifications
        WHERE usuario_id = $1
-         AND lida = false
-         AND DATE(criado_em) = CURRENT_DATE`,
+         AND push_enviado = true
+         AND DATE(push_enviado_em) = CURRENT_DATE`,
       [usuario_id]
     );
     return parseInt(result.rows[0].count, 10);
@@ -50,6 +50,20 @@ export class NotificationModel {
        WHERE id = $1 AND usuario_id = $2 RETURNING *`,
       [id, usuario_id]
     );
+    return result.rows[0] ?? null;
+  }
+
+  static async markPushSent(id: string): Promise<NotificationDTO | null> {
+    const db = getDb();
+    const result = await db.query(
+      `UPDATE notifications
+       SET push_enviado = true,
+           push_enviado_em = CURRENT_TIMESTAMP
+       WHERE id = $1
+       RETURNING *`,
+      [id]
+    );
+
     return result.rows[0] ?? null;
   }
 

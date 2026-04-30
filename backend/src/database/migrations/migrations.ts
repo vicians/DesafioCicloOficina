@@ -197,10 +197,23 @@ export const runMigrations = async () => {
       mensagem TEXT NOT NULL,
       referencia_id UUID,
       referencia_tipo VARCHAR,
+      push_enviado BOOLEAN DEFAULT false,
+      push_enviado_em TIMESTAMP,
       lida BOOLEAN DEFAULT false,
       lido_em TIMESTAMP,
       criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
+  `);
+
+  // Compatibilidade para bases já criadas sem os campos de entrega de push
+  await db.query(`
+    ALTER TABLE notifications
+    ADD COLUMN IF NOT EXISTS push_enviado BOOLEAN DEFAULT false
+  `);
+
+  await db.query(`
+    ALTER TABLE notifications
+    ADD COLUMN IF NOT EXISTS push_enviado_em TIMESTAMP
   `);
 
   // ========================================
@@ -210,10 +223,30 @@ export const runMigrations = async () => {
     CREATE TABLE IF NOT EXISTS user_push_tokens (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       usuario_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-      token TEXT NOT NULL UNIQUE,
+      fcm_registration_token TEXT NOT NULL UNIQUE,
       criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
+  `);
+
+  // Compatibilidade para bases já criadas com a coluna antiga "token"
+  await db.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'user_push_tokens'
+          AND column_name = 'token'
+      ) AND NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'user_push_tokens'
+          AND column_name = 'fcm_registration_token'
+      ) THEN
+        ALTER TABLE user_push_tokens RENAME COLUMN token TO fcm_registration_token;
+      END IF;
+    END $$;
   `);
 
   console.log('Migrations concluídas com sucesso!');
