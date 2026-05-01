@@ -8,6 +8,7 @@ import { catalogoServicoRouter } from './catalogoServicoRoutes';
 import { execucaoServicoRouter } from './execucaoServicoRoutes';
 import { notificationRouter } from './notificationRoutes';
 import { pushTokenRouter } from './pushTokenRoutes';
+import { authRouter } from './authRoutes';
 
 const routes = Router();
 
@@ -20,5 +21,6 @@ routes.use('/servicos', catalogoServicoRouter);
 routes.use('/execucoes', execucaoServicoRouter);
 routes.use('/notifications', notificationRouter);
 routes.use('/push-tokens', pushTokenRouter);
+routes.use('/auth', authRouter);
 
 export default routes;

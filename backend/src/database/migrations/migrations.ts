@@ -249,6 +249,20 @@ export const runMigrations = async () => {
     END $$;
   `);
 
+  // ========================================
+  // TABELA: magic_links (autenticação sem senha para app cliente)
+  // ========================================
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS magic_links (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      usuario_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+      token VARCHAR(64) NOT NULL UNIQUE,
+      expires_at TIMESTAMP NOT NULL,
+      used BOOLEAN DEFAULT false,
+      criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   console.log('Migrations concluídas com sucesso!');
   process.exit(0);
 };
