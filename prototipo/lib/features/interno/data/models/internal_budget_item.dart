@@ -1,10 +1,36 @@
+class BudgetLineItem {
+  final String id;
+  final String name;
+  final double unitPrice;
+  final int qty;
+
+  const BudgetLineItem({
+    required this.id,
+    required this.name,
+    required this.unitPrice,
+    this.qty = 1,
+  });
+
+  double get total => unitPrice * qty;
+
+  BudgetLineItem copyWith({String? id, String? name, double? unitPrice, int? qty}) {
+    return BudgetLineItem(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      unitPrice: unitPrice ?? this.unitPrice,
+      qty: qty ?? this.qty,
+    );
+  }
+}
+
 class InternalBudgetItem {
   final String id;
   final String client;
   final String car;
   final String plate;
-  final String description;
-  final double value;
+  final List<BudgetLineItem> services;
+  final List<BudgetLineItem> products;
+  final String observation;
   final String createdAt; // dd/MM/yyyy
   final String status; // pendente | cancelado
   final String? canceledAt;
@@ -14,12 +40,17 @@ class InternalBudgetItem {
     required this.client,
     required this.car,
     required this.plate,
-    required this.description,
-    required this.value,
+    this.services = const [],
+    this.products = const [],
+    this.observation = '',
     required this.createdAt,
     this.status = 'pendente',
     this.canceledAt,
   });
+
+  double get value =>
+      services.fold(0.0, (s, e) => s + e.total) +
+      products.fold(0.0, (s, e) => s + e.total);
 
   bool get isCanceled => status == 'cancelado';
 
@@ -28,8 +59,9 @@ class InternalBudgetItem {
     String? client,
     String? car,
     String? plate,
-    String? description,
-    double? value,
+    List<BudgetLineItem>? services,
+    List<BudgetLineItem>? products,
+    String? observation,
     String? createdAt,
     String? status,
     String? canceledAt,
@@ -40,8 +72,9 @@ class InternalBudgetItem {
       client: client ?? this.client,
       car: car ?? this.car,
       plate: plate ?? this.plate,
-      description: description ?? this.description,
-      value: value ?? this.value,
+      services: services ?? this.services,
+      products: products ?? this.products,
+      observation: observation ?? this.observation,
       createdAt: createdAt ?? this.createdAt,
       status: status ?? this.status,
       canceledAt: clearCanceledAt ? null : (canceledAt ?? this.canceledAt),

@@ -1,3 +1,5 @@
+import '../features/interno/data/models/internal_budget_item.dart';
+
 // Mock data shared by both apps
 
 class TimelineStep {
@@ -107,6 +109,9 @@ class InternalService {
   final String car;
   final String plate;
   final String service;
+  final List<BudgetLineItem> budgetServices;
+  final List<BudgetLineItem> budgetProducts;
+  final String employeeObservation;
   final String status;
   final String mechanic;
   final String time;
@@ -121,6 +126,9 @@ class InternalService {
     required this.car,
     required this.plate,
     required this.service,
+    this.budgetServices = const [],
+    this.budgetProducts = const [],
+    this.employeeObservation = '',
     required this.status,
     required this.mechanic,
     required this.time,
@@ -296,7 +304,7 @@ List<NotificationItem> get internalNotificationsData => [
 
 final internalServices = [
   // ── Ativos ─────────────────────────────────────────────────────────────────
-  const InternalService(id: 'OS-089', client: 'Carlos Mendes', car: 'Honda Civic 2019', plate: 'ABC-1234', service: 'Revisão completa + pastilhas', status: 'andamento', mechanic: 'José', time: '14:00', value: 439.90, progress: 65, openedAt: '22/04/2026'),
+  const InternalService(id: 'OS-089', client: 'Carlos Mendes', car: 'Honda Civic 2019', plate: 'ABC-1234', service: 'Revisão completa + pastilhas', budgetServices: [BudgetLineItem(id: 'svc-3', name: 'Revisão completa', unitPrice: 350.00), BudgetLineItem(id: 'svc-4', name: 'Substituição de pastilhas', unitPrice: 70.00)], budgetProducts: [BudgetLineItem(id: 'prd-1', name: 'Óleo Motor 5W30 Sintético (1L)', unitPrice: 22.50, qty: 4)], employeeObservation: 'Cliente pediu para validar também ruído nos freios dianteiros antes da entrega.', status: 'andamento', mechanic: 'José', time: '14:00', value: 439.90, progress: 65, openedAt: '22/04/2026'),
   const InternalService(id: 'OS-090', client: 'Ana Paula Lima', car: 'Toyota Corolla 2021', plate: 'DEF-5678', service: 'Troca de óleo + filtros', status: 'orcamento', mechanic: 'Ricardo', time: '10:30', value: 195.00, progress: 20, openedAt: '25/04/2026'),
   const InternalService(id: 'OS-091', client: 'Rafael Souza', car: 'Fiat Argo 2022', plate: 'GHI-9012', service: 'Alinhamento e balanceamento', status: 'aguardando', mechanic: '—', time: '—', value: 180.00, progress: 0, openedAt: '28/04/2026'),
   const InternalService(id: 'OS-092', client: 'Mariana Costa', car: 'VW Polo 2020', plate: 'JKL-3456', service: 'Revisão de 30.000 km', status: 'revisao', mechanic: 'José', time: '16:00', value: 520.00, progress: 85, openedAt: '23/04/2026'),

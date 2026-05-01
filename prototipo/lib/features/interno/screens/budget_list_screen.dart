@@ -295,8 +295,12 @@ class _BudgetCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            item.description,
+            item.services.isNotEmpty
+                ? item.services.map((s) => s.name).join(', ')
+                : 'Sem serviços',
             style: GoogleFonts.dmSans(fontSize: 13, color: textSecondary),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 10),
           Row(
