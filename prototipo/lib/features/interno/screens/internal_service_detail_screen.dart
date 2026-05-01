@@ -6,6 +6,7 @@ import '../../../core/widgets/app_progress_bar.dart';
 import '../../../core/widgets/status_badge.dart';
 import '../../../data/mock_data.dart';
 import '../data/internal_flow_repository.dart';
+import '../data/models/internal_budget_item.dart';
 import 'internal_messages_screen.dart';
 
 class InternalServiceDetailScreen extends StatefulWidget {
@@ -501,6 +502,9 @@ class _DataTab extends StatelessWidget {
   final InternalService svc;
   const _DataTab({required this.svc});
 
+  String _formatMoney(double value) =>
+      'R\$ ${value.toStringAsFixed(2).replaceAll('.', ',')}';
+
   @override
   Widget build(BuildContext context) {
     final rows = [
@@ -508,10 +512,8 @@ class _DataTab extends StatelessWidget {
       ('Ordem de serviço', svc.id),
       ('Veículo', svc.car),
       ('Placa', svc.plate),
-      ('Serviço', svc.service),
       ('Mecânico', svc.mechanic),
       ('Horário', svc.time),
-      ('Valor', 'R\$ ${svc.value.toStringAsFixed(2).replaceAll('.', ',')}'),
     ];
 
     return ListView(
@@ -524,45 +526,135 @@ class _DataTab extends StatelessWidget {
             boxShadow: const [cardShadow],
           ),
           child: Column(
-            children: List.generate(rows.length, (i) {
-              return Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            rows[i].$1,
-                            style: GoogleFonts.dmSans(
-                              fontSize: 13,
-                              color: textSecondary,
+            children: [
+              ...List.generate(rows.length, (i) {
+                return Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            flex: 2,
+                            child: Text(
+                              rows[i].$1,
+                              style: GoogleFonts.dmSans(
+                                fontSize: 13,
+                                color: textSecondary,
+                              ),
                             ),
                           ),
-                        ),
-                        Expanded(
-                          flex: 3,
-                          child: Text(
-                            rows[i].$2,
-                            style: GoogleFonts.dmSans(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: textPrimary,
+                          Expanded(
+                            flex: 3,
+                            child: Text(
+                              rows[i].$2,
+                              style: GoogleFonts.dmSans(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: textPrimary,
+                              ),
+                              textAlign: TextAlign.right,
                             ),
-                            textAlign: TextAlign.right,
                           ),
+                        ],
+                      ),
+                    ),
+                    if (i < rows.length - 1)
+                      const Divider(height: 1, thickness: 1, color: dividerColor),
+                  ],
+                );
+              }),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          decoration: BoxDecoration(
+            color: cardWhite,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: const [cardShadow],
+          ),
+          child: Column(
+            children: [
+              if (svc.budgetServices.isNotEmpty)
+                _DataSection(
+                  title: 'Serviços do orçamento',
+                  child: Column(
+                    children: List.generate(svc.budgetServices.length, (index) {
+                      final item = svc.budgetServices[index];
+                      return _BudgetLine(
+                        item: item,
+                        formatMoney: _formatMoney,
+                        showDivider: index < svc.budgetServices.length - 1,
+                      );
+                    }),
+                  ),
+                ),
+              if (svc.budgetServices.isNotEmpty && svc.budgetProducts.isNotEmpty)
+                const Divider(height: 1, thickness: 1, color: dividerColor),
+              if (svc.budgetProducts.isNotEmpty)
+                _DataSection(
+                  title: 'Produtos do orçamento',
+                  child: Column(
+                    children: List.generate(svc.budgetProducts.length, (index) {
+                      final item = svc.budgetProducts[index];
+                      return _BudgetLine(
+                        item: item,
+                        formatMoney: _formatMoney,
+                        showDivider: index < svc.budgetProducts.length - 1,
+                      );
+                    }),
+                  ),
+                ),
+              if (svc.budgetServices.isNotEmpty || svc.budgetProducts.isNotEmpty)
+                const Divider(height: 1, thickness: 1, color: dividerColor),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Valor total',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: textPrimary,
                         ),
-                      ],
+                      ),
+                    ),
+                    Text(
+                      _formatMoney(svc.value),
+                      style: GoogleFonts.dmSans(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: navyDark,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (svc.employeeObservation.trim().isNotEmpty) ...[
+                const Divider(height: 1, thickness: 1, color: dividerColor),
+                _DataSection(
+                  title: 'Comentários do funcionário',
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      svc.employeeObservation,
+                      textAlign: TextAlign.left,
+                      style: GoogleFonts.dmSans(
+                        fontSize: 13,
+                        color: textSecondary,
+                        height: 1.4,
+                      ),
                     ),
                   ),
-                  if (i < rows.length - 1)
-                    const Divider(
-                        height: 1, thickness: 1, color: dividerColor),
-                ],
-              );
-            }),
+                ),
+              ],
+            ],
           ),
         ),
         const SizedBox(height: 12),
@@ -594,6 +686,101 @@ class _DataTab extends StatelessWidget {
             ],
           ),
         ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+}
+
+class _DataSection extends StatelessWidget {
+  final String title;
+  final Widget child;
+
+  const _DataSection({
+    required this.title,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: GoogleFonts.dmSans(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: textPrimary,
+            ),
+          ),
+          const SizedBox(height: 10),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _BudgetLine extends StatelessWidget {
+  final BudgetLineItem item;
+  final String Function(double value) formatMoney;
+  final bool showDivider;
+
+  const _BudgetLine({
+    required this.item,
+    required this.formatMoney,
+    required this.showDivider,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.name,
+                    style: GoogleFonts.dmSans(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${item.qty} x ${formatMoney(item.unitPrice)}',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 12,
+                      color: textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              formatMoney(item.total),
+              style: GoogleFonts.dmSans(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: textPrimary,
+              ),
+            ),
+          ],
+        ),
+        if (showDivider)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 10),
+            child: Divider(height: 1, thickness: 1, color: dividerColor),
+          ),
       ],
     );
   }

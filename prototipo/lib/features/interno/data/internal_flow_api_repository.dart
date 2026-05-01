@@ -1,7 +1,9 @@
 import 'package:http/http.dart' as http;
 import '../../../data/mock_data.dart';
 import 'internal_flow_repository.dart';
+import 'models/catalogo_servico_item.dart';
 import 'models/internal_budget_item.dart';
+import 'models/produto_item.dart';
 
 class InternalFlowApiRepository extends InternalFlowRepository {
   final String baseUrl;
@@ -11,6 +13,18 @@ class InternalFlowApiRepository extends InternalFlowRepository {
     required this.baseUrl,
     http.Client? client,
   }) : _client = client ?? http.Client();
+
+  @override
+  Future<List<CatalogoServicoItem>> fetchCatalogoServicos() async {
+    await _client.get(Uri.parse('$baseUrl/servicos'));
+    return const [];
+  }
+
+  @override
+  Future<List<ProdutoItem>> fetchProdutos() async {
+    await _client.get(Uri.parse('$baseUrl/produtos'));
+    return const [];
+  }
 
   @override
   Future<List<InternalBudgetItem>> fetchOrcamentos() async {
