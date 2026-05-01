@@ -73,7 +73,7 @@ class _DetailHeader extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
               child: Row(
                 children: [
                   GestureDetector(

@@ -273,7 +273,7 @@ class _DetailHeader extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
               child: Row(
                 children: [
                   GestureDetector(
@@ -312,33 +312,38 @@ class _DetailHeader extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  StatusBadge(status: currentStatus),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: onStatusTap,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 7),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        'Atualizar status',
-                        style: GoogleFonts.dmSans(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      StatusBadge(status: currentStatus),
+                      const SizedBox(height: 6),
+                      GestureDetector(
+                        onTap: onStatusTap,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            'Atualizar status',
+                            style: GoogleFonts.dmSans(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
                 ],
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
               child: AppButton(
                 label: 'Ir para conversa do cliente',
                 fullWidth: true,
@@ -351,7 +356,7 @@ class _DetailHeader extends StatelessWidget {
                 onPressed: onOpenChat,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             TabBar(
               controller: tabCtrl,
               indicatorColor: orange,
