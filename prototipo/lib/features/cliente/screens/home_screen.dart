@@ -7,6 +7,7 @@ import '../../../core/widgets/app_avatar.dart';
 import '../../../core/widgets/app_progress_bar.dart';
 import '../../../core/widgets/pulsing_dot.dart';
 import '../../../data/mock_data.dart';
+import 'client_screen_header.dart';
 import 'service_detail_screen.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -16,12 +17,17 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final svc = currentService;
+    final clientName = 'Carlos Martins';
 
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _Header(svc: svc, onLogout: onLogout),
+          _Header(
+            svc: svc,
+            clientName: clientName,
+            onLogout: onLogout,
+          ),
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -66,79 +72,46 @@ class HomeScreen extends StatelessWidget {
 
 class _Header extends StatelessWidget {
   final ServiceModel svc;
+  final String clientName;
   final VoidCallback? onLogout;
-  const _Header({required this.svc, this.onLogout});
+  const _Header({
+    required this.svc,
+    required this.clientName,
+    this.onLogout,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [navyDark, navyMid],
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return ClientScreenHeader(
+      title: 'Tião Oficina',
+      subtitle: 'Olá, $clientName',
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Olá, Carlos 👋',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 12,
-                        color: Colors.white.withValues(alpha: 0.55),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Tião Oficina',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
+          const AppAvatar(initials: 'CM', size: 40),
+          if (onLogout != null) ...[
+            const SizedBox(width: 10),
+            GestureDetector(
+              onTap: onLogout,
+              child: Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.logout_rounded,
+                  color: Colors.white,
+                  size: 18,
                 ),
               ),
-              Row(
-                children: [
-                  const AppAvatar(initials: 'CM', size: 42),
-                  if (onLogout != null) ...[
-                    const SizedBox(width: 10),
-                    GestureDetector(
-                      onTap: onLogout,
-                      child: Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(
-                          Icons.logout_rounded,
-                          color: Colors.white,
-                          size: 18,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _ActiveServiceCard(svc: svc),
+            ),
+          ],
         ],
       ),
+      childSpacing: 14,
+      child: _ActiveServiceCard(svc: svc),
     );
   }
 }

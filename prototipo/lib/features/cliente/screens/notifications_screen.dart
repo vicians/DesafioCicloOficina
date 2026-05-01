@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/colors.dart';
 import '../../../data/mock_data.dart';
+import 'client_screen_header.dart';
 
 class NotificationsScreen extends StatefulWidget {
   final List<NotificationItem> items;
@@ -20,14 +21,43 @@ class NotificationsScreen extends StatefulWidget {
 class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   Widget build(BuildContext context) {
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: widget.items.length,
-      separatorBuilder: (ctx, _) => const SizedBox(height: 8),
-      itemBuilder: (_, i) => _NotifCard(
-        item: widget.items[i],
-        onTap: () => widget.onMarkRead(widget.items[i].id),
-      ),
+    final unreadCount = widget.items.where((item) => item.unread).length;
+    return Column(
+      children: [
+        ClientScreenHeader(
+          title: 'Alertas',
+          trailing: unreadCount == 0
+              ? null
+              : Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '$unreadCount não lido${unreadCount > 1 ? 's' : ''}',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+          contentPadding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
+        ),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: widget.items.length,
+            separatorBuilder: (ctx, _) => const SizedBox(height: 8),
+            itemBuilder: (_, i) => _NotifCard(
+              item: widget.items[i],
+              onTap: () => widget.onMarkRead(widget.items[i].id),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

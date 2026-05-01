@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/widgets/app_button.dart';
+import '../../../core/widgets/status_badge.dart';
 import '../../../data/mock_data.dart';
+import 'client_screen_header.dart';
 
 class BudgetApprovalScreen extends StatefulWidget {
   const BudgetApprovalScreen({super.key});
@@ -79,32 +81,30 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
 
     return Scaffold(
       backgroundColor: bgPage,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildHeader(svc),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (!_approved && !_refused) ...[
-                      _buildAlertBanner(),
-                      const SizedBox(height: 14),
-                    ],
-                    _buildItemsCard(parts, labor, partsTotal, laborTotal),
-                    const SizedBox(height: 12),
-                    _buildTotalCard(svc),
-                    const SizedBox(height: 24),
-                    _buildActions(),
-                    const SizedBox(height: 16),
+      body: Column(
+        children: [
+          _buildHeader(svc),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (!_approved && !_refused) ...[
+                    _buildAlertBanner(),
+                    const SizedBox(height: 14),
                   ],
-                ),
+                  _buildItemsCard(parts, labor, partsTotal, laborTotal),
+                  const SizedBox(height: 12),
+                  _buildTotalCard(svc),
+                  const SizedBox(height: 24),
+                  _buildActions(),
+                  const SizedBox(height: 16),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -240,44 +240,19 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
   }
 
   Widget _buildHeader(ServiceModel svc) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [navyDark, navyMid],
+    final badgeStatus =
+        _approved ? 'aprovado' : (_refused ? 'cancelado' : 'orcamento');
+    return ClientScreenHeader(
+      title: 'Orçamento',
+      subtitle: '${svc.id} · ${svc.car} · ${svc.plate}',
+      trailing: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        child: StatusBadge(
+          key: ValueKey(badgeStatus),
+          status: badgeStatus,
         ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Aprovação de Orçamento',
-            style: GoogleFonts.dmSans(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            svc.id,
-            style: GoogleFonts.dmSans(
-              fontSize: 11,
-              color: Colors.white.withValues(alpha: 0.5),
-            ),
-          ),
-          Text(
-            '${svc.car} · ${svc.plate}',
-            style: GoogleFonts.dmSans(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              color: Colors.white.withValues(alpha: 0.85),
-            ),
-          ),
-        ],
-      ),
+      contentPadding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
     );
   }
 

@@ -3,7 +3,9 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/app_progress_bar.dart';
+import '../../../core/widgets/status_badge.dart';
 import '../../../data/mock_data.dart';
+import 'client_screen_header.dart';
 
 class HistoryScreen extends StatelessWidget {
   const HistoryScreen({super.key});
@@ -11,23 +13,34 @@ class HistoryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final svc = currentService;
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _SectionLabel(label: 'EM ANDAMENTO'),
-          const SizedBox(height: 8),
-          _ActiveHistoryCard(svc: svc),
-          const SizedBox(height: 20),
-          _SectionLabel(label: 'CONCLUÍDOS'),
-          const SizedBox(height: 8),
-          ...serviceHistory.map((h) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _CompletedCard(item: h),
-              )),
-        ],
-      ),
+    return Column(
+      children: [
+        ClientScreenHeader(
+          title: 'Histórico',
+          subtitle: '${serviceHistory.length + 1} serviços registrados',
+          trailing: StatusBadge(status: svc.status),
+          contentPadding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
+        ),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              _SectionLabel(label: 'EM ANDAMENTO'),
+              const SizedBox(height: 8),
+              _ActiveHistoryCard(svc: svc),
+              const SizedBox(height: 20),
+              _SectionLabel(label: 'CONCLUÍDOS'),
+              const SizedBox(height: 8),
+              ...serviceHistory.map(
+                (h) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _CompletedCard(item: h),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
