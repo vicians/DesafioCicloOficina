@@ -6,6 +6,7 @@ import '../../../core/widgets/app_progress_bar.dart';
 import '../../../core/widgets/status_badge.dart';
 import '../../../data/mock_data.dart';
 import '../data/internal_flow_repository.dart';
+import 'internal_messages_screen.dart';
 
 class InternalServiceDetailScreen extends StatefulWidget {
   final InternalService service;
@@ -26,9 +27,6 @@ class _InternalServiceDetailScreenState
     extends State<InternalServiceDetailScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabCtrl;
-  late List<ChatMessage> _messages;
-  final _msgCtrl = TextEditingController();
-  final _scrollCtrl = ScrollController();
   bool _showStatusSheet = false;
   late InternalService _service;
   late String _currentStatus;
@@ -46,9 +44,8 @@ class _InternalServiceDetailScreenState
   @override
   void initState() {
     super.initState();
-    _tabCtrl = TabController(length: 3, vsync: this);
+    _tabCtrl = TabController(length: 2, vsync: this);
     _tabCtrl.addListener(() => setState(() {}));
-    _messages = chatMessages;
     _service = widget.service;
     _currentStatus = _service.status;
     _pendingStatus = _currentStatus;
@@ -59,8 +56,6 @@ class _InternalServiceDetailScreenState
   void dispose() {
     widget.repository.removeListener(_reloadService);
     _tabCtrl.dispose();
-    _msgCtrl.dispose();
-    _scrollCtrl.dispose();
     super.dispose();
   }
 
@@ -86,6 +81,26 @@ class _InternalServiceDetailScreenState
       _pendingStatus = updated.status;
       _showStatusSheet = false;
     });
+  }
+
+  void _openClientConversation() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          backgroundColor: bgPage,
+          body: SafeArea(
+            bottom: false,
+            child: InternalMessagesScreen(
+              onUnreadCountChanged: (_) {},
+              initialClientName: _service.client,
+              initialPlate: _service.plate,
+              autoOpenMatchingConversation: true,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   List<TimelineStep> _timelineFor(InternalService svc) {
@@ -172,38 +187,6 @@ class _InternalServiceDetailScreenState
     return '${int.tryParse(parts[0]) ?? parts[0]} $month';
   }
 
-  void _sendMessage() {
-    final text = _msgCtrl.text.trim();
-    if (text.isEmpty) return;
-    setState(() {
-      _messages = [
-        ..._messages,
-        ChatMessage(
-          id: _messages.length + 1,
-          from: 'employee',
-          text: text,
-          time: _timeNow(),
-          read: true,
-        ),
-      ];
-      _msgCtrl.clear();
-    });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollCtrl.hasClients) {
-        _scrollCtrl.animateTo(
-          _scrollCtrl.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
-      }
-    });
-  }
-
-  String _timeNow() {
-    final now = DateTime.now();
-    return '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -216,6 +199,7 @@ class _InternalServiceDetailScreenState
                 service: _service,
                 tabCtrl: _tabCtrl,
                 currentStatus: _currentStatus,
+                onOpenChat: _openClientConversation,
                 onStatusTap: () => setState(() {
                   _pendingStatus = _currentStatus;
                   _showStatusSheet = true;
@@ -225,12 +209,6 @@ class _InternalServiceDetailScreenState
                 child: TabBarView(
                   controller: _tabCtrl,
                   children: [
-                    _ChatTab(
-                      messages: _messages,
-                      scrollCtrl: _scrollCtrl,
-                      msgCtrl: _msgCtrl,
-                      onSend: _sendMessage,
-                    ),
                     _TimelineTab(steps: _timelineFor(_service)),
                     _DataTab(svc: _service),
                   ],
@@ -268,12 +246,14 @@ class _DetailHeader extends StatelessWidget {
   final InternalService service;
   final TabController tabCtrl;
   final String currentStatus;
+  final VoidCallback onOpenChat;
   final VoidCallback onStatusTap;
 
   const _DetailHeader({
     required this.service,
     required this.tabCtrl,
     required this.currentStatus,
+    required this.onOpenChat,
     required this.onStatusTap,
   });
 
@@ -357,6 +337,20 @@ class _DetailHeader extends StatelessWidget {
                 ],
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: AppButton(
+                label: 'Ir para conversa do cliente',
+                fullWidth: true,
+                variant: AppButtonVariant.primary,
+                icon: const Icon(
+                  Icons.chat_bubble_rounded,
+                  size: 18,
+                  color: Colors.white,
+                ),
+                onPressed: onOpenChat,
+              ),
+            ),
             const SizedBox(height: 12),
             TabBar(
               controller: tabCtrl,
@@ -369,150 +363,9 @@ class _DetailHeader extends StatelessWidget {
               unselectedLabelStyle:
                   GoogleFonts.dmSans(fontSize: 13, fontWeight: FontWeight.w500),
               tabs: const [
-                Tab(text: 'Mensagens'),
                 Tab(text: 'Timeline'),
                 Tab(text: 'Dados'),
               ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ChatTab extends StatelessWidget {
-  final List<ChatMessage> messages;
-  final ScrollController scrollCtrl;
-  final TextEditingController msgCtrl;
-  final VoidCallback onSend;
-
-  const _ChatTab({
-    required this.messages,
-    required this.scrollCtrl,
-    required this.msgCtrl,
-    required this.onSend,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Expanded(
-          child: ListView.separated(
-            controller: scrollCtrl,
-            padding: const EdgeInsets.all(16),
-            itemCount: messages.length,
-            separatorBuilder: (ctx, _) => const SizedBox(height: 8),
-            itemBuilder: (_, i) => _ChatBubble(msg: messages[i]),
-          ),
-        ),
-        Container(
-          padding: const EdgeInsets.fromLTRB(16, 8, 12, 12),
-          decoration: const BoxDecoration(
-            color: cardWhite,
-            border: Border(top: BorderSide(color: dividerColor)),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: msgCtrl,
-                  style:
-                      GoogleFonts.dmSans(fontSize: 14, color: textPrimary),
-                  decoration: InputDecoration(
-                    hintText: 'Mensagem...',
-                    hintStyle:
-                        GoogleFonts.dmSans(fontSize: 14, color: textMuted),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                  ),
-                  onSubmitted: (_) => onSend(),
-                ),
-              ),
-              GestureDetector(
-                onTap: onSend,
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: orange,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.send_rounded,
-                      color: Colors.white, size: 18),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ChatBubble extends StatelessWidget {
-  final ChatMessage msg;
-  const _ChatBubble({required this.msg});
-
-  @override
-  Widget build(BuildContext context) {
-    if (msg.from == 'system') {
-      return Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-          decoration: BoxDecoration(
-            color: dividerColor,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Text(
-            msg.text,
-            style: GoogleFonts.dmSans(fontSize: 11, color: textMuted),
-          ),
-        ),
-      );
-    }
-
-    final isEmployee = msg.from == 'employee';
-    return Align(
-      alignment: isEmployee ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.72,
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: isEmployee ? navyDark : cardWhite,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(14),
-            topRight: const Radius.circular(14),
-            bottomLeft:
-                Radius.circular(isEmployee ? 14 : 4),
-            bottomRight:
-                Radius.circular(isEmployee ? 4 : 14),
-          ),
-          boxShadow: const [cardShadow],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              msg.text,
-              style: GoogleFonts.dmSans(
-                fontSize: 13,
-                color: isEmployee ? Colors.white : textPrimary,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              msg.time,
-              style: GoogleFonts.dmSans(
-                fontSize: 10,
-                color: isEmployee
-                    ? Colors.white.withValues(alpha: 0.5)
-                    : textMuted,
-              ),
             ),
           ],
         ),
