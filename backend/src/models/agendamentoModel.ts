@@ -20,7 +20,7 @@ export class AgendamentoModel {
   /**
    * Verifica sobreposição de horário para o mesmo veículo ou funcionário.
    * Um conflito existe quando o novo intervalo [inicio, fim) se sobrepõe a qualquer
-   * agendamento ativo (PENDENTE ou CONFIRMADO) no mesmo recurso.
+   * agendamento ativo (não cancelado/concluído) no mesmo recurso.
    * Condição de sobreposição: inicio < fim_existente AND fim > inicio_existente
    */
   static async checkConflict(
@@ -33,7 +33,7 @@ export class AgendamentoModel {
     const db = getDb();
 
     const baseCondition = `
-      status IN ('PENDENTE', 'CONFIRMADO')
+      status NOT IN ('CANCELADO', 'CONCLUIDO')
       AND $1 < fim_estimado_em
       AND $2 > agendado_para
       AND id != $3

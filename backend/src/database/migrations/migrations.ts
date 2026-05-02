@@ -79,7 +79,8 @@ export const runMigrations = async () => {
       descricao TEXT,
       preco INTEGER NOT NULL,
       duracao_minutos INTEGER NOT NULL,
-      ativo BOOLEAN DEFAULT true
+      ativo BOOLEAN DEFAULT true,
+      criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
@@ -93,7 +94,8 @@ export const runMigrations = async () => {
       marca VARCHAR,
       valor INTEGER NOT NULL,
       quantidade_estoque INTEGER NOT NULL DEFAULT 0,
-      ativo BOOLEAN DEFAULT true
+      ativo BOOLEAN DEFAULT true,
+      criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
