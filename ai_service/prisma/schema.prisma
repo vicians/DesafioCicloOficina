@@ -3,14 +3,14 @@ datasource db {
 }
 
 generator client {
-  provider = "prisma-client-js" // Corrigido aqui (estava prisma-client-client)
+  provider = "prisma-client-js"
 }
 
 model Customer {
   id             String    @id @default(uuid())
-  whatsappNumber String    @unique // O número que vem do 'message.from'
+  whatsappNumber String    @unique
   name           String?
-  status         String    @default("BOT") // 'BOT' ou 'HUMAN'
+  status         String    @default("BOT")
   chatLogs       ChatLog[]
   createdAt      DateTime  @default(now())
 }
