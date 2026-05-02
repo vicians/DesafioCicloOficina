@@ -7,9 +7,12 @@ import 'data/notification_repository.dart';
 import 'data/notification_mock_repository.dart';
 import 'data/notification_api_repository.dart';
 import 'data/notification_fallback_repository.dart';
+import 'data/scheduling_repository.dart';
+import 'data/scheduling_api_repository.dart';
 import 'screens/budget_list_screen.dart';
 import 'screens/employee_dashboard_screen.dart';
 import 'screens/service_list_screen.dart';
+import 'screens/scheduled_services_screen.dart';
 import 'screens/inventory_screen.dart';
 import 'screens/reports_screen.dart';
 import 'screens/internal_notifications_screen.dart';
@@ -36,6 +39,7 @@ class _InternoAppState extends State<InternoApp> {
   int _currentIndex = 0;
   late final InternalFlowRepository _flowRepository;
   late final NotificationRepository _notificationRepository;
+  late final SchedulingRepository _schedulingRepository;
   List<NotificationItem> _internalNotifications = [];
   int _unreadInternalChatsCount = 0;
 
@@ -50,6 +54,7 @@ class _InternoAppState extends State<InternoApp> {
       ),
       fallback: NotificationMockRepository(),
     );
+    _schedulingRepository = SchedulingApiRepository(baseUrl: _kApiBaseUrl);
     _loadNotifications();
     _configurePushAndDevSeed();
   }
@@ -102,9 +107,10 @@ class _InternoAppState extends State<InternoApp> {
         EmployeeDashboardScreen(
           isManager: true,
           onLogout: _logout,
-          onOpenServices: () => setState(() => _currentIndex = 2),
-          onOpenBudgets: () => setState(() => _currentIndex = 1),
+          onOpenServices: () => setState(() => _currentIndex = 3),
+          onOpenBudgets: () => setState(() => _currentIndex = 2),
         ),
+        ScheduledServicesScreen(repository: _schedulingRepository),
         BudgetListScreen(repository: _flowRepository),
         ServiceListScreen(repository: _flowRepository, initialFilter: null),
         const InventoryScreen(),
@@ -119,9 +125,10 @@ class _InternoAppState extends State<InternoApp> {
       EmployeeDashboardScreen(
         isManager: false,
         onLogout: _logout,
-        onOpenServices: () => setState(() => _currentIndex = 2),
-        onOpenBudgets: () => setState(() => _currentIndex = 1),
+        onOpenServices: () => setState(() => _currentIndex = 3),
+        onOpenBudgets: () => setState(() => _currentIndex = 2),
       ),
+      ScheduledServicesScreen(repository: _schedulingRepository),
       BudgetListScreen(repository: _flowRepository),
       ServiceListScreen(repository: _flowRepository, initialFilter: null),
       InternalMessagesScreen(onUnreadCountChanged: _updateUnreadChatsCount),
@@ -136,6 +143,7 @@ class _InternoAppState extends State<InternoApp> {
     if (widget.isManager) {
       return [
         _NavItem(label: 'Dashboard', icon: Icons.dashboard_rounded),
+        _NavItem(label: 'Agendamentos', icon: Icons.event_note_rounded),
         _NavItem(label: 'Orçamentos', icon: Icons.receipt_long_rounded),
         _NavItem(label: 'Serviços', icon: Icons.build_rounded),
         _NavItem(label: 'Estoque', icon: Icons.inventory_2_rounded),
@@ -149,6 +157,7 @@ class _InternoAppState extends State<InternoApp> {
     }
     return [
       _NavItem(label: 'Dashboard', icon: Icons.dashboard_rounded),
+      _NavItem(label: 'Agendamentos', icon: Icons.event_note_rounded),
       _NavItem(label: 'Orçamentos', icon: Icons.receipt_long_rounded),
       _NavItem(label: 'Serviços', icon: Icons.build_rounded),
       _NavItem(
