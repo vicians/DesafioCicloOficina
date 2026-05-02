@@ -17,6 +17,15 @@ export class AgendamentoModel {
     return result.rows;
   }
 
+  static async clienteVeiculoRelacionados(clienteId: string, veiculoId: string): Promise<boolean> {
+    const db = getDb();
+    const result = await db.query(
+      'SELECT 1 FROM veiculos WHERE id = $1 AND cliente_id = $2 LIMIT 1',
+      [veiculoId, clienteId]
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
   /**
    * Verifica sobreposição de horário para o mesmo veículo ou funcionário.
    * Um conflito existe quando o novo intervalo [inicio, fim) se sobrepõe a qualquer
@@ -59,6 +68,83 @@ export class AgendamentoModel {
       veiculo: (veiculoResult.rowCount ?? 0) > 0,
       funcionario: funcionarioConflict,
     };
+  }
+
+  /**
+   * Regra do fluxo de agendamento do cliente:
+   * o slot fica indisponível quando o número de agendamentos ativos no intervalo
+   * atinge a capacidade da oficina (oficinas.quantidade_boxes).
+   */
+  static async checkWorkshopConflict(
+    inicio: Date,
+    fim: Date,
+    excludeId?: string
+  ): Promise<boolean> {
+    const db = getDb();
+    const excludeParam = excludeId ?? '00000000-0000-0000-0000-000000000000';
+
+    const oficinaResult = await db.query(
+      `SELECT quantidade_boxes FROM oficinas LIMIT 1`
+    );
+    const quantidadeBoxes: number = (oficinaResult.rowCount ?? 0) > 0
+      ? (oficinaResult.rows[0].quantidade_boxes as number)
+      : 1;
+
+    const countResult = await db.query(
+      `SELECT COUNT(*) AS total
+       FROM agendamentos
+       WHERE status IN ('PENDENTE', 'CONFIRMADO')
+         AND $1 < fim_estimado_em
+         AND $2 > agendado_para
+         AND id != $3`,
+      [inicio, fim, excludeParam]
+    );
+
+    const total = parseInt(countResult.rows[0].total as string, 10);
+    return total >= quantidadeBoxes;
+  }
+
+  static async findUnavailableHoursByDate(dataIso: string): Promise<number[]> {
+    const db = getDb();
+
+    const [ano, mes, dia] = dataIso.split('-').map(Number);
+    const inicioDia = new Date(ano, mes - 1, dia, 0, 0, 0, 0);
+    const fimDia = new Date(ano, mes - 1, dia + 1, 0, 0, 0, 0);
+
+    const [agendamentosResult, oficinaResult] = await Promise.all([
+      db.query(
+        `SELECT agendado_para, fim_estimado_em
+         FROM agendamentos
+         WHERE status IN ('PENDENTE', 'CONFIRMADO')
+           AND agendado_para < $2
+           AND fim_estimado_em > $1`,
+        [inicioDia, fimDia]
+      ),
+      db.query(`SELECT quantidade_boxes FROM oficinas LIMIT 1`),
+    ]);
+
+    const quantidadeBoxes: number = (oficinaResult.rowCount ?? 0) > 0
+      ? (oficinaResult.rows[0].quantidade_boxes as number)
+      : 1;
+
+    const indisponiveis = new Set<number>();
+
+    for (let hora = 7; hora <= 18; hora++) {
+      const slotInicio = new Date(ano, mes - 1, dia, hora, 0, 0, 0);
+      const slotFim = new Date(ano, mes - 1, dia, hora + 1, 0, 0, 0);
+
+      const ocupados = agendamentosResult.rows.filter((row) => {
+        const inicio = new Date(row.agendado_para as string | Date);
+        const fim = new Date(row.fim_estimado_em as string | Date);
+        return inicio < slotFim && fim > slotInicio;
+      }).length;
+
+      if (ocupados >= quantidadeBoxes) {
+        indisponiveis.add(hora);
+      }
+    }
+
+    return Array.from(indisponiveis).sort((a, b) => a - b);
   }
 
   static async create(data: CreateAgendamentoDTO): Promise<AgendamentoDTO> {

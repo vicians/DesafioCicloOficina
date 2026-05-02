@@ -18,6 +18,18 @@ export class AgendamentoController {
     return res.json(agendamentos);
   }
 
+  static async disponibilidade(req: Request, res: Response) {
+    const data = String(req.query.data ?? '');
+    const formatoValido = /^\d{4}-\d{2}-\d{2}$/.test(data);
+
+    if (!formatoValido) {
+      return res.status(400).json({ error: 'Query param data é obrigatório no formato YYYY-MM-DD' });
+    }
+
+    const horasIndisponiveis = await AgendamentoModel.findUnavailableHoursByDate(data);
+    return res.json({ data, horas_indisponiveis: horasIndisponiveis });
+  }
+
   static async store(req: Request, res: Response) {
     const { cliente_id, veiculo_id, funcionario_id, agendado_para, duracao_total_minutos, notas_cliente } = req.body;
 
@@ -25,8 +37,32 @@ export class AgendamentoController {
       return res.status(400).json({ error: 'cliente_id, veiculo_id, agendado_para e duracao_total_minutos são obrigatórios' });
     }
 
+    const duracao = Number(duracao_total_minutos);
+    if (!Number.isFinite(duracao) || duracao <= 0) {
+      return res.status(400).json({ error: 'duracao_total_minutos deve ser maior que zero' });
+    }
+
     const inicio = new Date(agendado_para);
-    const fim = new Date(inicio.getTime() + Number(duracao_total_minutos) * 60000);
+    if (Number.isNaN(inicio.getTime())) {
+      return res.status(400).json({ error: 'agendado_para inválido' });
+    }
+
+    const hora = inicio.getHours();
+    if (inicio.getMinutes() !== 0 || inicio.getSeconds() !== 0 || hora < 7 || hora > 18) {
+      return res.status(400).json({ error: 'agendado_para deve ser em hora cheia entre 07:00 e 18:00' });
+    }
+
+    const clienteVeiculoOk = await AgendamentoModel.clienteVeiculoRelacionados(cliente_id, veiculo_id);
+    if (!clienteVeiculoOk) {
+      return res.status(400).json({ error: 'veiculo_id não pertence ao cliente informado' });
+    }
+
+    const fim = new Date(inicio.getTime() + duracao * 60000);
+
+    const conflitoOficina = await AgendamentoModel.checkWorkshopConflict(inicio, fim);
+    if (conflitoOficina) {
+      return res.status(409).json({ error: 'Horário já indisponível para agendamento' });
+    }
 
     const conflito = await AgendamentoModel.checkConflict(veiculo_id, funcionario_id ?? null, inicio, fim);
 
@@ -37,9 +73,23 @@ export class AgendamentoController {
       return res.status(409).json({ error: 'Funcionário já possui agendamento nesse horário' });
     }
 
-    const agendamento = await AgendamentoModel.create({
-      cliente_id, veiculo_id, funcionario_id, agendado_para, duracao_total_minutos, notas_cliente,
-    });
+    let agendamento;
+    try {
+      agendamento = await AgendamentoModel.create({
+        cliente_id,
+        veiculo_id,
+        funcionario_id,
+        agendado_para,
+        duracao_total_minutos: duracao,
+        notas_cliente,
+      });
+    } catch (error: unknown) {
+      const dbError = error as { code?: string; constraint?: string };
+      if (dbError.code === '23505' && dbError.constraint === 'ux_agendamentos_slot_ativo') {
+        return res.status(409).json({ error: 'Horário já indisponível para agendamento' });
+      }
+      throw error;
+    }
 
     try {
       const internalUserIds = await NotificationModel.findInternalUserIds();

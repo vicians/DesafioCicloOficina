@@ -55,6 +55,28 @@ agendamentoRouter.post('/', AgendamentoController.store);
 
 /**
  * @openapi
+ * /agendamentos/disponibilidade:
+ *   get:
+ *     tags:
+ *       - Agendamentos
+ *     summary: Consulta horários indisponíveis por data
+ *     description: Retorna os horários ocupados no dia para o fluxo de agendamento do cliente.
+ *     parameters:
+ *       - in: query
+ *         name: data
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Data no formato YYYY-MM-DD
+ *     responses:
+ *       200:
+ *         description: Sucesso
+ */
+agendamentoRouter.get('/disponibilidade', AgendamentoController.disponibilidade);
+
+/**
+ * @openapi
  * /agendamentos/cliente/{clienteId}:
  *   get:
  *     tags:
