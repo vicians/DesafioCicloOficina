@@ -76,3 +76,4 @@ logs/
 # Google Antigravity (IA Agent Artifacts)
 # ----------------------------------------------------------------ILH
 .agent/
+node_modules
