@@ -5,7 +5,12 @@ import '../theme/colors.dart';
 /// Botão flutuante de acesso rápido (Speed Dial).
 /// Expande para revelar "Agendar serviço" e "Falar com suporte".
 class QuickActionFab extends StatefulWidget {
-  const QuickActionFab({super.key});
+  final Future<void> Function()? onScheduleTap;
+
+  const QuickActionFab({
+    super.key,
+    this.onScheduleTap,
+  });
 
   @override
   State<QuickActionFab> createState() => _QuickActionFabState();
@@ -60,7 +65,6 @@ class _QuickActionFabState extends State<QuickActionFab>
   }
 
   void _triggerAction(BuildContext context, String message) {
-    _toggle();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -73,6 +77,17 @@ class _QuickActionFabState extends State<QuickActionFab>
         duration: const Duration(seconds: 2),
       ),
     );
+  }
+
+  Future<void> _handleScheduleAction(BuildContext context) async {
+    _toggle();
+
+    if (widget.onScheduleTap == null) {
+      _triggerAction(context, 'Agendamento em breve disponível');
+      return;
+    }
+
+    await widget.onScheduleTap!.call();
   }
 
   @override
@@ -95,20 +110,17 @@ class _QuickActionFabState extends State<QuickActionFab>
                     key: const Key('fab_schedule'),
                     icon: Icons.calendar_month_rounded,
                     label: 'Agendar serviço',
-                    onTap: () => _triggerAction(
-                      context,
-                      'Agendamento em breve disponível',
-                    ),
+                    onTap: () => _handleScheduleAction(context),
                   ),
                   const SizedBox(height: 10),
                   _SubAction(
                     key: const Key('fab_support'),
                     icon: Icons.chat_bubble_outline_rounded,
                     label: 'Falar com suporte',
-                    onTap: () => _triggerAction(
-                      context,
-                      'Suporte em breve disponível',
-                    ),
+                    onTap: () {
+                      _toggle();
+                      _triggerAction(context, 'Suporte em breve disponível');
+                    },
                   ),
                   const SizedBox(height: 14),
                 ],

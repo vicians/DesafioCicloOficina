@@ -9,10 +9,12 @@ import 'data/client_notification_api_repository.dart';
 import 'data/client_notification_fallback_repository.dart';
 import 'data/client_notification_mock_repository.dart';
 import 'data/client_notification_repository.dart';
+import 'data/client_schedule_api_repository.dart';
 import 'screens/home_screen.dart';
 import 'screens/budget_approval_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/notifications_screen.dart';
+import 'screens/schedule_service_sheet.dart';
 
 const _kApiBaseUrl = 'http://10.0.2.2:3000'; // Android emulator → localhost
 const _kEnableDevClientSeedOnStartup = true;
@@ -27,6 +29,7 @@ class ClienteApp extends StatefulWidget {
 class _ClienteAppState extends State<ClienteApp> {
   int _currentIndex = 0;
   late final ClientNotificationRepository _notificationRepository;
+  late final ClientScheduleApiRepository _scheduleRepository;
   List<NotificationItem> _clientNotifications = [];
 
   @override
@@ -36,8 +39,16 @@ class _ClienteAppState extends State<ClienteApp> {
       primary: ClientNotificationApiRepository(baseUrl: _kApiBaseUrl),
       fallback: ClientNotificationMockRepository(),
     );
+    _scheduleRepository = ClientScheduleApiRepository(baseUrl: _kApiBaseUrl);
     _loadNotifications();
     _configureClientPushAndDevSeed();
+  }
+
+  Future<void> _openScheduleFlow() async {
+    await showClientScheduleSheet(
+      context,
+      repository: _scheduleRepository,
+    );
   }
 
   Future<void> _loadNotifications() async {
@@ -90,7 +101,7 @@ class _ClienteAppState extends State<ClienteApp> {
         children: _screens,
       ),
       floatingActionButton: _currentIndex == 0
-          ? const QuickActionFab()
+          ? QuickActionFab(onScheduleTap: _openScheduleFlow)
           : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: _ClienteNavBar(
