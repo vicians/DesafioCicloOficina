@@ -12,13 +12,13 @@ import { upsertProduto, queryProdutos, ProdutoPayload } from './vectorstore/prod
 dotenv.config();
 
 const app = express();
-
 app.use(cors());
 app.use(express.json());
 
 const PORT = process.env.PORT || 3001;
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
 
+// Inicialização do Modelo
 const model = new ChatOpenAI({
   apiKey: process.env.NVIDIA_API_KEY,
   configuration: {
@@ -26,29 +26,25 @@ const model = new ChatOpenAI({
   },
   modelName: process.env.AI_MODEL,
   temperature: 0.3,
-});
-
-app.get('/health', (_req: Request, res: Response) => {
-  res.json({
-    status: 'ok',
-    service: 'CicloOficina AI Service',
-    model: process.env.AI_MODEL,
-  });
+  maxRetries: 1, // Tenta apenas uma vez para não travar o webhook
+}).withConfig({
+  runName: "Pistao_Analyze",
+  timeout: 15000, // 15 segundos de limite
 });
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
-/**
- * Chamado pelo backend sempre que um produto é criado ou atualizado.
- */
+// ── Rota de Health Check ─────────────────────────────────────────────────────
+app.get('/health', (_req: Request, res: Response) => {
+  res.json({ status: 'ok', service: 'CicloOficina AI Service' });
+});
+
+// ── Rota de Sync de Produtos ─────────────────────────────────────────────────
 app.post('/ai/produtos/sync', async (req: Request, res: Response) => {
   const produto = req.body as Partial<ProdutoPayload>;
-
-  if (!produto.id || !produto.nome) {
-    return res.status(400).json({ error: 'id e nome são obrigatórios' });
-  }
+  if (!produto.id || !produto.nome) return res.status(400).json({ error: 'id e nome obrigatórios' });
 
   await upsertProduto({
     id: produto.id,
@@ -58,278 +54,136 @@ app.post('/ai/produtos/sync', async (req: Request, res: Response) => {
     marca: produto.marca,
   });
 
-  return res.json({
-    ok: true,
-    message: `Produto "${produto.nome}" indexado no Vector DB`,
-  });
+  return res.json({ ok: true, message: `Produto "${produto.nome}" indexado.` });
 });
 
-// ── Análise de mensagem com contexto RAG ──────────────────────────────────────
-
+// ── Rota Principal: Análise da Mensagem (O Coração do Pistão) ────────────────
 app.post('/ai/analyze', async (req: Request, res: Response) => {
   const { message, number } = req.body;
 
-  if (!message || !number) {
-    return res.status(400).json({ error: 'Mensagem e número são obrigatórios.' });
-  }
+  console.log(`\n[AI Service] 📩 Requisição recebida de: ${number}`);
+  console.log(`[AI Service] 💬 Mensagem: "${message}"`);
+
+  if (!message || !number) return res.status(400).json({ error: 'Dados ausentes.' });
 
   try {
-    let customer = await prisma.customer.findUnique({
-      where: { whatsappNumber: number },
-    });
+    console.log(`[AI Service] 🔍 Verificando status do cliente no banco...`);
+    let customer = await prisma.customer.findUnique({ where: { whatsappNumber: number } });
 
     if (customer?.status === 'HUMAN') {
-      return res.json({
-        result: null,
-        action: 'MANUAL_WAIT',
-        info: 'O atendimento está sendo realizado por um humano.',
-      });
+      console.log(`[AI Service] 👤 Atendimento Humano. Abortando.`);
+      return res.json({ result: null, action: 'MANUAL_WAIT' });
     }
 
+    console.log(`[AI Service] 📚 Consultando base de produtos (RAG)...`);
     const ragDocs = await queryProdutos(message);
-    const contextBlock =
-      ragDocs.length > 0
-        ? `\n\nProdutos e preços disponíveis na oficina:\n${ragDocs.map((d) => `- ${d}`).join('\n')}`
-        : '';
+    const contextBlock = ragDocs.length > 0
+      ? `\n\nProdutos na oficina:\n${ragDocs.map((d) => `- ${d}`).join('\n')}`
+      : '';
 
+    console.log(`[AI Service] 🤖 Chamando NVIDIA NIM...`);
     const response = await model.invoke([
-      [
-        'system',
-        `És o assistente virtual da CicloOficina. O teu objetivo é:
-1. Identificar se o cliente precisa de Borracharia ou Oficina Mecânica com base no texto.
-2. Informar preços de produtos quando solicitado.
-3. Quando o cliente confirmar que deseja agendar um serviço, extrair as informações do veículo (placa, descrição do problema) e responder em formato JSON com a seguinte estrutura EXATA (sem texto adicional):
-{"action":"CREATE_OS","customerName":"<nome do cliente ou Cliente>","vehiclePlate":"<placa ou null>","description":"<descrição do problema>","serviceType":"<tipo de serviço>"}
-
-Só use o formato JSON acima quando o cliente confirmar explicitamente que quer agendar. Em todos os outros casos, responda normalmente em texto.${contextBlock}`,
-      ],
+      ['system', `És o assistente virtual da CicloOficina. Objetivo: 1. Identificar Borracharia ou Mecânica. 2. Informar preços. 3. Para agendamentos, responder EXATAMENTE: {"action":"CREATE_OS","customerName":"<nome>","vehiclePlate":"<placa>","description":"<problema>","serviceType":"<serviço>"}${contextBlock}`],
       ['user', message],
     ]);
 
     const content = String(response.content).trim();
+    console.log(`[AI Service] ✨ IA Respondeu.`);
 
-    // Tenta parsear se a IA retornou um CREATE_OS
     try {
       const parsed = JSON.parse(content);
       if (parsed.action === 'CREATE_OS') {
+        console.log(`[AI Service] 🛠️ Ação: Criar Ordem de Serviço.`);
         return res.json({
-          result: 'Demanda identificada. Criando ordem de serviço...',
+          result: 'Identifiquei que você precisa de um agendamento. Gerando OS...',
           action: 'CREATE_OS',
-          demand: {
-            number,
-            customerName: parsed.customerName,
-            vehiclePlate: parsed.vehiclePlate,
-            description: parsed.description,
-            serviceType: parsed.serviceType,
-          },
+          demand: { number, ...parsed },
         });
       }
-    } catch {
-      // Não é JSON — resposta textual normal
-    }
+    } catch { /* Não é JSON */ }
 
     return res.json({ result: content, action: 'REPLY' });
-  } catch (error) {
-    console.error('Erro no fluxo do ai_service:', error);
-    return res.status(500).json({ error: 'Erro ao processar consulta.' });
+  } catch (error: any) {
+    console.error('[AI Service] ❌ Erro:', error.message);
+    return res.status(500).json({ error: 'Erro interno.' });
   }
 });
 
-// ── Sub-Agent: Criação de OS ──────────────────────────────────────────────────
-
-interface CreateOsBody {
-  number: string;
-  customerName?: string;
-  vehiclePlate?: string;
-  description: string;
-  serviceType?: string;
-}
-
-/**
- * Sub-agent responsável por:
- * 1. Localizar ou criar o cliente pelo número WhatsApp
- * 2. Localizar ou criar o veículo pela placa
- * 3. Atribuir um mecânico disponível
- * 4. Criar o agendamento (próximo dia útil às 09h)
- * 5. Criar o orçamento (rascunho) vinculado ao agendamento
- * 6. Gerar um magic link de acesso ao app para o cliente
- */
+// ── Rota de Criação de OS (Sub-Agente) ───────────────────────────────────────
 app.post('/ai/create-os', async (req: Request, res: Response) => {
-  const body = req.body as CreateOsBody;
-  const { number, customerName, vehiclePlate, description, serviceType } = body;
+  const { number, customerName, vehiclePlate, description, serviceType } = req.body;
+  console.log(`[OS] 📝 Iniciando processo de criação para: ${number}`);
 
-  if (!number || !description) {
-    return res.status(400).json({ error: 'number e description são obrigatórios' });
+  if (!number || !description || !vehiclePlate) {
+    return res.status(400).json({ error: 'Dados insuficientes para criar OS (falta placa ou descrição).' });
   }
 
-  // ── 1. Localizar ou criar cliente ─────────────────────────────────────────
-  let clienteId: string;
-  let clienteTelefone: string = number;
-
   try {
-    const usuariosRes = await axios.get(`${BACKEND_URL}/usuarios`, {
-      params: { tipo_id: 2 },
-    });
-    const todos: any[] = usuariosRes.data ?? [];
-    const found = todos.find((u: any) => u.telefone === number);
+    // 1. Cliente
+    let clienteId: string;
+    const usuariosRes = await axios.get(`${BACKEND_URL}/usuarios`, { params: { tipo_id: 2 } });
+    const found = (usuariosRes.data ?? []).find((u: any) => u.telefone === number);
 
     if (found) {
       clienteId = found.id;
-      console.log(`[OS] Cliente encontrado: ${found.nome} (${clienteId})`);
     } else {
-      // Cria novo cliente whatsapp — cpf_cnpj usa o número como identificador único
-      const novoCliente = await axios.post(`${BACKEND_URL}/usuarios`, {
+      const novo = await axios.post(`${BACKEND_URL}/usuarios`, {
         tipo_id: 2,
         cpf_cnpj: number.replace(/\D/g, '').slice(0, 20),
         nome: customerName ?? `Cliente WhatsApp ${number}`,
         telefone: number,
       });
-      clienteId = novoCliente.data.id;
-      console.log(`[OS] Novo cliente criado: ${clienteId}`);
+      clienteId = novo.data.id;
     }
-  } catch (err: any) {
-    console.error('[OS] Erro ao buscar/criar cliente:', err.response?.data ?? err.message);
-    return res.status(502).json({ error: 'Erro ao localizar cliente no sistema' });
-  }
 
-  // ── 2. Localizar ou criar veículo ─────────────────────────────────────────
-  let veiculoId: string;
-
-  if (!vehiclePlate) {
-    return res.status(400).json({
-      error: 'Placa do veículo é obrigatória para criar a OS. Por favor, informe a placa.',
-    });
-  }
-
-  try {
+    // 2. Veículo
     const veiculosRes = await axios.get(`${BACKEND_URL}/veiculos`);
-    const veiculos: any[] = veiculosRes.data ?? [];
-    const veiculoFound = veiculos.find(
-      (v: any) => v.placa.toUpperCase() === vehiclePlate.toUpperCase()
-    );
-
-    if (veiculoFound) {
-      veiculoId = veiculoFound.id;
-      console.log(`[OS] Veículo encontrado: ${vehiclePlate} (${veiculoId})`);
-    } else {
-      const novoVeiculo = await axios.post(`${BACKEND_URL}/veiculos`, {
-        cliente_id: clienteId,
-        placa: vehiclePlate.toUpperCase(),
-        marca: 'Não informado',
-        modelo: 'Não informado',
-        ano: new Date().getFullYear(),
-        quilometragem_atual: 0,
-      });
-      veiculoId = novoVeiculo.data.id;
-      console.log(`[OS] Novo veículo criado: ${vehiclePlate} (${veiculoId})`);
-    }
-  } catch (err: any) {
-    console.error('[OS] Erro ao buscar/criar veículo:', err.response?.data ?? err.message);
-    return res.status(502).json({ error: 'Erro ao localizar veículo no sistema' });
-  }
-
-  // ── 3. Selecionar mecânico disponível ─────────────────────────────────────
-  let mecanicoId: string | null = null;
-  let mecanicoNome: string = 'A definir';
-
-  try {
-    const mecanicosRes = await axios.get(`${BACKEND_URL}/usuarios`, {
-      params: { tipo_id: 3 },
-    });
-    const mecanicos: any[] = mecanicosRes.data ?? [];
-    if (mecanicos.length > 0) {
-      mecanicoId = mecanicos[0].id;
-      mecanicoNome = mecanicos[0].nome;
-      console.log(`[OS] Mecânico atribuído: ${mecanicoNome} (${mecanicoId})`);
-    } else {
-      console.warn('[OS] Nenhum mecânico disponível — OS criada sem atribuição');
-    }
-  } catch (err: any) {
-    console.warn('[OS] Aviso: não foi possível buscar mecânicos:', err.message);
-  }
-
-  // ── 4. Criar agendamento (próximo dia útil às 09:00) ─────────────────────
-  let agendamentoId: string;
-
-  const agendadoPara = nextBusinessDay9am();
-
-  try {
-    const agendRes = await axios.post(`${BACKEND_URL}/agendamentos`, {
+    const vFound = (veiculosRes.data ?? []).find((v: any) => v.placa.toUpperCase() === vehiclePlate.toUpperCase());
+    const veiculoId = vFound ? vFound.id : (await axios.post(`${BACKEND_URL}/veiculos`, {
       cliente_id: clienteId,
-      veiculo_id: veiculoId,
-      funcionario_id: mecanicoId,
-      agendado_para: agendadoPara.toISOString(),
-      duracao_total_minutos: 60,
+      placa: vehiclePlate.toUpperCase(),
+      marca: 'Não informado', modelo: 'Não informado', ano: new Date().getFullYear(), quilometragem_atual: 0
+    })).data.id;
+
+    // 3. Mecânico, Agendamento, Orçamento e Magic Link
+    const mecanicos = (await axios.get(`${BACKEND_URL}/usuarios`, { params: { tipo_id: 3 } })).data ?? [];
+    const mecanicoId = mecanicos.length > 0 ? mecanicos[0].id : null;
+    const agendadoPara = nextBusinessDay9am();
+
+    const agendRes = await axios.post(`${BACKEND_URL}/agendamentos`, {
+      cliente_id: clienteId, veiculo_id: veiculoId, funcionario_id: mecanicoId,
+      agendado_para: agendadoPara.toISOString(), duracao_total_minutos: 60,
       notas_cliente: `[WhatsApp] ${serviceType ?? ''} — ${description}`.trim(),
     });
-    agendamentoId = agendRes.data.id;
-    console.log(`[OS] Agendamento criado: ${agendamentoId}`);
-  } catch (err: any) {
-    console.error('[OS] Erro ao criar agendamento:', err.response?.data ?? err.message);
-    return res.status(502).json({ error: 'Erro ao criar agendamento no sistema' });
-  }
 
-  // ── 5. Criar orçamento (rascunho) ─────────────────────────────────────────
-  let orcamentoId: string;
+    await axios.post(`${BACKEND_URL}/orcamentos`, { agendamento_id: agendRes.data.id, cliente_id: clienteId, funcionario_id: mecanicoId });
+    const mlRes = await axios.post(`${BACKEND_URL}/auth/magic-link`, { telefone: number });
 
-  try {
-    const orcRes = await axios.post(`${BACKEND_URL}/orcamentos`, {
-      agendamento_id: agendamentoId,
-      cliente_id: clienteId,
-      funcionario_id: mecanicoId,
+    console.log(`[OS] ✅ Sucesso! Link: ${mlRes.data.url}`);
+    return res.status(201).json({
+      ok: true,
+      magic_link_url: mlRes.data.url,
+      message: `OS criada com sucesso! Acesse pelo link: ${mlRes.data.url}`
     });
-    orcamentoId = orcRes.data.id;
-    console.log(`[OS] Orçamento criado: ${orcamentoId}`);
+
   } catch (err: any) {
-    console.error('[OS] Erro ao criar orçamento:', err.response?.data ?? err.message);
-    return res.status(502).json({ error: 'Erro ao criar orçamento no sistema' });
+    console.error('[OS] ❌ Erro ao criar OS:', err.message);
+    return res.status(502).json({ error: 'Falha na integração com o backend.' });
   }
-
-  // ── 6. Gerar magic link para o cliente ────────────────────────────────────
-  let magicLinkUrl: string | null = null;
-
-  try {
-    const mlRes = await axios.post(`${BACKEND_URL}/auth/magic-link`, {
-      telefone: clienteTelefone,
-    });
-    magicLinkUrl = mlRes.data.url;
-    console.log(`[OS] Magic link gerado: ${magicLinkUrl}`);
-  } catch (err: any) {
-    console.warn('[OS] Aviso: não foi possível gerar magic link:', err.response?.data ?? err.message);
-  }
-
-  return res.status(201).json({
-    ok: true,
-    agendamento_id: agendamentoId,
-    orcamento_id: orcamentoId,
-    mechanic: { id: mecanicoId, nome: mecanicoNome },
-    agendado_para: agendadoPara.toISOString(),
-    magic_link_url: magicLinkUrl,
-    message: magicLinkUrl
-      ? `OS criada com sucesso! Acesse o app pelo link: ${magicLinkUrl}`
-      : 'OS criada com sucesso! Entre em contato para obter acesso ao app.',
-  });
 });
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
+// ── Helpers & Error Handler ──────────────────────────────────────────────────
 function nextBusinessDay9am(): Date {
   const d = new Date();
   d.setDate(d.getDate() + 1);
-  while (d.getDay() === 0 || d.getDay() === 6) {
-    d.setDate(d.getDate() + 1);
-  }
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
   d.setHours(9, 0, 0, 0);
   return d;
 }
 
-// ── Error handler ─────────────────────────────────────────────────────────────
-
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('AI_SERVICE_ERROR:', err.message);
-  res.status(500).json({ error: 'Erro interno no processamento de IA.' });
+  console.error('SERVER_ERROR:', err.message);
+  res.status(500).json({ error: 'Erro interno.' });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 AI Service da CicloOficina online na porta ${PORT}`);
-});
+app.listen(PORT, () => console.log(`🚀 AI Service online na porta ${PORT}`));
