@@ -176,4 +176,3 @@ export class OrcamentoModel {
     return result.rows[0] ?? null;
   }
 }
-

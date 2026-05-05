@@ -12,6 +12,23 @@ class SchedulingApiRepository implements SchedulingRepository {
     http.Client? client,
   }) : _client = client ?? http.Client();
 
+  String _normalizeStatus(String rawStatus) {
+    switch (rawStatus.toUpperCase()) {
+      case 'PENDENTE':
+        return 'PENDENTE';
+      case 'CONFIRMADO':
+        return 'CONFIRMADO';
+      case 'CANCELADO':
+        return 'CANCELADO';
+      // Em cenários legados o backend pode retornar ANDAMENTO para agendamento.
+      // Para a UI de agenda, tratamos como confirmado para simplificar os filtros.
+      case 'ANDAMENTO':
+        return 'CONFIRMADO';
+      default:
+        return 'PENDENTE';
+    }
+  }
+
   @override
   Future<List<ScheduledServiceItem>> fetchScheduledServices() async {
     final [agendamentosResp, veiculosResp] = await Future.wait([
@@ -61,7 +78,7 @@ class SchedulingApiRepository implements SchedulingRepository {
         placa: (veiculo?['placa'] as String?) ?? 'Sem placa',
         agendadoPara: agendadoPara ?? DateTime.now(),
         duracaoMinutos: (map['duracao_total_minutos'] as num?)?.toInt() ?? 0,
-        status: (map['status'] as String? ?? 'PENDENTE').toUpperCase(),
+        status: _normalizeStatus(map['status'] as String? ?? 'PENDENTE'),
         notasCliente: map['notas_cliente'] as String?,
       );
     }).toList();
