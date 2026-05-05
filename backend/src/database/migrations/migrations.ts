@@ -263,6 +263,10 @@ export const runMigrations = async () => {
     )
   `);
 
+  await db.query(`ALTER TABLE produtos ADD COLUMN IF NOT EXISTS categoria VARCHAR`);
+  await db.query(`ALTER TABLE produtos ADD COLUMN IF NOT EXISTS min_estoque INTEGER DEFAULT 10`);
+  await db.query(`ALTER TABLE produtos ADD COLUMN IF NOT EXISTS unidade VARCHAR DEFAULT 'unid.'`);
+
   console.log('Migrations concluídas com sucesso!');
 };
 
