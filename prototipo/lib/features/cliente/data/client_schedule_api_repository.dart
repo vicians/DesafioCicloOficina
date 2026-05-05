@@ -26,12 +26,14 @@ class ClientScheduleContext {
 
 class ClientScheduleApiRepository {
   final String baseUrl;
+  final String clientId;
   final int userTypeId;
   final http.Client _client;
   ClientScheduleContext? _resolvedContext;
 
   ClientScheduleApiRepository({
     required this.baseUrl,
+    required this.clientId,
     this.userTypeId = 2,
     http.Client? client,
   }) : _client = client ?? http.Client();
@@ -41,30 +43,21 @@ class ClientScheduleApiRepository {
       return _resolvedContext!;
     }
 
-    final usuarioUri = Uri.parse('$baseUrl/usuarios').replace(
-      queryParameters: {'tipo_id': userTypeId.toString()},
-    );
-    final usuarioResponse = await _client.get(usuarioUri);
+    final usuarioResponse = await _client.get(Uri.parse('$baseUrl/usuarios/$clientId'));
 
     if (usuarioResponse.statusCode != 200) {
-      throw Exception('Falha ao carregar dados do cliente.');
+      throw Exception('Falha ao carregar dados do seu perfil.');
     }
 
-    final usuarios = jsonDecode(usuarioResponse.body) as List<dynamic>;
-    if (usuarios.isEmpty) {
-      throw Exception('Nenhum cliente disponível para agendamento.');
-    }
-
-    final usuario = usuarios.first as Map<String, dynamic>;
-    final clienteId = usuario['id'] as String?;
+    final usuario = jsonDecode(usuarioResponse.body) as Map<String, dynamic>;
     final clienteNome = usuario['nome'] as String?;
 
-    if (clienteId == null || clienteId.isEmpty) {
+    if (clientId == null || clientId.isEmpty) {
       throw Exception('Cliente inválido para criar agendamento.');
     }
 
     final veiculoResponse = await _client.get(
-      Uri.parse('$baseUrl/veiculos/cliente/$clienteId'),
+      Uri.parse('$baseUrl/veiculos/cliente/$clientId'),
     );
 
     if (veiculoResponse.statusCode != 200) {
@@ -103,7 +96,7 @@ class ClientScheduleApiRepository {
     }
 
     _resolvedContext = ClientScheduleContext(
-      clienteId: clienteId,
+      clienteId: clientId,
       clienteNome: (clienteNome == null || clienteNome.isEmpty)
           ? 'Cliente'
           : clienteNome,

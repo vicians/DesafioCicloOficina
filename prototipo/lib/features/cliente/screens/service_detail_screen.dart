@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/widgets/status_badge.dart';
-import '../../../data/mock_data.dart';
+import '../data/models/client_models.dart';
 
 class ServiceDetailScreen extends StatefulWidget {
-  const ServiceDetailScreen({super.key});
+  final ServiceModel service;
+  const ServiceDetailScreen({super.key, required this.service});
 
   @override
   State<ServiceDetailScreen> createState() => _ServiceDetailScreenState();
@@ -30,7 +31,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen>
 
   @override
   Widget build(BuildContext context) {
-    final svc = currentService;
+    final svc = widget.service;
     return Scaffold(
       backgroundColor: bgPage,
       body: Column(

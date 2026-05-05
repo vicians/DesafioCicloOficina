@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import crypto from 'crypto';
 import { getDb } from '../config/database';
 import { JWTUtils } from '../utils/JWTUtils';
+import { PasswordUtils } from '../utils/passwordUtils';
 
 const TOKEN_TTL_HOURS = 24;
 
@@ -83,4 +84,47 @@ export const validateMagicLink = async (req: Request, res: Response) => {
   });
 
   return res.json({ token: jwt, usuario: { id: link.usuario_id, nome: link.nome } });
+};
+
+export const login = async (req: Request, res: Response) => {
+  const { email, senha } = req.body;
+
+  if (!email || !senha) {
+    return res.status(400).json({ error: 'E-mail e senha são obrigatórios' });
+  }
+
+  const db = getDb();
+
+  const userResult = await db.query(
+    'SELECT id, nome, email, senha_hash, tipo_id FROM usuarios WHERE email = $1',
+    [email]
+  );
+
+  if (userResult.rowCount === 0) {
+    return res.status(401).json({ error: 'E-mail ou senha inválidos' });
+  }
+
+  const user = userResult.rows[0];
+
+  const isPasswordValid = await PasswordUtils.compare(senha, user.senha_hash);
+
+  if (!isPasswordValid) {
+    return res.status(401).json({ error: 'E-mail ou senha inválidos' });
+  }
+
+  const jwt = JWTUtils.generateToken({
+    id: user.id,
+    email: user.email,
+    role: String(user.tipo_id),
+  });
+
+  return res.json({
+    token: jwt,
+    usuario: {
+      id: user.id,
+      nome: user.nome,
+      email: user.email,
+      tipo_id: user.tipo_id,
+    },
+  });
 };

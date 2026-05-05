@@ -5,9 +5,11 @@ import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_progress_bar.dart';
 import '../../../core/widgets/status_badge.dart';
-import '../../../data/mock_data.dart';
+import '../data/models/internal_service.dart';
+import '../data/internal_flow_repository.dart';
 
 class EmployeeDashboardScreen extends StatefulWidget {
+  final InternalFlowRepository repository;
   final bool isManager;
   final VoidCallback onLogout;
   final VoidCallback? onOpenServices;
@@ -15,6 +17,7 @@ class EmployeeDashboardScreen extends StatefulWidget {
 
   const EmployeeDashboardScreen({
     super.key,
+    required this.repository,
     required this.isManager,
     required this.onLogout,
     this.onOpenServices,
@@ -28,114 +31,156 @@ class EmployeeDashboardScreen extends StatefulWidget {
 
 class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
   bool _showLogoutSheet = false;
+  late Future<List<InternalService>> _servicesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _servicesFuture = widget.repository.fetchServicos();
+    widget.repository.addListener(_reload);
+  }
+
+  @override
+  void dispose() {
+    widget.repository.removeListener(_reload);
+    super.dispose();
+  }
+
+  void _reload() {
+    if (!mounted) return;
+    setState(() {
+      _servicesFuture = widget.repository.fetchServicos();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
-    
-    // Filtros baseados no status do banco de dados (schema)
-    final activeExecutions = internalServices
-        .where((s) =>
-            s.status == 'andamento' ||
-            s.status == 'revisao' ||
-            s.status == 'aguardando_retirada')
-        .toList();
-    
-    final openAppointments =
-        internalServices.where((s) => s.status == 'aguardando').toList();
+    return FutureBuilder<List<InternalService>>(
+      future: _servicesFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation(orange)),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Text(
+              'Erro ao carregar dados do painel.',
+              style: GoogleFonts.dmSans(color: textSecondary),
+            ),
+          );
+        }
+
+        final internalServices = snapshot.data ?? [];
+        final now = DateTime.now();
         
-    final pendingBudgets =
-        internalServices.where((s) => s.status == 'orcamento').toList();
+        // Filtros baseados no status do banco de dados (schema)
+        final activeExecutions = internalServices
+            .where((s) =>
+                s.status == 'em_execucao' ||
+                s.status == 'revisao_tecnica' ||
+                s.status == 'aguardando_retirada')
+            .toList();
+        
+        final openAppointments =
+            internalServices.where((s) => s.status == 'pendente').toList();
+            
+        final pendingBudgets =
+            internalServices.where((s) => s.status == 'enviado').toList();
 
-    // Faturamento previsto: soma de serviços ativos + orçamentos pendentes
-    final predictedRevenue = internalServices
-        .where((s) => s.status != 'concluido' && s.status != 'cancelado')
-        .fold<double>(0, (sum, item) => sum + item.value);
+        // Faturamento previsto: soma de serviços ativos + orçamentos pendentes
+        final predictedRevenue = internalServices
+            .where((s) => s.status != 'concluido' && s.status != 'cancelado')
+            .fold<double>(0, (sum, item) => sum + item.value);
 
-    // Lógica simples de atraso: aberto há mais de 2 dias e não concluído
-    final delayedServices = internalServices.where((s) {
-      if (s.status == 'concluido' || s.status == 'cancelado') return false;
-      try {
-        final parts = s.openedAt.split('/');
-        final openedDate = DateTime(
-          int.parse(parts[2]),
-          int.parse(parts[1]),
-          int.parse(parts[0]),
-        );
-        return now.difference(openedDate).inDays > 2;
-      } catch (_) {
-        return false;
-      }
-    }).toList();
+        // Lógica simples de atraso: aberto há mais de 2 dias e não concluído
+        final delayedServices = internalServices.where((s) {
+          if (s.status == 'concluido' || s.status == 'cancelado') return false;
+          try {
+            final parts = s.openedAt.split('/');
+            final openedDate = DateTime(
+              int.parse(parts[2]),
+              int.parse(parts[1]),
+              int.parse(parts[0]),
+            );
+            return now.difference(openedDate).inDays > 2;
+          } catch (_) {
+            return false;
+          }
+        }).toList();
 
-    return Stack(
-      children: [
-        SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _DashboardHeader(
-                isManager: widget.isManager,
-                activeExecutions: activeExecutions.length,
-                openAppointments: openAppointments.length,
-                pendingBudgets: pendingBudgets.length,
-                predictedRevenue: predictedRevenue,
-                onLogoutTap: () => setState(() => _showLogoutSheet = true),
+        return Stack(
+          children: [
+            SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _DashboardHeader(
+                    isManager: widget.isManager,
+                    activeExecutions: activeExecutions.length,
+                    openAppointments: openAppointments.length,
+                    pendingBudgets: pendingBudgets.length,
+                    predictedRevenue: predictedRevenue,
+                    onLogoutTap: () => setState(() => _showLogoutSheet = true),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _AlertBanner(
+                          delayedCount: delayedServices.length,
+                          pendingBudgets: pendingBudgets,
+                          onOpenBudgets: widget.onOpenBudgets,
+                          onOpenServices: widget.onOpenServices,
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          'Atendimentos ativos',
+                          style: GoogleFonts.dmSans(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        ...internalServices
+                            .where((s) =>
+                                s.status != 'concluido' &&
+                                s.status != 'cancelado')
+                            .map((svc) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: _ServiceCard(
+                                    svc: svc,
+                                    onTap: widget.onOpenServices,
+                                  ),
+                                )),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _AlertBanner(
-                      delayedCount: delayedServices.length,
-                      pendingBudgets: pendingBudgets,
-                      onOpenBudgets: widget.onOpenBudgets,
-                      onOpenServices: widget.onOpenServices,
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      'Atendimentos ativos',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    ...internalServices
-                        .where((s) =>
-                            s.status != 'concluido' &&
-                            s.status != 'cancelado')
-                        .map((svc) => Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: _ServiceCard(
-                                svc: svc,
-                                onTap: widget.onOpenServices,
-                              ),
-                            )),
-                  ],
+            ),
+            if (_showLogoutSheet) ...[
+              GestureDetector(
+                onTap: () => setState(() => _showLogoutSheet = false),
+                child: Container(color: Colors.black.withValues(alpha: 0.5)),
+              ),
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: _LogoutSheet(
+                  onConfirm: widget.onLogout,
+                  onCancel: () => setState(() => _showLogoutSheet = false),
                 ),
               ),
             ],
-          ),
-        ),
-        if (_showLogoutSheet) ...[
-          GestureDetector(
-            onTap: () => setState(() => _showLogoutSheet = false),
-            child: Container(color: Colors.black.withValues(alpha: 0.5)),
-          ),
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: _LogoutSheet(
-              onConfirm: widget.onLogout,
-              onCancel: () => setState(() => _showLogoutSheet = false),
-            ),
-          ),
-        ],
-      ],
+          ],
+        );
+      },
     );
   }
 }

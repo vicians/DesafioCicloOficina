@@ -4,10 +4,30 @@ import '../../../core/theme/colors.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_progress_bar.dart';
 import '../../../core/widgets/status_badge.dart';
-import '../../../data/mock_data.dart';
+import '../data/models/internal_service.dart';
 import '../data/internal_flow_repository.dart';
 import '../data/models/internal_budget_item.dart';
 import 'internal_messages_screen.dart';
+
+class TimelineStep {
+  final int id;
+  final String time;
+  final String date;
+  final String title;
+  final String desc;
+  final bool done;
+  final bool active;
+
+  const TimelineStep({
+    required this.id,
+    required this.time,
+    required this.date,
+    required this.title,
+    required this.desc,
+    required this.done,
+    required this.active,
+  });
+}
 
 class InternalServiceDetailScreen extends StatefulWidget {
   final InternalService service;

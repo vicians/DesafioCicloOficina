@@ -264,13 +264,14 @@ export const runMigrations = async () => {
   `);
 
   console.log('Migrations concluídas com sucesso!');
-  process.exit(0);
 };
 
 // Executa a função se o arquivo for chamado diretamente via ts-node
 if (require.main === module) {
-  runMigrations().catch(err => {
-    console.error('Erro nas migrations:', err);
-    process.exit(1);
-  });
+  runMigrations()
+    .then(() => process.exit(0))
+    .catch(err => {
+      console.error('Erro nas migrations:', err);
+      process.exit(1);
+    });
 }

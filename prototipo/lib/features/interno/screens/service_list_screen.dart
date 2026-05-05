@@ -5,7 +5,7 @@ import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/app_avatar.dart';
 import '../../../core/widgets/app_progress_bar.dart';
 import '../../../core/widgets/status_badge.dart';
-import '../../../data/mock_data.dart';
+import '../data/models/internal_service.dart';
 import '../data/internal_flow_repository.dart';
 import 'internal_service_detail_screen.dart';
 

@@ -4,11 +4,13 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/status_badge.dart';
-import '../../../data/mock_data.dart';
+import '../data/client_flow_repository.dart';
+import '../data/models/client_models.dart';
 import 'client_screen_header.dart';
 
 class BudgetApprovalScreen extends StatefulWidget {
-  const BudgetApprovalScreen({super.key});
+  final ClientFlowRepository repository;
+  const BudgetApprovalScreen({super.key, required this.repository});
 
   @override
   State<BudgetApprovalScreen> createState() => _BudgetApprovalScreenState();
@@ -19,6 +21,7 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
   bool _loading = false;
   bool _approved = false;
   bool _refused = false;
+  ServiceModel? _service;
 
   late AnimationController _approvedCtrl;
   late Animation<double> _approvedScale;
@@ -33,6 +36,13 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
     _approvedScale = Tween<double>(begin: 0.75, end: 1.0).animate(
       CurvedAnimation(parent: _approvedCtrl, curve: Curves.elasticOut),
     );
+    _loadService();
+  }
+
+  Future<void> _loadService() async {
+    final svc = await widget.repository.fetchCurrentService();
+    if (!mounted) return;
+    setState(() => _service = svc);
   }
 
   @override
@@ -42,14 +52,23 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
   }
 
   void _handleApprove() async {
+    if (_service == null) return;
     setState(() => _loading = true);
-    await Future.delayed(const Duration(milliseconds: 1400));
-    if (!mounted) return;
-    setState(() {
-      _loading = false;
-      _approved = true;
-    });
-    _approvedCtrl.forward();
+    try {
+      await widget.repository.approveBudget(_service!.id);
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _approved = true;
+      });
+      _approvedCtrl.forward();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao aprovar: $e')),
+      );
+    }
   }
 
   void _handleRefuse() {
@@ -73,7 +92,27 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
 
   @override
   Widget build(BuildContext context) {
-    final svc = currentService;
+    final svc = _service;
+    
+    if (svc == null) {
+      return Scaffold(
+        backgroundColor: bgPage,
+        body: const Center(child: CircularProgressIndicator(color: orange)),
+      );
+    }
+
+    if (svc.status != 'orcamento' && !_approved) {
+      return Scaffold(
+        backgroundColor: bgPage,
+        body: Center(
+          child: Text(
+            'Nenhum orçamento pendente para este serviço.',
+            style: GoogleFonts.dmSans(color: textMuted),
+          ),
+        ),
+      );
+    }
+
     final parts = svc.budgetItems.where((i) => i.type == 'part').toList();
     final labor = svc.budgetItems.where((i) => i.type == 'labor').toList();
     final partsTotal = parts.fold(0.0, (s, i) => s + i.total);

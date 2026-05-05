@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/colors.dart';
@@ -10,17 +12,23 @@ import 'data/client_notification_fallback_repository.dart';
 import 'data/client_notification_mock_repository.dart';
 import 'data/client_notification_repository.dart';
 import 'data/client_schedule_api_repository.dart';
+import 'data/client_flow_api_repository.dart';
+import 'data/client_flow_repository.dart';
+import 'data/models/client_models.dart';
 import 'screens/home_screen.dart';
 import 'screens/budget_approval_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/schedule_service_sheet.dart';
 
-const _kApiBaseUrl = 'http://10.0.2.2:3000'; // Android emulator → localhost
+final _kApiBaseUrl = kIsWeb || !Platform.isAndroid 
+    ? 'http://localhost:3000' 
+    : 'http://10.0.2.2:3000';
 const _kEnableDevClientSeedOnStartup = true;
 
 class ClienteApp extends StatefulWidget {
-  const ClienteApp({super.key});
+  final String clientId;
+  const ClienteApp({super.key, required this.clientId});
 
   @override
   State<ClienteApp> createState() => _ClienteAppState();
@@ -30,7 +38,9 @@ class _ClienteAppState extends State<ClienteApp> {
   int _currentIndex = 0;
   late final ClientNotificationRepository _notificationRepository;
   late final ClientScheduleApiRepository _scheduleRepository;
+  late final ClientFlowRepository _flowRepository;
   List<NotificationItem> _clientNotifications = [];
+  ServiceModel? _currentService;
 
   @override
   void initState() {
@@ -39,9 +49,24 @@ class _ClienteAppState extends State<ClienteApp> {
       primary: ClientNotificationApiRepository(baseUrl: _kApiBaseUrl),
       fallback: ClientNotificationMockRepository(),
     );
-    _scheduleRepository = ClientScheduleApiRepository(baseUrl: _kApiBaseUrl);
+    _scheduleRepository = ClientScheduleApiRepository(
+      baseUrl: _kApiBaseUrl,
+      clientId: widget.clientId,
+    );
+    _flowRepository = ClientFlowApiRepository(
+      baseUrl: _kApiBaseUrl,
+      clientId: widget.clientId,
+    );
     _loadNotifications();
+    _loadCurrentService();
+    _flowRepository.addListener(_loadCurrentService);
     _configureClientPushAndDevSeed();
+  }
+
+  Future<void> _loadCurrentService() async {
+    final svc = await _flowRepository.fetchCurrentService();
+    if (!mounted) return;
+    setState(() => _currentService = svc);
   }
 
   Future<void> _openScheduleFlow() async {
@@ -79,9 +104,9 @@ class _ClienteAppState extends State<ClienteApp> {
   }
 
   List<Widget> get _screens => [
-    HomeScreen(onLogout: _logout),
-    const BudgetApprovalScreen(),
-    const HistoryScreen(),
+    HomeScreen(onLogout: _logout, repository: _flowRepository),
+    BudgetApprovalScreen(repository: _flowRepository),
+    HistoryScreen(repository: _flowRepository),
     NotificationsScreen(
       items: _clientNotifications,
       onMarkRead: _markNotificationAsRead,
@@ -91,7 +116,7 @@ class _ClienteAppState extends State<ClienteApp> {
   @override
   Widget build(BuildContext context) {
     final unreadCount = _clientNotifications.where((n) => n.unread).length;
-    final hasPendingBudget = currentService.status == 'orcamento';
+    final hasPendingBudget = _currentService?.status == 'orcamento';
 
     return Scaffold(
       backgroundColor: bgPage,

@@ -21,6 +21,15 @@ class BudgetLineItem {
       qty: qty ?? this.qty,
     );
   }
+
+  factory BudgetLineItem.fromJson(Map<String, dynamic> json) {
+    return BudgetLineItem(
+      id: json['id'] as String,
+      name: json['nome'] as String,
+      unitPrice: (json['preco_unitario'] as num).toDouble() / 100.0, // Conversão de centavos
+      qty: json['quantidade'] as int,
+    );
+  }
 }
 
 class InternalBudgetItem {
@@ -78,6 +87,34 @@ class InternalBudgetItem {
       createdAt: createdAt ?? this.createdAt,
       status: status ?? this.status,
       canceledAt: clearCanceledAt ? null : (canceledAt ?? this.canceledAt),
+    );
+  }
+
+  factory InternalBudgetItem.fromJson(Map<String, dynamic> json) {
+    // A data no backend vem em ISO (criado_em). O frontend espera dd/MM/yyyy.
+    String rawDate = json['criado_em'] as String? ?? '';
+    String formattedDate = '';
+    if (rawDate.length >= 10) {
+      formattedDate = '${rawDate.substring(8, 10)}/${rawDate.substring(5, 7)}/${rawDate.substring(0, 4)}';
+    }
+
+    return InternalBudgetItem(
+      id: json['id'] as String,
+      client: json['cliente_nome'] as String? ?? 'Cliente não informado',
+      car: json['veiculo_modelo'] != null && json['veiculo_marca'] != null
+          ? '${json['veiculo_marca']} ${json['veiculo_modelo']}'
+          : 'Veículo não informado',
+      plate: json['veiculo_placa'] as String? ?? '---',
+      status: (json['status'] as String? ?? 'RASCUNHO').toLowerCase(),
+      createdAt: formattedDate,
+      services: (json['servicos'] as List<dynamic>?)
+              ?.map((e) => BudgetLineItem.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+      products: (json['produtos'] as List<dynamic>?)
+              ?.map((e) => BudgetLineItem.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
     );
   }
 }

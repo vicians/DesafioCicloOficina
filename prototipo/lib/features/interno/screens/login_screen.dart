@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/colors.dart';
@@ -5,6 +7,7 @@ import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_input.dart';
 import '../interno_app.dart';
 import '../../cliente/cliente_app.dart';
+import '../../../data/auth_repository.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -19,6 +22,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
+  
+  late final _authRepository = AuthRepository(
+    baseUrl: kIsWeb || !Platform.isAndroid 
+      ? 'http://localhost:3000' 
+      : 'http://10.0.2.2:3000'
+  );
 
   @override
   void dispose() {
@@ -41,9 +50,9 @@ class _LoginScreenState extends State<LoginScreen> {
       _errorText = null;
     });
 
-    await Future.delayed(const Duration(milliseconds: 1200));
+    final user = await _authRepository.login(email, pass);
 
-    if (pass != '1234') {
+    if (user == null) {
       setState(() {
         _loading = false;
         _errorText = 'E-mail ou senha inválidos.';
@@ -51,25 +60,29 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    final emailLower = email.toLowerCase();
-    if (emailLower.contains('cliente')) {
-      _navigateToClienteApp();
+    if (user.tipoId == 2) {
+      // CLIENTE
+      _navigateToClienteApp(user.id);
     } else {
-      _navigateToApp(emailLower.contains('gerente'));
+      // ADMIN (1) ou MECANICO (3)
+      _navigateToApp(user.tipoId == 1, user.id);
     }
   }
 
-  void _navigateToApp(bool isManager) {
+  void _navigateToApp(bool isManager, String userId) {
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (_) => InternoApp(isManager: isManager)),
+      MaterialPageRoute(builder: (_) => InternoApp(
+        isManager: isManager,
+        userId: userId,
+      )),
     );
   }
 
-  void _navigateToClienteApp() {
+  void _navigateToClienteApp(String clientId) {
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (_) => const ClienteApp()),
+      MaterialPageRoute(builder: (_) => ClienteApp(clientId: clientId)),
     );
   }
 

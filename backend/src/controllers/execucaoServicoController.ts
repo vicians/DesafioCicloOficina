@@ -4,6 +4,11 @@ import { ExecucaoServicoModel } from '../models/execucaoServicoModel';
 const STATUS_FINALIZAVEIS = ['EM_EXECUCAO', 'REVISAO_TECNICA'];
 
 export class ExecucaoServicoController {
+  static async index(req: Request, res: Response) {
+    const execucoes = await ExecucaoServicoModel.findAll();
+    return res.json(execucoes);
+  }
+
   static async show(req: Request, res: Response) {
     const execucao = await ExecucaoServicoModel.findById(req.params.id);
     if (!execucao) return res.status(404).json({ error: 'Execução não encontrada' });

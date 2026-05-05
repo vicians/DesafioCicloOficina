@@ -99,10 +99,6 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
     }
   }
 
-  void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-  }
-
   Future<void> _addService() async {
     final picked = await showModalBottomSheet<CatalogoServicoItem>(
       context: context,

@@ -1,89 +1,8 @@
+import '../features/cliente/data/models/client_models.dart';
+import '../features/interno/data/models/internal_service.dart';
 import '../features/interno/data/models/internal_budget_item.dart';
 
 // Mock data shared by both apps
-
-class TimelineStep {
-  final int id;
-  final String time;
-  final String date;
-  final String title;
-  final String desc;
-  final bool done;
-  final bool active;
-
-  const TimelineStep({
-    required this.id,
-    required this.time,
-    required this.date,
-    required this.title,
-    required this.desc,
-    required this.done,
-    required this.active,
-  });
-}
-
-class BudgetItem {
-  final String label;
-  final double total;
-  final int? qty;
-  final double? unitPrice;
-  final String type; // 'part' | 'labor'
-
-  const BudgetItem({
-    required this.label,
-    required this.total,
-    this.qty,
-    this.unitPrice,
-    this.type = 'part',
-  });
-}
-
-class ServiceModel {
-  final String id;
-  final String car;
-  final String plate;
-  final String status;
-  final String title;
-  final String mechanic;
-  final String mechanicInitials;
-  final String startDate;
-  final String estimatedEnd;
-  final int progress;
-  final List<TimelineStep> timeline;
-  final List<BudgetItem> budgetItems;
-  final double budgetTotal;
-
-  const ServiceModel({
-    required this.id,
-    required this.car,
-    required this.plate,
-    required this.status,
-    required this.title,
-    required this.mechanic,
-    required this.mechanicInitials,
-    required this.startDate,
-    required this.estimatedEnd,
-    required this.progress,
-    required this.timeline,
-    required this.budgetItems,
-    required this.budgetTotal,
-  });
-}
-
-class HistoryItem {
-  final String id;
-  final String title;
-  final String date;
-  final String status;
-  final String total;
-  const HistoryItem({
-    required this.id,
-    required this.title,
-    required this.date,
-    required this.status,
-    required this.total,
-  });
-}
 
 class NotificationItem {
   final String id;
@@ -100,42 +19,6 @@ class NotificationItem {
     required this.body,
     required this.time,
     required this.unread,
-  });
-}
-
-class InternalService {
-  final String id;
-  final String client;
-  final String car;
-  final String plate;
-  final String service;
-  final List<BudgetLineItem> budgetServices;
-  final List<BudgetLineItem> budgetProducts;
-  final String employeeObservation;
-  final String status;
-  final String mechanic;
-  final String time;
-  final double value;
-  final int progress;
-  final String openedAt;    // 'dd/MM/yyyy'
-  final String? finishedAt; // 'dd/MM/yyyy', presente quando concluido/cancelado
-
-  const InternalService({
-    required this.id,
-    required this.client,
-    required this.car,
-    required this.plate,
-    required this.service,
-    this.budgetServices = const [],
-    this.budgetProducts = const [],
-    this.employeeObservation = '',
-    required this.status,
-    required this.mechanic,
-    required this.time,
-    required this.value,
-    required this.progress,
-    required this.openedAt,
-    this.finishedAt,
   });
 }
 
@@ -233,12 +116,12 @@ final currentService = ServiceModel(
   estimatedEnd: 'Hoje, até 17h',
   progress: 65,
   timeline: const [
-    TimelineStep(id: 1, time: '08:00', date: '22 abr', title: 'Veículo recebido', desc: 'Check-in realizado na oficina', done: true, active: false),
-    TimelineStep(id: 2, time: '09:30', date: '22 abr', title: 'Diagnóstico concluído', desc: 'Pastilhas desgastadas, óleo vencido, filtro de ar sujo', done: true, active: false),
-    TimelineStep(id: 3, time: '10:15', date: '22 abr', title: 'Orçamento aprovado', desc: 'Aprovado via app pelo cliente', done: true, active: false),
-    TimelineStep(id: 4, time: '14:00', date: '24 abr', title: 'Serviço em execução', desc: 'Troca de óleo e filtros concluída. Iniciando freios...', done: false, active: true),
-    TimelineStep(id: 5, time: '—', date: '—', title: 'Revisão final', desc: 'Teste de qualidade e lavagem', done: false, active: false),
-    TimelineStep(id: 6, time: '—', date: '—', title: 'Pronto para retirada', desc: 'Notificação enviada ao cliente', done: false, active: false),
+    TimelineStep(id: '1', time: '08:00', date: '22 abr', title: 'Veículo recebido', desc: 'Check-in realizado na oficina', done: true, active: false),
+    TimelineStep(id: '2', time: '09:30', date: '22 abr', title: 'Diagnóstico concluído', desc: 'Pastilhas desgastadas, óleo vencido, filtro de ar sujo', done: true, active: false),
+    TimelineStep(id: '3', time: '10:15', date: '22 abr', title: 'Orçamento aprovado', desc: 'Aprovado via app pelo cliente', done: true, active: false),
+    TimelineStep(id: '4', time: '14:00', date: '24 abr', title: 'Serviço em execução', desc: 'Troca de óleo e filtros concluída. Iniciando freios...', done: false, active: true),
+    TimelineStep(id: '5', time: '—', date: '—', title: 'Revisão final', desc: 'Teste de qualidade e lavagem', done: false, active: false),
+    TimelineStep(id: '6', time: '—', date: '—', title: 'Pronto para retirada', desc: 'Notificação enviada ao cliente', done: false, active: false),
   ],
   budgetItems: const [
     BudgetItem(label: 'Óleo Motor 5W30 Sintético (1L)', total: 90.00, qty: 4, unitPrice: 22.50, type: 'part'),

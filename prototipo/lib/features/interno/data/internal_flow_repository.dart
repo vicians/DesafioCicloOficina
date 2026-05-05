@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import '../../../data/mock_data.dart';
+import 'models/internal_service.dart';
 import 'models/catalogo_servico_item.dart';
 import 'models/internal_budget_item.dart';
 import 'models/produto_item.dart';

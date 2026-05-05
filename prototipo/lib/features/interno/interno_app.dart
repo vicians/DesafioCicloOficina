@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/colors.dart';
-import 'data/internal_flow_mock_repository.dart';
+import 'data/internal_flow_api_repository.dart';
 import 'data/internal_flow_repository.dart';
 import 'data/notification_repository.dart';
 import 'data/notification_mock_repository.dart';
@@ -28,8 +28,8 @@ const _kEnableDevLowStockSeedOnStartup = true;
 
 class InternoApp extends StatefulWidget {
   final bool isManager;
-
-  const InternoApp({super.key, required this.isManager});
+  final String userId;
+  const InternoApp({super.key, required this.isManager, required this.userId});
 
   @override
   State<InternoApp> createState() => _InternoAppState();
@@ -46,11 +46,12 @@ class _InternoAppState extends State<InternoApp> {
   @override
   void initState() {
     super.initState();
-    _flowRepository = InternalFlowMockRepository();
+    _flowRepository = InternalFlowApiRepository(baseUrl: _kApiBaseUrl);
     _notificationRepository = NotificationFallbackRepository(
       primary: NotificationApiRepository(
         baseUrl: _kApiBaseUrl,
         internalUserTypeId: widget.isManager ? 1 : 3,
+        // userId: widget.userId, // Futuro: filtrar notificações por usuário
       ),
       fallback: NotificationMockRepository(),
     );
@@ -105,6 +106,7 @@ class _InternoAppState extends State<InternoApp> {
     if (widget.isManager) {
       return [
         EmployeeDashboardScreen(
+          repository: _flowRepository,
           isManager: true,
           onLogout: _logout,
           onOpenServices: () => setState(() => _currentIndex = 3),
@@ -123,6 +125,7 @@ class _InternoAppState extends State<InternoApp> {
     }
     return [
       EmployeeDashboardScreen(
+        repository: _flowRepository,
         isManager: false,
         onLogout: _logout,
         onOpenServices: () => setState(() => _currentIndex = 3),

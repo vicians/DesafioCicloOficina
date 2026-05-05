@@ -3,6 +3,8 @@ import { ExecucaoServicoController } from '../controllers/execucaoServicoControl
 
 const execucaoServicoRouter = Router();
 
+execucaoServicoRouter.get('/', ExecucaoServicoController.index);
+
 /**
  * @openapi
  * /execucoes/{id}:
