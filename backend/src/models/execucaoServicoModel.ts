@@ -83,6 +83,22 @@ export class ExecucaoServicoModel {
     return result.rows[0] ?? null;
   }
 
+  static async updateStatus(id: string, status: string): Promise<ExecucaoServicoDTO | null> {
+    const db = getDb();
+    const result = await db.query(
+      `UPDATE execucoes_servico
+       SET status = $1::varchar,
+           finalizado_em = CASE
+             WHEN $1::text IN ('CONCLUIDO', 'CANCELADO') THEN COALESCE(finalizado_em, NOW())
+             ELSE NULL::timestamp
+           END
+       WHERE id = $2
+       RETURNING *`,
+      [status, id]
+    );
+    return result.rows[0] ?? null;
+  }
+
   /**
    * Finaliza a execução: seta finalizado_em = NOW() e status = CONCLUIDO.
    * Só deve ser chamado quando o status atual for EM_EXECUCAO ou REVISAO_TECNICA.

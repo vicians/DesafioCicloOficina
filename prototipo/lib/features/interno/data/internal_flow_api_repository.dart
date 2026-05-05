@@ -10,6 +10,26 @@ class InternalFlowApiRepository extends InternalFlowRepository {
   final String baseUrl;
   final http.Client _client;
 
+  String _mapServiceStatusToApi(String status) {
+    switch (status.toLowerCase()) {
+      case 'aguardando':
+      case 'andamento':
+      case 'em_execucao':
+        return 'EM_EXECUCAO';
+      case 'revisao':
+      case 'revisao_tecnica':
+        return 'REVISAO_TECNICA';
+      case 'aguardando_retirada':
+        return 'AGUARDANDO_RETIRADA';
+      case 'concluido':
+        return 'CONCLUIDO';
+      case 'cancelado':
+        return 'CANCELADO';
+      default:
+        return status.toUpperCase();
+    }
+  }
+
   InternalFlowApiRepository({required this.baseUrl, http.Client? client})
     : _client = client ?? http.Client();
 
@@ -243,15 +263,22 @@ class InternalFlowApiRepository extends InternalFlowRepository {
     String serviceId,
     String status,
   ) async {
-    if (status.toLowerCase() == 'concluido') {
-      final response = await _client.patch(
-        Uri.parse('$baseUrl/execucoes/$serviceId/finalizar'),
+    final response = await _client.patch(
+      Uri.parse('$baseUrl/execucoes/$serviceId/status'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'status': _mapServiceStatusToApi(status),
+      }),
+    );
+    if (response.statusCode == 200) {
+      final res = await _client.get(
+        Uri.parse('$baseUrl/execucoes/$serviceId'),
       );
-      if (response.statusCode == 200) {
-        final res = await _client.get(
-          Uri.parse('$baseUrl/execucoes/$serviceId'),
+      if (res.statusCode == 200) {
+        notifyListeners();
+        return InternalService.fromJson(
+          jsonDecode(res.body) as Map<String, dynamic>,
         );
-        return InternalService.fromJson(jsonDecode(res.body));
       }
     }
     throw Exception('Falha ao atualizar status da OS');
