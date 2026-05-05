@@ -1,6 +1,14 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+class AuthException implements Exception {
+  final String message;
+  AuthException(this.message);
+
+  @override
+  String toString() => message;
+}
+
 class AuthUser {
   final String id;
   final String nome;
@@ -40,11 +48,15 @@ class AuthRepository {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return AuthUser.fromJson(data['usuario']);
+      } else {
+        final data = jsonDecode(response.body);
+        throw AuthException(data['error'] ?? 'Erro desconhecido ao fazer login');
       }
-      return null;
+    } on AuthException {
+      rethrow;
     } catch (e) {
       print('Erro no login: $e');
-      return null;
+      throw AuthException('Erro de conexão com o servidor. Verifique sua internet.');
     }
   }
 }
