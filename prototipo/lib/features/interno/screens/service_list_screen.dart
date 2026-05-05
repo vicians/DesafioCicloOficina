@@ -36,8 +36,8 @@ class _ServiceListScreenState extends State<ServiceListScreen>
   final _statusFilters = const [
     ('todos', 'Todos'),
     ('aguardando', 'Aguardando'),
-    ('andamento', 'Andamento'),
-    ('revisao', 'Em revisão'),
+    ('em_execucao', 'Em execução'),
+    ('revisao_tecnica', 'Em revisão'),
     ('aguardando_retirada', 'Aguardando retirada'),
   ];
 
@@ -52,7 +52,7 @@ class _ServiceListScreenState extends State<ServiceListScreen>
   void initState() {
     super.initState();
     _tabCtrl = TabController(length: 2, vsync: this);
-    _statusFilter = widget.initialFilter ?? 'todos';
+    _statusFilter = _normalizeStatusFilter(widget.initialFilter ?? 'todos');
     _tabCtrl.addListener(() => setState(() {}));
     _servicesFuture = widget.repository.fetchServicos();
     widget.repository.addListener(_reloadServices);
@@ -71,6 +71,22 @@ class _ServiceListScreenState extends State<ServiceListScreen>
     });
   }
 
+  String _normalizeStatusFilter(String filter) {
+    switch (filter) {
+      case 'andamento':
+        return 'em_execucao';
+      case 'revisao':
+        return 'revisao_tecnica';
+      default:
+        return filter;
+    }
+  }
+
+  bool _matchesStatusFilter(String status) {
+    if (_statusFilter == 'todos') return true;
+    return _normalizeStatusFilter(status) == _statusFilter;
+  }
+
   bool _matchesSearch(InternalService s) {
     if (_search.isEmpty) return true;
     final q = _search.toLowerCase();
@@ -84,7 +100,7 @@ class _ServiceListScreenState extends State<ServiceListScreen>
     return services
         .where((s) => s.status != 'concluido' && s.status != 'cancelado')
         .where(_matchesSearch)
-        .where((s) => _statusFilter == 'todos' || s.status == _statusFilter)
+      .where((s) => _matchesStatusFilter(s.status))
         .toList();
   }
 
