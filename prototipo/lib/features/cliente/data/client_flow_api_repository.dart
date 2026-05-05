@@ -57,12 +57,21 @@ class ClientFlowApiRepository extends ClientFlowRepository {
       final execResp = await http.get(Uri.parse('$baseUrl/execucoes'));
       if (execResp.statusCode == 200) {
         final List execs = jsonDecode(execResp.body);
-        return execs
+        final filtered = execs
             .where((e) => e['cliente_id'] == clientId && e['status'] == 'concluido')
+            .toList();
+            
+        filtered.sort((a, b) {
+          final dateA = a['finalizado_em'] ?? '';
+          final dateB = b['finalizado_em'] ?? '';
+          return dateB.compareTo(dateA); // Descending
+        });
+
+        return filtered
             .map<HistoryItem>((e) => HistoryItem(
                   id: e['id'],
                   title: e['servico_resumo'] ?? 'Manutenção',
-                  date: e['finalizado_em'] ?? '—',
+                  date: _formatDate(e['finalizado_em']),
                   status: 'concluido',
                   total: 'R\$ ${(e['valor_total'] / 100).toStringAsFixed(2).replaceAll('.', ',')}',
                 ))
@@ -232,6 +241,16 @@ class ClientFlowApiRepository extends ClientFlowRepository {
       return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
     }
     return parts[0][0].toUpperCase();
+  }
+
+  String _formatDate(String? isoDate) {
+    if (isoDate == null || isoDate.isEmpty) return '—';
+    try {
+      final date = DateTime.parse(isoDate).toLocal();
+      return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+    } catch (_) {
+      return isoDate;
+    }
   }
 
   int _calculateProgress(String status) {

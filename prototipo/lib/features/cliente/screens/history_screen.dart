@@ -24,6 +24,15 @@ class HistoryScreen extends StatelessWidget {
           return const Center(child: CircularProgressIndicator(color: orange));
         }
 
+        if (snapshot.hasError) {
+          return Center(
+            child: Text(
+              'Erro ao carregar os dados. Tente novamente.',
+              style: GoogleFonts.dmSans(color: Colors.red),
+            ),
+          );
+        }
+
         final results = snapshot.data as List?;
         final svc = results?[0] as ServiceModel?;
         final history = results?[1] as List<HistoryItem>? ?? [];
