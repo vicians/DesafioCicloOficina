@@ -97,11 +97,25 @@ class ClientFlowApiRepository extends ClientFlowRepository {
 
   @override
   Future<void> approveBudget(String budgetId) async {
+    final validUntil = DateTime.now().add(const Duration(days: 7)).toIso8601String();
     final resp = await http.patch(
       Uri.parse('$baseUrl/orcamentos/$budgetId/aprovar'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'valido_ate': validUntil}),
     );
     if (resp.statusCode != 200) {
       throw Exception('Falha ao aprovar orçamento: ${resp.body}');
+    }
+    notifyListeners();
+  }
+
+  @override
+  Future<void> refuseBudget(String budgetId) async {
+    final resp = await http.patch(
+      Uri.parse('$baseUrl/orcamentos/$budgetId/rejeitar'),
+    );
+    if (resp.statusCode != 200) {
+      throw Exception('Falha ao rejeitar orçamento: ${resp.body}');
     }
     notifyListeners();
   }

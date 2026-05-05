@@ -204,6 +204,27 @@ orcamentoRouter.delete('/:id/produtos/:item_id', OrcamentoController.removeProdu
 
 /**
  * @openapi
+ * /orcamentos/{id}/rejeitar:
+ *   patch:
+ *     tags:
+ *       - Orçamentos
+ *     summary: Rejeita o orçamento
+ *     description: Marca o orçamento como rejeitado pelo cliente
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Rejeitado com sucesso
+ */
+orcamentoRouter.patch('/:id/rejeitar', OrcamentoController.rejeitar);
+
+/**
+ * @openapi
  * /orcamentos/{id}/aprovar:
  *   patch:
  *     tags:

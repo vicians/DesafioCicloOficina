@@ -96,6 +96,35 @@ export class OrcamentoController {
 
   // ── Aprovação ─────────────────────────────────────────────────────────────
 
+  static async rejeitar(req: Request, res: Response) {
+    const orcamento = await OrcamentoModel.rejeitar(req.params.id);
+
+    if (!orcamento) {
+      return res.status(409).json({
+        error: 'Orçamento não encontrado ou já está em status final (APROVADO, REJEITADO ou PAGO)',
+      });
+    }
+
+    try {
+      const internalUserIds = await NotificationModel.findInternalUserIds();
+      const titulo = 'Orçamento recusado pelo cliente';
+      const mensagem = `Orçamento ${orcamento.id} foi recusado e precisa de revisão ou contato com o cliente.`;
+      const notifIds = await NotificationModel.createForUsers(internalUserIds, {
+        tipo: 'rejected_budget',
+        titulo,
+        mensagem,
+        referencia_id: orcamento.id,
+        referencia_tipo: 'orcamento',
+      });
+      await sendPushToUsers(internalUserIds, notifIds, titulo, mensagem);
+    } catch (error) {
+      // Não interrompe o fluxo principal por falha de notificação.
+      console.error('Falha ao criar notificações internas de orçamento recusado:', error);
+    }
+
+    return res.json(orcamento);
+  }
+
   static async aprovar(req: Request, res: Response) {
     const { valido_ate } = req.body;
 

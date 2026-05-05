@@ -162,5 +162,18 @@ export class OrcamentoModel {
     );
     return result.rows[0] ?? null;
   }
+
+  static async rejeitar(id: string): Promise<OrcamentoDTO | null> {
+    const db = getDb();
+    const result = await db.query(
+      `UPDATE orcamentos
+       SET status = 'REJEITADO'
+       WHERE id = $1
+         AND status IN ('RASCUNHO', 'ENVIADO')
+       RETURNING *`,
+      [id]
+    );
+    return result.rows[0] ?? null;
+  }
 }
 

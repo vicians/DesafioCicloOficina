@@ -71,21 +71,36 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
     }
   }
 
-  void _handleRefuse() {
-    HapticFeedback.heavyImpact();
-    setState(() => _refused = true);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Recusa registrada. Entre em contato com a oficina.',
-          style: GoogleFonts.dmSans(fontSize: 13, color: Colors.white),
+  void _handleRefuse() async {
+    if (_service == null) return;
+    setState(() => _loading = true);
+    try {
+      await widget.repository.refuseBudget(_service!.id);
+      if (!mounted) return;
+      HapticFeedback.heavyImpact();
+      setState(() {
+        _loading = false;
+        _refused = true;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Recusa registrada. Entre em contato com a oficina.',
+            style: GoogleFonts.dmSans(fontSize: 13, color: Colors.white),
+          ),
+          backgroundColor: red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          duration: const Duration(seconds: 3),
         ),
-        backgroundColor: red,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        duration: const Duration(seconds: 3),
-      ),
-    );
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao rejeitar: $e'), backgroundColor: red),
+      );
+    }
   }
 
   String _fmt(double v) => 'R\$ ${v.toStringAsFixed(2).replaceAll('.', ',')}';
@@ -272,7 +287,7 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
           label: 'Rejeitar',
           fullWidth: true,
           variant: AppButtonVariant.outline,
-          onPressed: _handleRefuse,
+          onPressed: _loading ? null : _handleRefuse,
         ),
       ],
     );
