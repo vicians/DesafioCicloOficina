@@ -25,13 +25,13 @@ export class ProdutoController {
   }
 
   static async store(req: Request, res: Response) {
-    const { nome, marca, valor, quantidade_estoque } = req.body;
+    const { nome, marca, categoria, valor, quantidade_estoque, min_estoque, unidade } = req.body;
 
     if (!nome || !valor) {
       return res.status(400).json({ error: 'nome e valor são obrigatórios' });
     }
 
-    const produto = await ProdutoModel.create({ nome, marca, valor, quantidade_estoque });
+    const produto = await ProdutoModel.create({ nome, marca, categoria, valor, quantidade_estoque, min_estoque, unidade });
     RagSyncService.syncProduto(produto); // fire-and-forget: indexa no Vector DB
     return res.status(201).json(produto);
   }
@@ -40,7 +40,8 @@ export class ProdutoController {
     const produto = await ProdutoModel.update(req.params.id, req.body);
     if (!produto) return res.status(404).json({ error: 'Produto não encontrado' });
 
-    if (produto.quantidade_estoque <= ESTOQUE_BAIXO_LIMIAR) {
+    const limiar = produto.min_estoque ?? ESTOQUE_BAIXO_LIMIAR;
+    if (produto.quantidade_estoque <= limiar) {
       try {
         const internalUserIds = await NotificationModel.findInternalUserIds();
         const titulo = 'Peça com estoque baixo';

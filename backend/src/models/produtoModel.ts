@@ -25,26 +25,29 @@ export class ProdutoModel {
 
   static async create(data: CreateProdutoDTO): Promise<ProdutoDTO> {
     const db = getDb();
-    const { nome, marca, valor, quantidade_estoque } = data;
+    const { nome, marca, categoria, valor, quantidade_estoque, min_estoque, unidade } = data;
     const result = await db.query(
-      `INSERT INTO produtos (nome, marca, valor, quantidade_estoque)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [nome, marca, valor, quantidade_estoque]
+      `INSERT INTO produtos (nome, marca, categoria, valor, quantidade_estoque, min_estoque, unidade)
+       VALUES ($1, $2, $3, $4, $5, COALESCE($6, 10), COALESCE($7, 'unid.')) RETURNING *`,
+      [nome, marca, categoria, valor, quantidade_estoque, min_estoque, unidade]
     );
     return result.rows[0];
   }
 
   static async update(id: string, data: Partial<CreateProdutoDTO>): Promise<ProdutoDTO | null> {
     const db = getDb();
-    const { nome, marca, valor, quantidade_estoque } = data;
+    const { nome, marca, categoria, valor, quantidade_estoque, min_estoque, unidade } = data;
     const result = await db.query(
       `UPDATE produtos
        SET nome = COALESCE($1, nome),
            marca = COALESCE($2, marca),
-           valor = COALESCE($3, valor),
-           quantidade_estoque = COALESCE($4, quantidade_estoque)
-       WHERE id = $5 RETURNING *`,
-      [nome, marca, valor, quantidade_estoque, id]
+           categoria = COALESCE($3, categoria),
+           valor = COALESCE($4, valor),
+           quantidade_estoque = COALESCE($5, quantidade_estoque),
+           min_estoque = COALESCE($6, min_estoque),
+           unidade = COALESCE($7, unidade)
+       WHERE id = $8 RETURNING *`,
+      [nome, marca, categoria, valor, quantidade_estoque, min_estoque, unidade, id]
     );
     return result.rows[0] ?? null;
   }
