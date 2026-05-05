@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { OrcamentoModel } from '../models/orcamentoModel';
+import { ExecucaoServicoModel } from '../models/execucaoServicoModel';
 import { CatalogoServicoModel } from '../models/catalogoServicoModel';
 import { ProdutoModel } from '../models/produtoModel';
 import { NotificationModel } from '../models/notificationModel';
@@ -157,7 +158,14 @@ export class OrcamentoController {
       console.error('Falha ao criar notificações internas de orçamento aprovado:', error);
     }
 
-    return res.json(orcamento);
+    // Cria (ou garante) a execução de serviço vinculada ao orçamento aprovado.
+    // Retorna os dados detalhados da execução para que o app já exiba a OS gerada.
+    const execucao = await ExecucaoServicoModel.iniciarDeAprovacao(
+      orcamento.id,
+      orcamento.funcionario_id ?? null
+    );
+
+    return res.json(execucao ?? orcamento);
   }
 
 }
