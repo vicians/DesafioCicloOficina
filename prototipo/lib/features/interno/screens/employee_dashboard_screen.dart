@@ -60,7 +60,9 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(
-            child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation(orange)),
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation(orange),
+            ),
           );
         }
 
@@ -75,20 +77,24 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
 
         final internalServices = snapshot.data ?? [];
         final now = DateTime.now();
-        
+
         // Filtros baseados no status do banco de dados (schema)
         final activeExecutions = internalServices
-            .where((s) =>
-                s.status == 'em_execucao' ||
-                s.status == 'revisao_tecnica' ||
-                s.status == 'aguardando_retirada')
+            .where(
+              (s) =>
+                  s.status == 'em_execucao' ||
+                  s.status == 'revisao_tecnica' ||
+                  s.status == 'aguardando_retirada',
+            )
             .toList();
-        
-        final openAppointments =
-            internalServices.where((s) => s.status == 'pendente').toList();
-            
-        final pendingBudgets =
-            internalServices.where((s) => s.status == 'enviado').toList();
+
+        final openAppointments = internalServices
+            .where((s) => s.status == 'pendente' || s.status == 'confirmado')
+            .toList();
+
+        final pendingBudgets = internalServices
+            .where((s) => s.status == 'rascunho' || s.status == 'enviado')
+            .toList();
 
         // Faturamento previsto: soma de serviços ativos + orçamentos pendentes
         final predictedRevenue = internalServices
@@ -147,16 +153,20 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
                         ),
                         const SizedBox(height: 10),
                         ...internalServices
-                            .where((s) =>
-                                s.status != 'concluido' &&
-                                s.status != 'cancelado')
-                            .map((svc) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 8),
-                                  child: _ServiceCard(
-                                    svc: svc,
-                                    onTap: widget.onOpenServices,
-                                  ),
-                                )),
+                            .where(
+                              (s) =>
+                                  s.status != 'concluido' &&
+                                  s.status != 'cancelado',
+                            )
+                            .map(
+                              (svc) => Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: _ServiceCard(
+                                  svc: svc,
+                                  onTap: widget.onOpenServices,
+                                ),
+                              ),
+                            ),
                       ],
                     ),
                   ),
@@ -301,7 +311,10 @@ class _DashboardHeader extends StatelessWidget {
                   ],
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: orange.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(20),
@@ -499,7 +512,9 @@ class _ServiceCard extends StatelessWidget {
                     Text(
                       '${svc.car} · ${svc.plate}',
                       style: GoogleFonts.dmSans(
-                          fontSize: 12, color: textSecondary),
+                        fontSize: 12,
+                        color: textSecondary,
+                      ),
                     ),
                   ],
                 ),
