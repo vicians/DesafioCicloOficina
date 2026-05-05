@@ -64,6 +64,19 @@ class _HomeScreenState extends State<HomeScreen> {
           return const Center(child: CircularProgressIndicator(color: orange));
         }
 
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Text(
+                'Erro ao carregar o painel. Tente novamente.',
+                style: GoogleFonts.dmSans(color: Colors.red),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          );
+        }
+
         final results = snapshot.data as List?;
         final svc = results?[0] as ServiceModel?;
         final history = results?[1] as List<HistoryItem>? ?? [];
@@ -85,8 +98,30 @@ class _HomeScreenState extends State<HomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     if (svc != null) ...[
+                      if (svc.status == 'orcamento' || svc.status == 'enviado')
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.redAccent.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.redAccent.withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 20),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Ação necessária: Aprove o orçamento para iniciar o serviço.',
+                                  style: GoogleFonts.dmSans(fontSize: 13, color: Colors.redAccent, fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       AppButton(
-                        label: 'Ver detalhes do serviço',
+                        label: (svc.status == 'orcamento' || svc.status == 'enviado') ? 'Revisar orçamento' : 'Ver detalhes do serviço',
                         fullWidth: true,
                         onPressed: () => Navigator.push(
                           context,
@@ -196,6 +231,15 @@ class _Header extends StatelessWidget {
     this.onLogout,
   });
 
+  String _getInitials(String name) {
+    if (name.isEmpty) return '??';
+    final parts = name.trim().split(' ');
+    if (parts.length > 1) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return parts[0][0].toUpperCase();
+  }
+
   @override
   Widget build(BuildContext context) {
     return ClientScreenHeader(
@@ -204,7 +248,7 @@ class _Header extends StatelessWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const AppAvatar(initials: 'GR', size: 40),
+          AppAvatar(initials: _getInitials(clientName), size: 40),
           if (onLogout != null) ...[
             const SizedBox(width: 10),
             GestureDetector(
@@ -273,8 +317,33 @@ class _ActiveServiceCard extends StatelessWidget {
   final ServiceModel svc;
   const _ActiveServiceCard({required this.svc});
 
+  String _getStatusText(String status) {
+    switch (status.toLowerCase()) {
+      case 'orcamento':
+      case 'enviado': return 'ORÇAMENTO PENDENTE';
+      case 'andamento':
+      case 'em_execucao': return 'EM ANDAMENTO';
+      case 'revisao':
+      case 'revisao_tecnica': return 'EM REVISÃO';
+      case 'aguardando_retirada': return 'AGUARDANDO RETIRADA';
+      case 'concluido': return 'CONCLUÍDO';
+      default: return status.toUpperCase();
+    }
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'orcamento':
+      case 'enviado': return Colors.redAccent;
+      case 'aguardando_retirada':
+      case 'concluido': return green;
+      default: return orange;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final statusColor = _getStatusColor(svc.status);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -287,14 +356,14 @@ class _ActiveServiceCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const PulsingDot(size: 10),
+              PulsingDot(size: 10, color: statusColor),
               const SizedBox(width: 8),
               Text(
-                'EM ANDAMENTO',
+                _getStatusText(svc.status),
                 style: GoogleFonts.dmSans(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: orange,
+                  color: statusColor,
                   letterSpacing: 0.5,
                 ),
               ),
