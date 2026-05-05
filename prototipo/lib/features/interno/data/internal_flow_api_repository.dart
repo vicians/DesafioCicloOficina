@@ -198,7 +198,7 @@ class InternalFlowApiRepository extends InternalFlowRepository {
   @override
   Future<InternalBudgetItem> cancelOrcamento(String budgetId) async {
     final response = await _client.patch(
-      Uri.parse('$baseUrl/orcamentos/$budgetId/cancelar'),
+      Uri.parse('$baseUrl/orcamentos/$budgetId/rejeitar'),
     );
     if (response.statusCode != 200) {
       throw Exception('Falha ao cancelar orçamento');

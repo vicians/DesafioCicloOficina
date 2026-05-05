@@ -243,6 +243,5 @@ orcamentoRouter.patch('/:id/rejeitar', OrcamentoController.rejeitar);
  *         description: Aprovado com sucesso
  */
 orcamentoRouter.patch('/:id/aprovar', OrcamentoController.aprovar);
-orcamentoRouter.patch('/:id/cancelar', OrcamentoController.cancelar);
 
 export { orcamentoRouter };

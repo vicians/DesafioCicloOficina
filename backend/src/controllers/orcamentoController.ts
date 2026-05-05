@@ -160,16 +160,5 @@ export class OrcamentoController {
     return res.json(orcamento);
   }
 
-  static async cancelar(req: Request, res: Response) {
-    const orcamento = await OrcamentoModel.cancelar(req.params.id);
-
-    if (!orcamento) {
-      return res.status(409).json({
-        error: 'Orçamento não encontrado ou já está em status final (APROVADO, REJEITADO, PAGO ou CANCELADO)',
-      });
-    }
-
-    return res.json(orcamento);
-  }
 }
 
