@@ -24,7 +24,7 @@ class BudgetLineItem {
 
   factory BudgetLineItem.fromJson(Map<String, dynamic> json) {
     return BudgetLineItem(
-      id: json['id'] as String,
+      id: (json['item_id'] as String?) ?? json['id'] as String,
       name: json['nome'] as String,
       unitPrice: (json['preco_unitario'] as num).toDouble() / 100.0, // Conversão de centavos
       qty: json['quantidade'] as int,
@@ -61,7 +61,9 @@ class InternalBudgetItem {
       services.fold(0.0, (s, e) => s + e.total) +
       products.fold(0.0, (s, e) => s + e.total);
 
-  bool get isCanceled => status == 'cancelado';
+  bool get isCanceled => status == 'cancelado' || status == 'rejeitado';
+
+  bool get isPending => status == 'rascunho' || status == 'enviado';
 
   InternalBudgetItem copyWith({
     String? id,
@@ -98,6 +100,9 @@ class InternalBudgetItem {
       formattedDate = '${rawDate.substring(8, 10)}/${rawDate.substring(5, 7)}/${rawDate.substring(0, 4)}';
     }
 
+    final servicesJson = _readLineItems(json, ['servicos', 'itens_servico']);
+    final productsJson = _readLineItems(json, ['produtos', 'itens_produto']);
+
     return InternalBudgetItem(
       id: json['id'] as String,
       client: json['cliente_nome'] as String? ?? 'Cliente não informado',
@@ -107,14 +112,27 @@ class InternalBudgetItem {
       plate: json['veiculo_placa'] as String? ?? '---',
       status: (json['status'] as String? ?? 'RASCUNHO').toLowerCase(),
       createdAt: formattedDate,
-      services: (json['servicos'] as List<dynamic>?)
+      services: servicesJson
               ?.map((e) => BudgetLineItem.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
-      products: (json['produtos'] as List<dynamic>?)
+      products: productsJson
               ?.map((e) => BudgetLineItem.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
     );
+  }
+
+  static List<dynamic>? _readLineItems(
+    Map<String, dynamic> json,
+    List<String> keys,
+  ) {
+    for (final key in keys) {
+      final value = json[key];
+      if (value is List<dynamic>) {
+        return value;
+      }
+    }
+    return null;
   }
 }

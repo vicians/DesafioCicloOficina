@@ -69,25 +69,25 @@ export const runSeeds = async () => {
     const v2 = (await db.query(`INSERT INTO veiculos (cliente_id, placa, marca, modelo, ano) VALUES ('${clienteIds[2]}', 'CAR-2022', 'Toyota', 'Corolla', 2020) RETURNING id`)).rows[0].id;
     const v3 = (await db.query(`INSERT INTO veiculos (cliente_id, placa, marca, modelo, ano) VALUES ('${clienteIds[1]}', 'BEA-2019', 'Fiat', 'Uno', 2018) RETURNING id`)).rows[0].id;
 
-    // 8. Cenário 1: Honda Civic - execução EM_ANDAMENTO atrasada (aparece em "Atrasos" e "Serviços Ativos")
+    // 8. Cenário 1: Honda Civic - agendamento CONFIRMADO e execução EM_EXECUCAO atrasada
     const a1 = (await db.query(`INSERT INTO agendamentos (cliente_id, veiculo_id, funcionario_id, status, agendado_para, fim_estimado_em, duracao_total_minutos)
-      VALUES ('${clienteIds[0]}', '${v1}', '${mecanicoId}', 'ANDAMENTO', NOW() - interval '3 days', NOW() - interval '3 days' + interval '120 minutes', 120) RETURNING id`)).rows[0].id;
+      VALUES ('${clienteIds[0]}', '${v1}', '${mecanicoId}', 'CONFIRMADO', NOW() - interval '3 days', NOW() - interval '3 days' + interval '120 minutes', 120) RETURNING id`)).rows[0].id;
     const o1 = (await db.query(`INSERT INTO orcamentos (agendamento_id, cliente_id, funcionario_id, status, valor_total, valido_ate)
       VALUES ('${a1}', '${clienteIds[0]}', '${mecanicoId}', 'APROVADO', 24000, NOW() + interval '7 days') RETURNING id`)).rows[0].id;
     await db.query(`INSERT INTO itens_orcamento_servico (orcamento_id, servico_id, quantidade, preco_unitario) VALUES ('${o1}', '${s1}', 1, 18000)`);
     await db.query(`INSERT INTO itens_orcamento_produto (orcamento_id, produto_id, quantidade, preco_unitario) VALUES ('${o1}', '${p1}', 1, 6000)`);
     await db.query(`INSERT INTO execucoes_servico (orcamento_id, funcionario_id, status, iniciado_em) VALUES ('${o1}', '${mecanicoId}', 'EM_EXECUCAO', NOW() - interval '3 days')`);
 
-    // 9. Cenário 2: Toyota Corolla - orçamento RASCUNHO aguardando aprovação (aparece em "Orçamentos Pendentes")
+    // 9. Cenário 2: Toyota Corolla - agendamento PENDENTE com orçamento RASCUNHO (teste de filtros)
     const a2 = (await db.query(`INSERT INTO agendamentos (cliente_id, veiculo_id, funcionario_id, status, agendado_para, fim_estimado_em, duracao_total_minutos)
-      VALUES ('${clienteIds[2]}', '${v2}', '${mecanicoId}', 'CONFIRMADO', NOW() + interval '1 day', NOW() + interval '1 day' + interval '90 minutes', 90) RETURNING id`)).rows[0].id;
+      VALUES ('${clienteIds[2]}', '${v2}', '${mecanicoId}', 'PENDENTE', NOW() + interval '1 day', NOW() + interval '1 day' + interval '90 minutes', 90) RETURNING id`)).rows[0].id;
     const o2 = (await db.query(`INSERT INTO orcamentos (agendamento_id, cliente_id, funcionario_id, status, valor_total)
       VALUES ('${a2}', '${clienteIds[2]}', '${mecanicoId}', 'RASCUNHO', 35000) RETURNING id`)).rows[0].id;
     await db.query(`INSERT INTO itens_orcamento_servico (orcamento_id, servico_id, quantidade, preco_unitario) VALUES ('${o2}', '${s2}', 1, 35000)`);
 
-    // 10. Cenário 3: Fiat Uno - agendamento CONFIRMADO sem orçamento (aparece em "Agendamentos Abertos")
+    // 10. Cenário 3: Fiat Uno - agendamento CANCELADO sem orçamento (teste de filtros)
     await db.query(`INSERT INTO agendamentos (cliente_id, veiculo_id, funcionario_id, status, agendado_para, fim_estimado_em, duracao_total_minutos)
-      VALUES ('${clienteIds[1]}', '${v3}', '${mecanicoId}', 'CONFIRMADO', NOW() + interval '2 days', NOW() + interval '2 days' + interval '60 minutes', 60)`);
+      VALUES ('${clienteIds[1]}', '${v3}', '${mecanicoId}', 'CANCELADO', NOW() + interval '2 days', NOW() + interval '2 days' + interval '60 minutes', 60)`);
 
     console.log('🏁 Seeds finalizados! Tente logar com as senhas fixas agora.');
     process.exit(0);

@@ -51,8 +51,7 @@ class _ScheduledServicesScreenState extends State<ScheduledServicesScreen> {
       final matchesSearch =
           item.clienteNome.toLowerCase().contains(normalizedSearch) ||
           item.veiculoDescricao.toLowerCase().contains(normalizedSearch) ||
-          item.placa.toLowerCase().contains(normalizedSearch) ||
-          item.id.toLowerCase().contains(normalizedSearch);
+          item.placa.toLowerCase().contains(normalizedSearch);
 
       return matchesStatus && matchesSearch;
     }).toList();
@@ -148,7 +147,7 @@ class _Header extends StatelessWidget {
             onChanged: onSearch,
             style: GoogleFonts.dmSans(fontSize: 14, color: Colors.white),
             decoration: InputDecoration(
-              hintText: 'Buscar por cliente, veiculo, placa ou ID...',
+              hintText: 'Buscar por cliente, veiculo ou placa...',
               hintStyle: GoogleFonts.dmSans(
                 fontSize: 14,
                 color: Colors.white.withValues(alpha: 0.5),
@@ -244,41 +243,33 @@ class _ScheduledCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ag = item.agendadoPara;
+    final ag = item.agendadoPara.toLocal();
     final data =
         '${ag.day.toString().padLeft(2, '0')}/${ag.month.toString().padLeft(2, '0')}/${ag.year}';
-    final hora =
-        '${ag.hour.toString().padLeft(2, '0')}:${ag.minute.toString().padLeft(2, '0')}';
+    final hora = '${ag.hour.toString().padLeft(2, '0')}h';
 
     return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
                 child: Text(
-                  item.id,
+                  item.clienteNome,
                   style: GoogleFonts.dmSans(
-                    fontSize: 13,
+                    fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    color: textSecondary,
+                    color: textPrimary,
                   ),
                 ),
               ),
+              const SizedBox(width: 8),
               StatusBadge(status: item.status.toLowerCase()),
             ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            item.clienteNome,
-            style: GoogleFonts.dmSans(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: textPrimary,
-            ),
-          ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 6),
           Text(
             '${item.veiculoDescricao} - ${item.placa}',
             style: GoogleFonts.dmSans(

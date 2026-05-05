@@ -74,20 +74,23 @@ class InternalFlowApiRepository extends InternalFlowRepository {
         for (final item in data.cast<Map<String, dynamic>>()) {
           // Evitar duplicidade: se já existe como execução, pula
           final budgetId = item['id'] as String?;
-          if (budgetId != null && !executionBudgetIds.contains(budgetId)) {
+          final status =
+              (item['status'] as String? ?? '').toLowerCase();
+          final isPendingBudget = status == 'rascunho' || status == 'enviado';
+
+          if (budgetId != null &&
+              !executionBudgetIds.contains(budgetId) &&
+              isPendingBudget) {
             allServices.add(InternalService.fromJson(item));
           }
         }
       }
 
-      // 3. Processar Agendamentos (apenas os pendentes)
+      // 3. Processar Agendamentos (abertos para atendimento)
       if (results[2].statusCode == 200) {
         final List data = jsonDecode(results[2].body);
         for (final item in data.cast<Map<String, dynamic>>()) {
-          if (item['status'] == 'PENDENTE' ||
-              item['status'] == 'CONFIRMADO' ||
-              item['status'] == 'ANDAMENTO') {
-            // Mapeamento manual básico se necessário, ou usar fromJson se compatível
+          if (item['status'] == 'PENDENTE' || item['status'] == 'CONFIRMADO') {
             allServices.add(InternalService.fromJson(item));
           }
         }
@@ -112,12 +115,99 @@ class InternalFlowApiRepository extends InternalFlowRepository {
 
   @override
   Future<InternalBudgetItem> updateOrcamento(InternalBudgetItem budget) async {
-    throw UnsupportedError('Editar orçamento não implementado na UI via API');
+    final detailResponse = await _client.get(
+      Uri.parse('$baseUrl/orcamentos/${budget.id}'),
+    );
+    if (detailResponse.statusCode != 200) {
+      throw Exception('Falha ao carregar orçamento para atualização');
+    }
+
+    final detail = jsonDecode(detailResponse.body) as Map<String, dynamic>;
+    final existingServices =
+        (detail['servicos'] as List<dynamic>? ?? detail['itens_servico'] as List<dynamic>? ?? []);
+    final existingProducts =
+        (detail['produtos'] as List<dynamic>? ?? detail['itens_produto'] as List<dynamic>? ?? []);
+
+    for (final raw in existingServices.cast<Map<String, dynamic>>()) {
+      final lineId = raw['id'] as String?;
+      if (lineId == null || lineId.isEmpty) {
+        continue;
+      }
+      final response = await _client.delete(
+        Uri.parse('$baseUrl/orcamentos/${budget.id}/servicos/$lineId'),
+      );
+      if (response.statusCode != 200 && response.statusCode != 204) {
+        throw Exception('Falha ao remover item de serviço do orçamento');
+      }
+    }
+
+    for (final raw in existingProducts.cast<Map<String, dynamic>>()) {
+      final lineId = raw['id'] as String?;
+      if (lineId == null || lineId.isEmpty) {
+        continue;
+      }
+      final response = await _client.delete(
+        Uri.parse('$baseUrl/orcamentos/${budget.id}/produtos/$lineId'),
+      );
+      if (response.statusCode != 200 && response.statusCode != 204) {
+        throw Exception('Falha ao remover item de produto do orçamento');
+      }
+    }
+
+    for (final item in budget.services) {
+      final response = await _client.post(
+        Uri.parse('$baseUrl/orcamentos/${budget.id}/servicos'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'servico_id': item.id,
+          'quantidade': item.qty,
+        }),
+      );
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        throw Exception('Falha ao adicionar serviço no orçamento');
+      }
+    }
+
+    for (final item in budget.products) {
+      final response = await _client.post(
+        Uri.parse('$baseUrl/orcamentos/${budget.id}/produtos'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'produto_id': item.id,
+          'quantidade': item.qty,
+        }),
+      );
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        throw Exception('Falha ao adicionar produto no orçamento');
+      }
+    }
+
+    final refreshedResponse = await _client.get(
+      Uri.parse('$baseUrl/orcamentos/${budget.id}'),
+    );
+    if (refreshedResponse.statusCode != 200) {
+      throw Exception('Falha ao recarregar orçamento atualizado');
+    }
+
+    notifyListeners();
+    return InternalBudgetItem.fromJson(
+      jsonDecode(refreshedResponse.body) as Map<String, dynamic>,
+    );
   }
 
   @override
   Future<InternalBudgetItem> cancelOrcamento(String budgetId) async {
-    throw UnsupportedError('Cancelar orçamento não implementado via API');
+    final response = await _client.patch(
+      Uri.parse('$baseUrl/orcamentos/$budgetId/cancelar'),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Falha ao cancelar orçamento');
+    }
+
+    notifyListeners();
+    return InternalBudgetItem.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
   }
 
   @override

@@ -106,9 +106,12 @@ class _BudgetListScreenState extends State<BudgetListScreen>
         b.id.toLowerCase().contains(q);
   }
 
-  List<InternalBudgetItem> _itemsForTab(List<InternalBudgetItem> items, bool canceled) {
+  List<InternalBudgetItem> _itemsForTab(
+    List<InternalBudgetItem> items,
+    bool canceled,
+  ) {
     return items
-        .where((item) => item.isCanceled == canceled)
+        .where((item) => canceled ? item.isCanceled : item.isPending)
         .where(_matchesSearch)
         .toList();
   }
@@ -246,6 +249,23 @@ class _BudgetCard extends StatelessWidget {
     this.onApprove,
   });
 
+  String _statusLabel(String status) {
+    switch (status) {
+      case 'rascunho':
+        return 'Rascunho';
+      case 'enviado':
+        return 'Enviado';
+      case 'cancelado':
+        return 'Cancelado';
+      case 'rejeitado':
+        return 'Rejeitado';
+      default:
+        return status.isEmpty
+            ? 'Pendente'
+            : status[0].toUpperCase() + status.substring(1);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AppCard(
@@ -283,7 +303,7 @@ class _BudgetCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(99),
                 ),
                 child: Text(
-                  item.isCanceled ? 'Cancelado' : 'Pendente',
+                  _statusLabel(item.status),
                   style: GoogleFonts.dmSans(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -366,8 +386,8 @@ class _BudgetListView extends StatelessWidget {
     return ListView.separated(
       padding: const EdgeInsets.all(16),
       itemCount: items.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
-      itemBuilder: (_, i) {
+      separatorBuilder: (context, index) => const SizedBox(height: 8),
+      itemBuilder: (context, i) {
         final item = items[i];
         return _BudgetCard(
           item: item,

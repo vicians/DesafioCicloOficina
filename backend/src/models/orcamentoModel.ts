@@ -163,11 +163,19 @@ export class OrcamentoModel {
     return result.rows[0] ?? null;
   }
 
+<<<<<<< HEAD
   static async rejeitar(id: string): Promise<OrcamentoDTO | null> {
     const db = getDb();
     const result = await db.query(
       `UPDATE orcamentos
        SET status = 'REJEITADO'
+=======
+  static async cancelar(id: string): Promise<OrcamentoDTO | null> {
+    const db = getDb();
+    const result = await db.query(
+      `UPDATE orcamentos
+       SET status = 'CANCELADO'
+>>>>>>> db37b34 (fix/manager-scheduling-screen: align appointment statuses and improve cards UI integration)
        WHERE id = $1
          AND status IN ('RASCUNHO', 'ENVIADO')
        RETURNING *`,
