@@ -50,22 +50,29 @@ class _LoginScreenState extends State<LoginScreen> {
       _errorText = null;
     });
 
-    final user = await _authRepository.login(email, pass);
+    try {
+      final user = await _authRepository.login(email, pass);
 
-    if (user == null) {
+      if (user == null) {
+        setState(() {
+          _loading = false;
+          _errorText = 'Erro desconhecido ao fazer login.';
+        });
+        return;
+      }
+
+      if (user.tipoId == 2) {
+        // CLIENTE
+        _navigateToClienteApp(user.id);
+      } else {
+        // ADMIN (1) ou MECANICO (3)
+        _navigateToApp(user.tipoId == 1, user.id);
+      }
+    } catch (e) {
       setState(() {
         _loading = false;
-        _errorText = 'E-mail ou senha inválidos.';
+        _errorText = e.toString();
       });
-      return;
-    }
-
-    if (user.tipoId == 2) {
-      // CLIENTE
-      _navigateToClienteApp(user.id);
-    } else {
-      // ADMIN (1) ou MECANICO (3)
-      _navigateToApp(user.tipoId == 1, user.id);
     }
   }
 
