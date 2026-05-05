@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'dart:io' show Platform;
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/colors.dart';
 import 'data/internal_flow_api_repository.dart';
@@ -22,7 +24,9 @@ import '../../data/mock_data.dart';
 import '../../services/firebase_messaging_service.dart';
 
 // TODO(prod): substituir pela URL real de produção e autenticação adequada.
-const _kApiBaseUrl = 'http://10.0.2.2:3000'; // Android emulator → localhost
+final _kApiBaseUrl = kIsWeb || !Platform.isAndroid
+    ? 'http://localhost:3000'
+    : 'http://10.0.2.2:3000';
 // TODO(prod): desativar seed DEV automático antes de publicar.
 const _kEnableDevLowStockSeedOnStartup = true;
 
@@ -182,10 +186,7 @@ class _InternoAppState extends State<InternoApp> {
       backgroundColor: bgPage,
       body: SafeArea(
         bottom: false,
-        child: IndexedStack(
-          index: _currentIndex,
-          children: _screens,
-        ),
+        child: IndexedStack(index: _currentIndex, children: _screens),
       ),
       bottomNavigationBar: _InternoNavBar(
         items: _navItems,
@@ -227,9 +228,10 @@ class _InternoNavBar extends StatelessWidget {
         border: const Border(top: BorderSide(color: borderColor, width: 1)),
         boxShadow: const [
           BoxShadow(
-              color: Color(0x0A000000),
-              blurRadius: 16,
-              offset: Offset(0, -4))
+            color: Color(0x0A000000),
+            blurRadius: 16,
+            offset: Offset(0, -4),
+          ),
         ],
       ),
       child: SafeArea(
@@ -288,7 +290,9 @@ class _InternoNavBar extends StatelessWidget {
                                         ),
                                         decoration: BoxDecoration(
                                           color: red,
-                                          borderRadius: BorderRadius.circular(10),
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
                                         ),
                                         constraints: const BoxConstraints(
                                           minWidth: 16,
@@ -335,4 +339,3 @@ class _InternoNavBar extends StatelessWidget {
     );
   }
 }
-

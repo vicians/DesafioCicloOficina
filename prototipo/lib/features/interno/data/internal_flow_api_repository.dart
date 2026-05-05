@@ -10,10 +10,8 @@ class InternalFlowApiRepository extends InternalFlowRepository {
   final String baseUrl;
   final http.Client _client;
 
-  InternalFlowApiRepository({
-    required this.baseUrl,
-    http.Client? client,
-  }) : _client = client ?? http.Client();
+  InternalFlowApiRepository({required this.baseUrl, http.Client? client})
+    : _client = client ?? http.Client();
 
   @override
   Future<List<CatalogoServicoItem>> fetchCatalogoServicos() async {
@@ -56,19 +54,27 @@ class InternalFlowApiRepository extends InternalFlowRepository {
       ]);
 
       final List<InternalService> allServices = [];
+      final executionBudgetIds = <String>{};
 
       // 1. Processar Execuções
       if (results[0].statusCode == 200) {
         final List data = jsonDecode(results[0].body);
-        allServices.addAll(data.map((e) => InternalService.fromJson(e)));
+        for (final item in data.cast<Map<String, dynamic>>()) {
+          final orcamentoId = item['orcamento_id'] as String?;
+          if (orcamentoId != null && orcamentoId.isNotEmpty) {
+            executionBudgetIds.add(orcamentoId);
+          }
+          allServices.add(InternalService.fromJson(item));
+        }
       }
 
       // 2. Processar Orçamentos (apenas os que não viraram execução ainda)
       if (results[1].statusCode == 200) {
         final List data = jsonDecode(results[1].body);
-        for (var item in data) {
+        for (final item in data.cast<Map<String, dynamic>>()) {
           // Evitar duplicidade: se já existe como execução, pula
-          if (!allServices.any((s) => s.id == item['id'])) {
+          final budgetId = item['id'] as String?;
+          if (budgetId != null && !executionBudgetIds.contains(budgetId)) {
             allServices.add(InternalService.fromJson(item));
           }
         }
@@ -77,24 +83,27 @@ class InternalFlowApiRepository extends InternalFlowRepository {
       // 3. Processar Agendamentos (apenas os pendentes)
       if (results[2].statusCode == 200) {
         final List data = jsonDecode(results[2].body);
-        for (var item in data) {
-           if (item['status'] == 'PENDENTE' || item['status'] == 'ANDAMENTO') {
-             // Mapeamento manual básico se necessário, ou usar fromJson se compatível
-             allServices.add(InternalService.fromJson(item));
-           }
+        for (final item in data.cast<Map<String, dynamic>>()) {
+          if (item['status'] == 'PENDENTE' ||
+              item['status'] == 'CONFIRMADO' ||
+              item['status'] == 'ANDAMENTO') {
+            // Mapeamento manual básico se necessário, ou usar fromJson se compatível
+            allServices.add(InternalService.fromJson(item));
+          }
         }
       }
 
       return allServices;
     } catch (e) {
-      print('Erro ao unificar serviços: $e');
       throw Exception('Falha ao buscar dados unificados');
     }
   }
 
   @override
   Future<InternalService?> fetchServicoById(String serviceId) async {
-    final response = await _client.get(Uri.parse('$baseUrl/execucoes/$serviceId'));
+    final response = await _client.get(
+      Uri.parse('$baseUrl/execucoes/$serviceId'),
+    );
     if (response.statusCode == 200) {
       return InternalService.fromJson(jsonDecode(response.body));
     }
@@ -117,23 +126,41 @@ class InternalFlowApiRepository extends InternalFlowRepository {
     final response = await _client.patch(
       Uri.parse('$baseUrl/orcamentos/$budgetId/aprovar'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'valido_ate': DateTime.now().add(const Duration(days: 7)).toIso8601String()}),
+      body: jsonEncode({
+        'valido_ate': DateTime.now()
+            .add(const Duration(days: 7))
+            .toIso8601String(),
+      }),
     );
     if (response.statusCode == 200 || response.statusCode == 204) {
-      // Como o backend devolve o Orçamento mas precisamos de um InternalService simulado para a UI...
-      // O ideal seria a UI recarregar a lista de execuções. Retornando algo vazio temporário:
-      final res = await _client.get(Uri.parse('$baseUrl/orcamentos/$budgetId'));
-      return InternalService.fromJson(jsonDecode(res.body)); // Fallback grosseiro
+      final res = await _client.get(
+        Uri.parse('$baseUrl/execucoes/orcamento/$budgetId'),
+      );
+      if (res.statusCode == 200) {
+        return InternalService.fromJson(jsonDecode(res.body));
+      }
+
+      final budgetRes = await _client.get(
+        Uri.parse('$baseUrl/orcamentos/$budgetId'),
+      );
+      return InternalService.fromJson(jsonDecode(budgetRes.body));
     }
     throw Exception('Falha ao aprovar orçamento');
   }
 
   @override
-  Future<InternalService> updateServicoStatus(String serviceId, String status) async {
+  Future<InternalService> updateServicoStatus(
+    String serviceId,
+    String status,
+  ) async {
     if (status.toLowerCase() == 'concluido') {
-      final response = await _client.patch(Uri.parse('$baseUrl/execucoes/$serviceId/finalizar'));
+      final response = await _client.patch(
+        Uri.parse('$baseUrl/execucoes/$serviceId/finalizar'),
+      );
       if (response.statusCode == 200) {
-        final res = await _client.get(Uri.parse('$baseUrl/execucoes/$serviceId'));
+        final res = await _client.get(
+          Uri.parse('$baseUrl/execucoes/$serviceId'),
+        );
         return InternalService.fromJson(jsonDecode(res.body));
       }
     }
