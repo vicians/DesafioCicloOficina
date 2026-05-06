@@ -8,8 +8,6 @@ import '../../data/mock_data.dart';
 import '../../services/firebase_messaging_service.dart';
 import '../interno/screens/login_screen.dart';
 import 'data/client_notification_api_repository.dart';
-import 'data/client_notification_fallback_repository.dart';
-import 'data/client_notification_mock_repository.dart';
 import 'data/client_notification_repository.dart';
 import 'data/client_schedule_api_repository.dart';
 import 'data/client_flow_api_repository.dart';
@@ -45,9 +43,9 @@ class _ClienteAppState extends State<ClienteApp> {
   @override
   void initState() {
     super.initState();
-    _notificationRepository = ClientNotificationFallbackRepository(
-      primary: ClientNotificationApiRepository(baseUrl: _kApiBaseUrl),
-      fallback: ClientNotificationMockRepository(),
+    _notificationRepository = ClientNotificationApiRepository(
+      baseUrl: _kApiBaseUrl,
+      clientId: widget.clientId,
     );
     _scheduleRepository = ClientScheduleApiRepository(
       baseUrl: _kApiBaseUrl,
@@ -87,9 +85,15 @@ class _ClienteAppState extends State<ClienteApp> {
     await _loadNotifications();
   }
 
+  Future<void> _markAllNotificationsAsRead() async {
+    await _notificationRepository.markAllAsRead();
+    await _loadNotifications();
+  }
+
   Future<void> _configureClientPushAndDevSeed() async {
     await FirebaseMessagingService.configureClientNotifications(
       baseUrl: _kApiBaseUrl,
+      clientId: widget.clientId,
       triggerDevClientSeed: _kEnableDevClientSeedOnStartup,
     );
     await _loadNotifications();
@@ -110,6 +114,7 @@ class _ClienteAppState extends State<ClienteApp> {
     NotificationsScreen(
       items: _clientNotifications,
       onMarkRead: _markNotificationAsRead,
+      onMarkAllRead: _markAllNotificationsAsRead,
     ),
   ];
 

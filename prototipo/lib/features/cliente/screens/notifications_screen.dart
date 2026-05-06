@@ -7,11 +7,13 @@ import 'client_screen_header.dart';
 class NotificationsScreen extends StatefulWidget {
   final List<NotificationItem> items;
   final ValueChanged<String> onMarkRead;
+  final VoidCallback? onMarkAllRead;
 
   const NotificationsScreen({
     super.key,
     required this.items,
     required this.onMarkRead,
+    this.onMarkAllRead,
   });
 
   @override
@@ -26,21 +28,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       children: [
         ClientScreenHeader(
           title: 'Alertas',
-          trailing: unreadCount == 0
+          trailing: (unreadCount == 0 || widget.onMarkAllRead == null)
               ? null
-              : Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
+              : GestureDetector(
+                  onTap: widget.onMarkAllRead,
                   child: Text(
-                    '$unreadCount não lido${unreadCount > 1 ? 's' : ''}',
+                    'Marcar todas como lidas',
                     style: GoogleFonts.dmSans(
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: Colors.white,
+                      color: Colors.white.withValues(alpha: 0.75),
                     ),
                   ),
                 ),
