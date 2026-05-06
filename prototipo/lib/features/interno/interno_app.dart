@@ -6,9 +6,7 @@ import '../../core/theme/colors.dart';
 import 'data/internal_flow_api_repository.dart';
 import 'data/internal_flow_repository.dart';
 import 'data/notification_repository.dart';
-import 'data/notification_mock_repository.dart';
 import 'data/notification_api_repository.dart';
-import 'data/notification_fallback_repository.dart';
 import 'data/scheduling_repository.dart';
 import 'data/scheduling_api_repository.dart';
 import 'screens/budget_list_screen.dart';
@@ -97,6 +95,12 @@ class _InternoAppState extends State<InternoApp> {
     if (mounted) setState(() => _internalNotifications = List.of(items));
   }
 
+  Future<void> _markAllNotificationsAsRead() async {
+    await _notificationRepository.markAllAsRead();
+    final items = await _notificationRepository.fetchNotifications();
+    if (mounted) setState(() => _internalNotifications = List.of(items));
+  }
+
   void _updateUnreadChatsCount(int count) {
     if (!mounted || _unreadInternalChatsCount == count) return;
     setState(() => _unreadInternalChatsCount = count);
@@ -120,6 +124,7 @@ class _InternoAppState extends State<InternoApp> {
         InternalNotificationsScreen(
           items: _internalNotifications,
           onMarkRead: _markNotificationAsRead,
+          onMarkAllRead: _markAllNotificationsAsRead,
         ),
       ];
     }
@@ -138,6 +143,7 @@ class _InternoAppState extends State<InternoApp> {
       InternalNotificationsScreen(
         items: _internalNotifications,
         onMarkRead: _markNotificationAsRead,
+        onMarkAllRead: _markAllNotificationsAsRead,
       ),
     ];
   }
