@@ -37,15 +37,36 @@ class InternalNotificationsScreen extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: items.length,
-            separatorBuilder: (_, index) => const SizedBox(height: 8),
-            itemBuilder: (_, i) => _NotifCard(
-              item: items[i],
-              onTap: () => onMarkRead(items[i].id),
-            ),
-          ),
+          child: items.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.notifications_off_outlined,
+                        size: 48,
+                        color: textMuted,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Nenhuma notificação nova',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 14,
+                          color: textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: items.length,
+                  separatorBuilder: (_, index) => const SizedBox(height: 8),
+                  itemBuilder: (_, i) => _NotifCard(
+                    item: items[i],
+                    onTap: () => onMarkRead(items[i].id),
+                  ),
+                ),
         ),
       ],
     );
