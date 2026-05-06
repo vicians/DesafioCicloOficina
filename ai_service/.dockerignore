@@ -1,0 +1,32 @@
+# Dependências (serão instaladas dentro do container via npm install)
+node_modules/
+
+# Código compilado (será gerado dentro do container via npm run build)
+dist/
+
+# Variáveis de ambiente com secrets (jamais devem entrar na imagem)
+.env
+.env.local
+.env.*.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+*.log
+
+# TypeScript build info (gerado automaticamente)
+*.tsbuildinfo
+
+# Prisma - pasta de migrations não precisa ir para runtime (já aplicadas)
+# (comentado pois pode ser necessário dependendo da estratégia de migration)
+# prisma/migrations/
+
+# Ferramentas de desenvolvimento local
+.git/
+.gitignore
+README.md
+
+# IDE e sistema operacional
+.vscode/
+.DS_Store
+Thumbs.db
