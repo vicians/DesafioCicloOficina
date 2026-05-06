@@ -1,14 +1,16 @@
 import { prisma } from '../config/prisma';
-import { model } from '../config/ai_model';
+import { chat_model } from '../config/ai_model';
 import { queryProdutos } from '../vectorstore/productVectorStore';
-import { SYSTEM_PROMPT } from '../prompts/ai_prompts';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 export async function analyzeMessage(message: string, number: string) {
-  let customer = await prisma.customer.findUnique({
-    where: { whatsappNumber: number },
+  let customer = await prisma.usuarios.findUnique({
+    where: { telefone: number },
   });
 
-  if (customer?.status === 'HUMAN') {
+  if (!customer || customer.tipo_id !== 2) {
     return {
       result: null,
       action: 'MANUAL_WAIT',
@@ -22,8 +24,8 @@ export async function analyzeMessage(message: string, number: string) {
       ? `\n\nProdutos e preços disponíveis na oficina:\n${ragDocs.map((d) => `- ${d}`).join('\n')}`
       : '';
 
-  const response = await model.invoke([
-    ['system', `${SYSTEM_PROMPT}${contextBlock}`],
+  const response = await chat_model.invoke([
+    ['system', `${process.env.SYSTEM_PROMPT}${contextBlock}`],
     ['user', message],
   ]);
 
