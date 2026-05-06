@@ -9,6 +9,8 @@ export class AgendamentoModel {
       SELECT 
         a.*,
         c.nome AS cliente_nome,
+        EXISTS (SELECT 1 FROM orcamentos o WHERE o.agendamento_id = a.id) AS possui_orcamento,
+        (SELECT nome FROM oficinas ORDER BY criado_em ASC LIMIT 1) AS oficina_nome,
         v.marca AS veiculo_marca,
         v.modelo AS veiculo_modelo,
         v.placa AS veiculo_placa

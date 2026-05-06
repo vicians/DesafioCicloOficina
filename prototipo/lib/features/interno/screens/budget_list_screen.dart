@@ -90,11 +90,18 @@ class _BudgetListScreenState extends State<BudgetListScreen>
 
     if (confirmed != true) return;
 
-    final created = await widget.repository.approveOrcamento(item.id);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Orçamento aprovado. OS gerada: ${created.id}')),
-    );
+    try {
+      final created = await widget.repository.approveOrcamento(item.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Orçamento aprovado. OS gerada: ${created.id}')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Falha ao aprovar orçamento: $error')),
+      );
+    }
   }
 
   bool _matchesSearch(InternalBudgetItem b) {

@@ -101,6 +101,12 @@ const statusMap = {
     backgroundColor: purpleBg,
     dotColor: purple,
   ),
+  'revisao_tecnica': ServiceStatus(
+    label: 'Em revisão',
+    textColor: purple,
+    backgroundColor: purpleBg,
+    dotColor: purple,
+  ),
   'aguardando_retirada': ServiceStatus(
     label: 'Aguardando retirada',
     textColor: orange,

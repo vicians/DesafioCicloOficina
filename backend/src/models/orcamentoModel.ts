@@ -9,6 +9,7 @@ export class OrcamentoModel {
       SELECT 
         o.*,
         c.nome AS cliente_nome,
+        (SELECT nome FROM oficinas ORDER BY criado_em ASC LIMIT 1) AS oficina_nome,
         v.marca AS veiculo_marca,
         v.modelo AS veiculo_modelo,
         v.placa AS veiculo_placa,
@@ -39,6 +40,7 @@ export class OrcamentoModel {
       SELECT 
         o.*,
         c.nome AS cliente_nome,
+        (SELECT nome FROM oficinas ORDER BY criado_em ASC LIMIT 1) AS oficina_nome,
         v.marca AS veiculo_marca,
         v.modelo AS veiculo_modelo,
         v.placa AS veiculo_placa,
@@ -59,6 +61,15 @@ export class OrcamentoModel {
       WHERE o.id = $1
     `;
     const result = await db.query(query, [id]);
+    return result.rows[0] ?? null;
+  }
+
+  static async findByAgendamentoId(agendamentoId: string): Promise<OrcamentoDTO | null> {
+    const db = getDb();
+    const result = await db.query(
+      'SELECT * FROM orcamentos WHERE agendamento_id = $1 ORDER BY criado_em DESC LIMIT 1',
+      [agendamentoId]
+    );
     return result.rows[0] ?? null;
   }
 

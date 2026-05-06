@@ -5,10 +5,32 @@ import 'models/catalogo_servico_item.dart';
 import 'models/internal_budget_item.dart';
 import 'models/produto_item.dart';
 import 'models/internal_service.dart';
+import 'models/internal_chat_message.dart';
 
 class InternalFlowApiRepository extends InternalFlowRepository {
   final String baseUrl;
   final http.Client _client;
+
+  String _mapServiceStatusToApi(String status) {
+    switch (status.toLowerCase()) {
+      case 'aguardando':
+        return 'AGUARDANDO';
+      case 'andamento':
+      case 'em_execucao':
+        return 'EM_EXECUCAO';
+      case 'revisao':
+      case 'revisao_tecnica':
+        return 'REVISAO_TECNICA';
+      case 'aguardando_retirada':
+        return 'AGUARDANDO_RETIRADA';
+      case 'concluido':
+        return 'CONCLUIDO';
+      case 'cancelado':
+        return 'CANCELADO';
+      default:
+        return status.toUpperCase();
+    }
+  }
 
   InternalFlowApiRepository({required this.baseUrl, http.Client? client})
     : _client = client ?? http.Client();
@@ -46,53 +68,14 @@ class InternalFlowApiRepository extends InternalFlowRepository {
   @override
   Future<List<InternalService>> fetchServicos() async {
     try {
-      // Busca paralela para performance
-      final results = await Future.wait([
-        _client.get(Uri.parse('$baseUrl/execucoes')),
-        _client.get(Uri.parse('$baseUrl/orcamentos')),
-        _client.get(Uri.parse('$baseUrl/agendamentos')),
-      ]);
-
       final List<InternalService> allServices = [];
-      final executionBudgetIds = <String>{};
+      final response = await _client.get(Uri.parse('$baseUrl/execucoes'));
 
-      // 1. Processar Execuções
-      if (results[0].statusCode == 200) {
-        final List data = jsonDecode(results[0].body);
+      if (response.statusCode == 200) {
+        final List data = jsonDecode(response.body);
         for (final item in data.cast<Map<String, dynamic>>()) {
-          final orcamentoId = item['orcamento_id'] as String?;
-          if (orcamentoId != null && orcamentoId.isNotEmpty) {
-            executionBudgetIds.add(orcamentoId);
-          }
+          item['flow_type'] = 'execucao';
           allServices.add(InternalService.fromJson(item));
-        }
-      }
-
-      // 2. Processar Orçamentos (apenas os que não viraram execução ainda)
-      if (results[1].statusCode == 200) {
-        final List data = jsonDecode(results[1].body);
-        for (final item in data.cast<Map<String, dynamic>>()) {
-          // Evitar duplicidade: se já existe como execução, pula
-          final budgetId = item['id'] as String?;
-          final status =
-              (item['status'] as String? ?? '').toLowerCase();
-          final isPendingBudget = status == 'rascunho' || status == 'enviado';
-
-          if (budgetId != null &&
-              !executionBudgetIds.contains(budgetId) &&
-              isPendingBudget) {
-            allServices.add(InternalService.fromJson(item));
-          }
-        }
-      }
-
-      // 3. Processar Agendamentos (abertos para atendimento)
-      if (results[2].statusCode == 200) {
-        final List data = jsonDecode(results[2].body);
-        for (final item in data.cast<Map<String, dynamic>>()) {
-          if (item['status'] == 'PENDENTE' || item['status'] == 'CONFIRMADO') {
-            allServices.add(InternalService.fromJson(item));
-          }
         }
       }
 
@@ -245,21 +228,67 @@ class InternalFlowApiRepository extends InternalFlowRepository {
         final res = await _client.get(
           Uri.parse('$baseUrl/execucoes/$serviceId'),
         );
-        return InternalService.fromJson(jsonDecode(res.body));
+        if (res.statusCode == 200) {
+          notifyListeners();
+          return InternalService.fromJson(
+            jsonDecode(res.body) as Map<String, dynamic>,
+          );
+        }
       }
     } else {
       final response = await _client.patch(
         Uri.parse('$baseUrl/execucoes/$serviceId/status'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'status': status.toUpperCase()}),
+        body: jsonEncode({
+          'status': _mapServiceStatusToApi(status),
+        }),
       );
       if (response.statusCode == 200) {
         final res = await _client.get(
           Uri.parse('$baseUrl/execucoes/$serviceId'),
         );
-        return InternalService.fromJson(jsonDecode(res.body));
+        if (res.statusCode == 200) {
+          notifyListeners();
+          return InternalService.fromJson(
+            jsonDecode(res.body) as Map<String, dynamic>,
+          );
+        }
       }
     }
     throw Exception('Falha ao atualizar status da OS');
+  }
+
+  @override
+  Future<List<InternalChatMessage>> fetchMensagensCliente(String clientId) async {
+    final response = await _client.get(
+      Uri.parse('$baseUrl/chat/clientes/$clientId/mensagens'),
+    );
+    if (response.statusCode == 200) {
+      final List data = jsonDecode(response.body) as List;
+      return data
+          .cast<Map<String, dynamic>>()
+          .map(InternalChatMessage.fromJson)
+          .toList();
+    }
+    throw Exception('Falha ao buscar mensagens do cliente');
+  }
+
+  @override
+  Future<InternalChatMessage> sendMensagemCliente(String clientId, String text) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/chat/clientes/$clientId/mensagens'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'tipo_remetente': 'employee',
+        'conteudo': text,
+      }),
+    );
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      notifyListeners();
+      return InternalChatMessage.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>,
+      );
+    }
+    throw Exception('Falha ao enviar mensagem para o cliente');
   }
 }
