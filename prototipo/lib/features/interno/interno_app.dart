@@ -9,6 +9,8 @@ import 'data/notification_repository.dart';
 import 'data/notification_api_repository.dart';
 import 'data/scheduling_repository.dart';
 import 'data/scheduling_api_repository.dart';
+import 'data/report_repository.dart';
+import 'data/report_api_repository.dart';
 import 'screens/budget_list_screen.dart';
 import 'screens/employee_dashboard_screen.dart';
 import 'screens/service_list_screen.dart';
@@ -42,6 +44,7 @@ class _InternoAppState extends State<InternoApp> {
   late final InternalFlowRepository _flowRepository;
   late final NotificationRepository _notificationRepository;
   late final SchedulingRepository _schedulingRepository;
+  late final ReportRepository _reportRepository;
   List<NotificationItem> _internalNotifications = [];
   int _unreadInternalChatsCount = 0;
 
@@ -54,6 +57,7 @@ class _InternoAppState extends State<InternoApp> {
       internalUserTypeId: widget.isManager ? 1 : 3,
     );
     _schedulingRepository = SchedulingApiRepository(baseUrl: _kApiBaseUrl);
+    _reportRepository = ReportApiRepository(baseUrl: _kApiBaseUrl);
     _loadNotifications();
     _configurePushAndDevSeed();
   }
@@ -124,7 +128,7 @@ class _InternoAppState extends State<InternoApp> {
         BudgetListScreen(repository: _flowRepository),
         ServiceListScreen(repository: _flowRepository, initialFilter: null),
         const InventoryScreen(),
-        const ReportsScreen(),
+        ReportsScreen(repository: _reportRepository),
         InternalNotificationsScreen(
           items: _internalNotifications,
           onMarkRead: _markNotificationAsRead,
