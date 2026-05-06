@@ -90,27 +90,22 @@ class FirebaseMessagingService {
 
   static Future<void> configureClientNotifications({
     required String baseUrl,
+    required String clientId,
     bool triggerDevClientSeed = false,
   }) async {
-    const clientUserTypeId = 2;
-    final userId = await _resolveInternalUserId(
-      baseUrl: baseUrl,
-      internalUserTypeId: clientUserTypeId,
-    );
-    if (userId == null) return;
-
     _currentBaseUrl = baseUrl;
-    _currentUserId = userId;
+    _currentUserId = clientId;
 
-    await _registerCurrentToken(baseUrl: baseUrl, usuarioId: userId);
+    await _registerCurrentToken(baseUrl: baseUrl, usuarioId: clientId);
 
     if (!_listenersConfigured) {
       _configureListeners();
       _listenersConfigured = true;
     }
 
-    if (triggerDevClientSeed && !_devSeedTriggeredForType.contains(clientUserTypeId)) {
-      _devSeedTriggeredForType.add(clientUserTypeId);
+    final seedKey = clientId.hashCode;
+    if (triggerDevClientSeed && !_devSeedTriggeredForType.contains(seedKey)) {
+      _devSeedTriggeredForType.add(seedKey);
       await _triggerDevClientSeed(baseUrl: baseUrl);
     }
   }

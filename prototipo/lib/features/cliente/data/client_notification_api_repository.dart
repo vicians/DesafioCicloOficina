@@ -5,70 +5,48 @@ import 'client_notification_repository.dart';
 
 class ClientNotificationApiRepository implements ClientNotificationRepository {
   final String baseUrl;
-  final int userTypeId;
+  final String clientId;
   final http.Client _client;
-  String? _resolvedUsuarioId;
 
   ClientNotificationApiRepository({
     required this.baseUrl,
-    this.userTypeId = 2,
+    required this.clientId,
     http.Client? client,
   }) : _client = client ?? http.Client();
 
-  Future<String?> _resolveUsuarioId() async {
-    if (_resolvedUsuarioId != null) return _resolvedUsuarioId;
-
-    final uri = Uri.parse('$baseUrl/usuarios').replace(
-      queryParameters: {'tipo_id': userTypeId.toString()},
-    );
-    final response = await _client.get(uri);
-    if (response.statusCode != 200) return null;
-
-    final List<dynamic> users = jsonDecode(response.body) as List<dynamic>;
-    if (users.isEmpty) return null;
-
-    final first = users.first as Map<String, dynamic>;
-    final id = first['id'] as String?;
-    if (id == null || id.isEmpty) return null;
-
-    _resolvedUsuarioId = id;
-    return _resolvedUsuarioId;
-  }
-
   @override
   Future<List<NotificationItem>> fetchNotifications() async {
-    final usuarioId = await _resolveUsuarioId();
-    if (usuarioId == null) return [];
-
     final uri = Uri.parse('$baseUrl/notifications').replace(
-      queryParameters: {'usuario_id': usuarioId},
+      queryParameters: {'usuario_id': clientId},
     );
     final response = await _client.get(uri);
     if (response.statusCode != 200) return [];
 
     final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
-    return data.map((json) {
+    final items = data.map((json) {
       final map = json as Map<String, dynamic>;
+      final rawIso = map['criado_em'] as String?;
       return NotificationItem(
         id: map['id'] as String,
         type: map['tipo'] as String,
         title: map['titulo'] as String,
         body: map['mensagem'] as String,
-        time: _formatTime(map['criado_em'] as String?),
+        time: _formatTime(rawIso),
+        timestamp: rawIso != null ? DateTime.tryParse(rawIso) : null,
         unread: !(map['lida'] as bool? ?? false),
       );
     }).toList();
+
+    items.sort((a, b) => (b.timestamp ?? DateTime(0)).compareTo(a.timestamp ?? DateTime(0)));
+    return items;
   }
 
   @override
   Future<void> markAsRead(String id) async {
-    final usuarioId = await _resolveUsuarioId();
-    if (usuarioId == null) throw Exception('usuario_id do cliente não resolvido');
-
     final response = await _client.patch(
       Uri.parse('$baseUrl/notifications/$id/read'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'usuario_id': usuarioId}),
+      body: jsonEncode({'usuario_id': clientId}),
     );
 
     if (response.statusCode != 200) {
@@ -78,13 +56,10 @@ class ClientNotificationApiRepository implements ClientNotificationRepository {
 
   @override
   Future<void> markAllAsRead() async {
-    final usuarioId = await _resolveUsuarioId();
-    if (usuarioId == null) throw Exception('usuario_id do cliente não resolvido');
-
     final response = await _client.patch(
       Uri.parse('$baseUrl/notifications/read-all'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'usuario_id': usuarioId}),
+      body: jsonEncode({'usuario_id': clientId}),
     );
 
     if (response.statusCode != 204) {
