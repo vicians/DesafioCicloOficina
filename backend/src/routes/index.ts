@@ -11,6 +11,7 @@ import { notificationRouter } from './notificationRoutes';
 import { pushTokenRouter } from './pushTokenRoutes';
 import { authRouter } from './authRoutes';
 import { chatMessageRouter } from './chatMessageRoutes';
+import { conversationRouter } from './conversationRoutes';
 
 const routes = Router();
 
@@ -26,5 +27,6 @@ routes.use('/notifications', notificationRouter);
 routes.use('/push-tokens', pushTokenRouter);
 routes.use('/auth', authRouter);
 routes.use('/chat', chatMessageRouter);
+routes.use('/conversacoes', conversationRouter);
 
 export default routes;

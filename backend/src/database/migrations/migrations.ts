@@ -8,7 +8,7 @@ import { getDb } from '../../config/database';
  */
 export const runMigrations = async () => {
   const db = getDb();
-  
+
   console.log('Iniciando Migrations...');
 
   // Adicionar a extensão para gerar UUID se não existir
@@ -173,6 +173,19 @@ export const runMigrations = async () => {
   `);
 
   // ========================================
+  // TABELA: conversacoes_chat
+  // ========================================
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS conversacoes_chat (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      cliente_id UUID NOT NULL UNIQUE REFERENCES usuarios(id) ON DELETE CASCADE,
+      ia_pausada BOOLEAN DEFAULT false,
+      atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // ========================================
   // TABELA: mensagens_chat
   // ========================================
   await db.query(`
@@ -183,6 +196,16 @@ export const runMigrations = async () => {
       conteudo TEXT NOT NULL,
       criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
+  `);
+
+  await db.query(`
+    ALTER TABLE mensagens_chat
+    ADD COLUMN IF NOT EXISTS conversacao_id UUID REFERENCES conversacoes_chat(id) ON DELETE CASCADE
+  `);
+
+  await db.query(`
+    ALTER TABLE mensagens_chat
+    ADD COLUMN IF NOT EXISTS lida BOOLEAN DEFAULT false
   `);
 
   // ========================================
