@@ -10,6 +10,7 @@ class NotificationItem {
   final String title;
   final String body;
   final String time;
+  final DateTime? timestamp;
   bool unread;
 
   NotificationItem({
@@ -18,6 +19,7 @@ class NotificationItem {
     required this.title,
     required this.body,
     required this.time,
+    this.timestamp,
     required this.unread,
   });
 }

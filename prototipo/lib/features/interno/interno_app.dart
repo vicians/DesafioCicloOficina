@@ -51,13 +51,9 @@ class _InternoAppState extends State<InternoApp> {
   void initState() {
     super.initState();
     _flowRepository = InternalFlowApiRepository(baseUrl: _kApiBaseUrl);
-    _notificationRepository = NotificationFallbackRepository(
-      primary: NotificationApiRepository(
-        baseUrl: _kApiBaseUrl,
-        internalUserTypeId: widget.isManager ? 1 : 3,
-        // userId: widget.userId, // Futuro: filtrar notificações por usuário
-      ),
-      fallback: NotificationMockRepository(),
+    _notificationRepository = NotificationApiRepository(
+      baseUrl: _kApiBaseUrl,
+      internalUserTypeId: widget.isManager ? 1 : 3,
     );
     _schedulingRepository = SchedulingApiRepository(baseUrl: _kApiBaseUrl);
     _loadNotifications();
