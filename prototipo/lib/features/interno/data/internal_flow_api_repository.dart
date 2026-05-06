@@ -212,7 +212,8 @@ class InternalFlowApiRepository extends InternalFlowRepository {
 
   @override
   Future<InternalService> approveOrcamento(String budgetId) async {
-    // Para aprovação, precisamos passar um valido_ate genérico para o mockup
+    // O endpoint /aprovar agora cria a execucao automaticamente e retorna
+    // os dados detalhados da OS gerada (com todos os joins necessários).
     final response = await _client.patch(
       Uri.parse('$baseUrl/orcamentos/$budgetId/aprovar'),
       headers: {'Content-Type': 'application/json'},
@@ -222,18 +223,11 @@ class InternalFlowApiRepository extends InternalFlowRepository {
             .toIso8601String(),
       }),
     );
-    if (response.statusCode == 200 || response.statusCode == 204) {
-      final res = await _client.get(
-        Uri.parse('$baseUrl/execucoes/orcamento/$budgetId'),
+    if (response.statusCode == 200) {
+      notifyListeners();
+      return InternalService.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>,
       );
-      if (res.statusCode == 200) {
-        return InternalService.fromJson(jsonDecode(res.body));
-      }
-
-      final budgetRes = await _client.get(
-        Uri.parse('$baseUrl/orcamentos/$budgetId'),
-      );
-      return InternalService.fromJson(jsonDecode(budgetRes.body));
     }
     throw Exception('Falha ao aprovar orçamento');
   }
