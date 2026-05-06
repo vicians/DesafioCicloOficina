@@ -137,6 +137,18 @@ class InternalFlowApiRepository extends InternalFlowRepository {
       }
     }
 
+    // Atualiza dados básicos (observações)
+    final updateBaseRes = await _client.patch(
+      Uri.parse('$baseUrl/orcamentos/${budget.id}'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'observacoes': budget.observation,
+      }),
+    );
+    if (updateBaseRes.statusCode != 200) {
+      throw Exception('Falha ao atualizar observações do orçamento');
+    }
+
     for (final item in budget.services) {
       final response = await _client.post(
         Uri.parse('$baseUrl/orcamentos/${budget.id}/servicos'),

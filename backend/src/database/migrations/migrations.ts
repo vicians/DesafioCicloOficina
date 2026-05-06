@@ -126,6 +126,7 @@ export const runMigrations = async () => {
       funcionario_id UUID REFERENCES usuarios(id),
       status VARCHAR NOT NULL,
       valor_total INTEGER NOT NULL,
+      observacoes TEXT,
       valido_ate TIMESTAMP,
       criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )

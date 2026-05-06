@@ -184,5 +184,17 @@ export class OrcamentoController {
     return res.json(execucao ?? orcamento);
   }
 
+  static async update(req: Request, res: Response) {
+    const { id } = req.params;
+    const data = req.body;
+
+    const orcamento = await OrcamentoModel.update(id, data);
+    if (!orcamento) {
+      return res.status(404).json({ error: 'Orçamento não encontrado' });
+    }
+
+    return res.json(orcamento);
+  }
+
 }
 

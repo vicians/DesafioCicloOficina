@@ -244,4 +244,38 @@ orcamentoRouter.patch('/:id/rejeitar', OrcamentoController.rejeitar);
  */
 orcamentoRouter.patch('/:id/aprovar', OrcamentoController.aprovar);
 
+/**
+ * @openapi
+ * /orcamentos/{id}:
+ *   patch:
+ *     tags:
+ *       - Orçamentos
+ *     summary: Atualiza dados básicos do orçamento
+ *     description: Permite atualizar observações, status ou validade (RN173)
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               observacoes:
+ *                 type: string
+ *               status:
+ *                 type: string
+ *               valido_ate:
+ *                 type: string
+ *                 format: date-time
+ *     responses:
+ *       200:
+ *         description: Atualizado com sucesso
+ */
+orcamentoRouter.patch('/:id', OrcamentoController.update);
+
 export { orcamentoRouter };
