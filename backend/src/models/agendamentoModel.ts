@@ -9,6 +9,7 @@ export class AgendamentoModel {
       SELECT 
         a.*,
         c.nome AS cliente_nome,
+        (SELECT nome FROM oficinas ORDER BY criado_em ASC LIMIT 1) AS oficina_nome,
         v.marca AS veiculo_marca,
         v.modelo AS veiculo_modelo,
         v.placa AS veiculo_placa

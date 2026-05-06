@@ -2,13 +2,44 @@ import { getDb } from '../config/database';
 import type { ExecucaoServicoDTO, ExecucaoServicoDetalhadaDTO } from '../../../shared/dtos/execucaoServicoDto';
 
 export class ExecucaoServicoModel {
+  static async backfillFromApprovedBudgets(): Promise<void> {
+    const db = getDb();
+    await db.query(
+      `INSERT INTO execucoes_servico (orcamento_id, funcionario_id, status, iniciado_em)
+       SELECT o.id, o.funcionario_id, 'AGUARDANDO', COALESCE(o.criado_em, NOW())
+       FROM orcamentos o
+       LEFT JOIN execucoes_servico e ON e.orcamento_id = o.id
+       WHERE o.status = 'APROVADO'
+         AND e.id IS NULL`
+    );
+  }
+
+  static async ensureByOrcamentoId(
+    orcamentoId: string,
+    funcionarioId?: string | null,
+  ): Promise<ExecucaoServicoDTO> {
+    const db = getDb();
+    const result = await db.query(
+      `INSERT INTO execucoes_servico (orcamento_id, funcionario_id, status, iniciado_em)
+       VALUES ($1, $2, 'AGUARDANDO', NOW())
+       ON CONFLICT (orcamento_id)
+       DO UPDATE SET
+         funcionario_id = COALESCE(execucoes_servico.funcionario_id, EXCLUDED.funcionario_id)
+       RETURNING *`,
+      [orcamentoId, funcionarioId ?? null]
+    );
+    return result.rows[0];
+  }
+
   static async findAll(): Promise<ExecucaoServicoDetalhadaDTO[]> {
     const db = getDb();
     const query = `
       SELECT 
         e.*,
+        o.cliente_id,
         o.valor_total,
         c.nome AS cliente_nome,
+        (SELECT nome FROM oficinas ORDER BY criado_em ASC LIMIT 1) AS oficina_nome,
         v.marca AS veiculo_marca,
         v.modelo AS veiculo_modelo,
         v.placa AS veiculo_placa,
@@ -39,8 +70,10 @@ export class ExecucaoServicoModel {
     const query = `
       SELECT 
         e.*,
+        o.cliente_id,
         o.valor_total,
         c.nome AS cliente_nome,
+        (SELECT nome FROM oficinas ORDER BY criado_em ASC LIMIT 1) AS oficina_nome,
         v.marca AS veiculo_marca,
         v.modelo AS veiculo_modelo,
         v.placa AS veiculo_placa,

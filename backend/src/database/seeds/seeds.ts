@@ -24,7 +24,7 @@ export const runSeeds = async () => {
 
   try {
     // 1. Limpeza
-    await db.query('DELETE FROM execucoes_servico; DELETE FROM itens_orcamento_servico; DELETE FROM itens_orcamento_produto; DELETE FROM orcamentos; DELETE FROM agendamentos; DELETE FROM veiculos; DELETE FROM usuarios; DELETE FROM catalogo_servicos; DELETE FROM produtos; DELETE FROM oficinas;');
+    await db.query('DELETE FROM mensagens_chat; DELETE FROM execucoes_servico; DELETE FROM itens_orcamento_servico; DELETE FROM itens_orcamento_produto; DELETE FROM orcamentos; DELETE FROM agendamentos; DELETE FROM veiculos; DELETE FROM usuarios; DELETE FROM catalogo_servicos; DELETE FROM produtos; DELETE FROM oficinas;');
 
     // 2. Senhas Fixas para Garantia Total
     const passAdmin = await PasswordUtils.hash('admin_secret_password');
@@ -40,6 +40,9 @@ export const runSeeds = async () => {
     await db.query(`INSERT INTO usuarios (id, tipo_id, nome, email, senha_hash, cpf_cnpj, telefone) VALUES 
       ('${adminId}', 1, 'Administrador', 'admin@omniconnect.com.br', '${passAdmin}', '000', '111'),
       ('${mecanicoId}', 3, 'Mecanico Chefe', 'mecanico@omniconnect.com.br', '${passMec}', '111', '222')`);
+
+    // 4.1 Oficina base para exibir nome real na tela interna
+    await db.query(`INSERT INTO oficinas (nome, quantidade_boxes) VALUES ('Tião Oficina Mecânica', 4)`);
 
     // 5. Clientes
     const clientes = [
@@ -88,6 +91,12 @@ export const runSeeds = async () => {
     // 10. Cenário 3: Fiat Uno - agendamento CANCELADO sem orçamento (teste de filtros)
     await db.query(`INSERT INTO agendamentos (cliente_id, veiculo_id, funcionario_id, status, agendado_para, fim_estimado_em, duracao_total_minutos)
       VALUES ('${clienteIds[1]}', '${v3}', '${mecanicoId}', 'CANCELADO', NOW() + interval '2 days', NOW() + interval '2 days' + interval '60 minutes', 60)`);
+
+    // 11. Conversa inicial do cliente da OS em execução para validar a tela de chat integrada
+    await db.query(`INSERT INTO mensagens_chat (cliente_id, tipo_remetente, conteudo, criado_em) VALUES
+      ('${clienteIds[0]}', 'client', 'Bom dia, meu carro já entrou na oficina?', NOW() - interval '2 hours'),
+      ('${clienteIds[0]}', 'employee', 'Bom dia! Sim, o veículo já está em execução e seguimos com a troca de óleo.', NOW() - interval '110 minutes'),
+      ('${clienteIds[0]}', 'client', 'Perfeito, me avisem quando estiver pronto para retirada.', NOW() - interval '95 minutes')`);
 
     console.log('🏁 Seeds finalizados! Tente logar com as senhas fixas agora.');
     process.exit(0);

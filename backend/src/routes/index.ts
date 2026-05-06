@@ -9,6 +9,7 @@ import { execucaoServicoRouter } from './execucaoServicoRoutes';
 import { notificationRouter } from './notificationRoutes';
 import { pushTokenRouter } from './pushTokenRoutes';
 import { authRouter } from './authRoutes';
+import { chatMessageRouter } from './chatMessageRoutes';
 
 const routes = Router();
 
@@ -22,5 +23,6 @@ routes.use('/execucoes', execucaoServicoRouter);
 routes.use('/notifications', notificationRouter);
 routes.use('/push-tokens', pushTokenRouter);
 routes.use('/auth', authRouter);
+routes.use('/chat', chatMessageRouter);
 
 export default routes;

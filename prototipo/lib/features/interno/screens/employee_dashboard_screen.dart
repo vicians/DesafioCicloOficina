@@ -6,6 +6,7 @@ import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_progress_bar.dart';
 import '../../../core/widgets/status_badge.dart';
 import '../data/models/internal_service.dart';
+import '../data/models/internal_budget_item.dart';
 import '../data/internal_flow_repository.dart';
 
 class EmployeeDashboardScreen extends StatefulWidget {
@@ -31,12 +32,12 @@ class EmployeeDashboardScreen extends StatefulWidget {
 
 class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
   bool _showLogoutSheet = false;
-  late Future<List<InternalService>> _servicesFuture;
+  late Future<_DashboardData> _dashboardFuture;
 
   @override
   void initState() {
     super.initState();
-    _servicesFuture = widget.repository.fetchServicos();
+    _dashboardFuture = _loadDashboardData();
     widget.repository.addListener(_reload);
   }
 
@@ -49,14 +50,26 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
   void _reload() {
     if (!mounted) return;
     setState(() {
-      _servicesFuture = widget.repository.fetchServicos();
+      _dashboardFuture = _loadDashboardData();
     });
+  }
+
+  Future<_DashboardData> _loadDashboardData() async {
+    final results = await Future.wait([
+      widget.repository.fetchServicos(),
+      widget.repository.fetchOrcamentos(),
+    ]);
+
+    return _DashboardData(
+      services: results[0] as List<InternalService>,
+      budgets: results[1] as List<InternalBudgetItem>,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<InternalService>>(
-      future: _servicesFuture,
+    return FutureBuilder<_DashboardData>(
+      future: _dashboardFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(
@@ -75,7 +88,9 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
           );
         }
 
-        final internalServices = snapshot.data ?? [];
+        final data = snapshot.data;
+        final internalServices = data?.services ?? const <InternalService>[];
+        final budgets = data?.budgets ?? const <InternalBudgetItem>[];
         final now = DateTime.now();
 
         // Filtros baseados no status do banco de dados (schema)
@@ -88,18 +103,21 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
             )
             .toList();
 
-        final openAppointments = internalServices
-            .where((s) => s.status == 'pendente' || s.status == 'confirmado')
-            .toList();
+        final openAppointments = 0;
 
-        final pendingBudgets = internalServices
-            .where((s) => s.status == 'rascunho' || s.status == 'enviado')
+        final pendingBudgets = budgets
+          .where((b) => b.isPending)
             .toList();
 
         // Faturamento previsto: soma de serviços ativos + orçamentos pendentes
-        final predictedRevenue = internalServices
-            .where((s) => s.status != 'concluido' && s.status != 'cancelado')
-            .fold<double>(0, (sum, item) => sum + item.value);
+        final servicesRevenue = internalServices
+          .where((s) => s.status != 'concluido' && s.status != 'cancelado')
+          .fold<double>(0, (sum, item) => sum + item.value);
+        final budgetsRevenue = pendingBudgets.fold<double>(
+          0,
+          (sum, item) => sum + item.value,
+        );
+        final predictedRevenue = servicesRevenue + budgetsRevenue;
 
         // Lógica simples de atraso: aberto há mais de 2 dias e não concluído
         final delayedServices = internalServices.where((s) {
@@ -126,7 +144,7 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
                   _DashboardHeader(
                     isManager: widget.isManager,
                     activeExecutions: activeExecutions.length,
-                    openAppointments: openAppointments.length,
+                    openAppointments: openAppointments,
                     pendingBudgets: pendingBudgets.length,
                     predictedRevenue: predictedRevenue,
                     onLogoutTap: () => setState(() => _showLogoutSheet = true),
@@ -377,7 +395,7 @@ class _KpiBox extends StatelessWidget {
 
 class _AlertBanner extends StatelessWidget {
   final int delayedCount;
-  final List<InternalService> pendingBudgets;
+  final List<InternalBudgetItem> pendingBudgets;
   final VoidCallback? onOpenBudgets;
   final VoidCallback? onOpenServices;
 
@@ -434,7 +452,7 @@ class _AlertBanner extends StatelessWidget {
     }
 
     if (pendingBudgets.isNotEmpty) {
-      final service = pendingBudgets.first;
+      final budget = pendingBudgets.first;
       return GestureDetector(
         onTap: onOpenBudgets,
         child: Container(
@@ -461,7 +479,7 @@ class _AlertBanner extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      '${service.client} · ${service.id}',
+                      '${budget.client} · ${budget.id}',
                       style: GoogleFonts.dmSans(
                         fontSize: 12,
                         color: textPrimary,
@@ -479,6 +497,16 @@ class _AlertBanner extends StatelessWidget {
 
     return const SizedBox.shrink();
   }
+}
+
+class _DashboardData {
+  final List<InternalService> services;
+  final List<InternalBudgetItem> budgets;
+
+  const _DashboardData({
+    required this.services,
+    required this.budgets,
+  });
 }
 
 class _ServiceCard extends StatelessWidget {

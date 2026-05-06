@@ -4,10 +4,12 @@ import 'internal_flow_repository.dart';
 import 'models/catalogo_servico_item.dart';
 import 'models/internal_budget_item.dart';
 import 'models/produto_item.dart';
+import 'models/internal_chat_message.dart';
 
 class InternalFlowMockRepository extends InternalFlowRepository {
   final List<InternalBudgetItem> _budgets = [];
   final List<InternalService> _services = [];
+  final Map<String, List<InternalChatMessage>> _messagesByClient = {};
 
   static const _mockServicos = [
     CatalogoServicoItem(
@@ -198,6 +200,7 @@ class InternalFlowMockRepository extends InternalFlowRepository {
 
     final newService = InternalService(
       id: _nextOsId(),
+      sourceType: 'execucao',
       client: budget.client,
       car: budget.car,
       plate: budget.plate,
@@ -232,6 +235,8 @@ class InternalFlowMockRepository extends InternalFlowRepository {
     final current = _services[index];
     final updated = InternalService(
       id: current.id,
+      clientId: current.clientId,
+      sourceType: current.sourceType,
       client: current.client,
       car: current.car,
       plate: current.plate,
@@ -251,6 +256,29 @@ class InternalFlowMockRepository extends InternalFlowRepository {
     _services[index] = updated;
     notifyListeners();
     return updated;
+  }
+
+  @override
+  Future<List<InternalChatMessage>> fetchMensagensCliente(String clientId) async {
+    return List.unmodifiable(_messagesByClient[clientId] ?? const []);
+  }
+
+  @override
+  Future<InternalChatMessage> sendMensagemCliente(String clientId, String text) async {
+    final list = _messagesByClient.putIfAbsent(clientId, () => []);
+    final now = DateTime.now();
+    final hh = now.hour.toString().padLeft(2, '0');
+    final mm = now.minute.toString().padLeft(2, '0');
+    final message = InternalChatMessage(
+      id: now.microsecondsSinceEpoch.toString(),
+      from: 'employee',
+      text: text,
+      time: '$hh:$mm',
+      createdAtIso: now.toIso8601String(),
+    );
+    list.add(message);
+    notifyListeners();
+    return message;
   }
 
   int _progressForStatus(String status) {

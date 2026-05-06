@@ -1,8 +1,8 @@
 import { Request, Response } from 'express';
 import { ExecucaoServicoModel } from '../models/execucaoServicoModel';
 
-const STATUS_FINALIZAVEIS = ['EM_EXECUCAO', 'REVISAO_TECNICA'];
 const STATUS_PERMITIDOS = [
+  'AGUARDANDO',
   'EM_EXECUCAO',
   'REVISAO_TECNICA',
   'AGUARDANDO_RETIRADA',
@@ -12,6 +12,7 @@ const STATUS_PERMITIDOS = [
 
 export class ExecucaoServicoController {
   static async index(req: Request, res: Response) {
+    await ExecucaoServicoModel.backfillFromApprovedBudgets();
     const execucoes = await ExecucaoServicoModel.findAll();
     return res.json(execucoes);
   }
@@ -59,12 +60,6 @@ export class ExecucaoServicoController {
       return res.status(404).json({ error: 'Execução não encontrada' });
     }
 
-    if (status === 'CONCLUIDO' && !STATUS_FINALIZAVEIS.includes(execucaoAtual.status)) {
-      return res.status(409).json({
-        error: `Não é possível finalizar uma execução com status "${execucaoAtual.status}". Status permitidos: ${STATUS_FINALIZAVEIS.join(', ')}`,
-      });
-    }
-
     const execucao = await ExecucaoServicoModel.updateStatus(req.params.id, status);
     return res.json(execucao);
   }
@@ -80,9 +75,10 @@ export class ExecucaoServicoController {
       return res.status(404).json({ error: 'Execução não encontrada' });
     }
 
-    if (!STATUS_FINALIZAVEIS.includes(execucao.status)) {
+    const statusFinalizaveis = ['EM_EXECUCAO', 'REVISAO_TECNICA', 'AGUARDANDO_RETIRADA'];
+    if (!statusFinalizaveis.includes(execucao.status)) {
       return res.status(409).json({
-        error: `Não é possível finalizar uma execução com status "${execucao.status}". Status permitidos: ${STATUS_FINALIZAVEIS.join(', ')}`,
+        error: `Não é possível finalizar uma execução com status "${execucao.status}". Status permitidos: ${statusFinalizaveis.join(', ')}`,
       });
     }
 

@@ -3,6 +3,7 @@ import 'models/internal_service.dart';
 import 'models/catalogo_servico_item.dart';
 import 'models/internal_budget_item.dart';
 import 'models/produto_item.dart';
+import 'models/internal_chat_message.dart';
 
 abstract class InternalFlowRepository extends ChangeNotifier {
   Future<List<CatalogoServicoItem>> fetchCatalogoServicos();
@@ -14,4 +15,6 @@ abstract class InternalFlowRepository extends ChangeNotifier {
   Future<InternalBudgetItem> cancelOrcamento(String budgetId);
   Future<InternalService> approveOrcamento(String budgetId);
   Future<InternalService> updateServicoStatus(String serviceId, String status);
+  Future<List<InternalChatMessage>> fetchMensagensCliente(String clientId);
+  Future<InternalChatMessage> sendMensagemCliente(String clientId, String text);
 }

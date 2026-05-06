@@ -2,6 +2,8 @@ import 'internal_budget_item.dart';
 
 class InternalService {
   final String id;
+  final String? clientId;
+  final String sourceType;
   final String client;
   final String car;
   final String plate;
@@ -19,6 +21,8 @@ class InternalService {
 
   const InternalService({
     required this.id,
+    this.clientId,
+    this.sourceType = 'execucao',
     required this.client,
     required this.car,
     required this.plate,
@@ -43,9 +47,13 @@ class InternalService {
     String rawDate =
         json['iniciado_em'] as String? ?? json['criado_em'] as String? ?? '';
     String formattedDate = '';
+    String formattedTime = '—';
     if (rawDate.length >= 10) {
       formattedDate =
           '${rawDate.substring(8, 10)}/${rawDate.substring(5, 7)}/${rawDate.substring(0, 4)}';
+    }
+    if (rawDate.length >= 16) {
+      formattedTime = rawDate.substring(11, 16);
     }
 
     String? rawFinished = json['finalizado_em'] as String?;
@@ -94,6 +102,8 @@ class InternalService {
 
     return InternalService(
       id: json['id'] as String,
+      clientId: json['cliente_id'] as String?,
+      sourceType: json['flow_type'] as String? ?? _inferSourceType(json),
       client: json['cliente_nome'] as String? ?? 'Cliente não informado',
       car: json['veiculo_modelo'] != null && json['veiculo_marca'] != null
           ? '${json['veiculo_marca']} ${json['veiculo_modelo']}'
@@ -101,8 +111,8 @@ class InternalService {
       plate: json['veiculo_placa'] as String? ?? '---',
       service: servicoName,
       status: currentStatus,
-      mechanic: json['funcionario_nome'] as String? ?? 'Tião Oficina Mecânica',
-      time: '---', // Depende de agendamento ou estimativa
+      mechanic: json['oficina_nome'] as String? ?? 'Tião Oficina Mecânica',
+      time: formattedTime,
       value: ((json['valor_total'] as num?)?.toDouble() ?? 0) / 100.0,
       progress: progressVal,
       openedAt: formattedDate,
@@ -119,6 +129,16 @@ class InternalService {
               .toList() ??
           [],
     );
+  }
+
+  static String _inferSourceType(Map<String, dynamic> json) {
+    if (json.containsKey('orcamento_id')) {
+      return 'execucao';
+    }
+    if (json.containsKey('agendado_para')) {
+      return 'agendamento';
+    }
+    return 'orcamento';
   }
 
   static List<dynamic>? _readLineItems(

@@ -3,6 +3,7 @@ import { OrcamentoModel } from '../models/orcamentoModel';
 import { CatalogoServicoModel } from '../models/catalogoServicoModel';
 import { ProdutoModel } from '../models/produtoModel';
 import { NotificationModel } from '../models/notificationModel';
+import { ExecucaoServicoModel } from '../models/execucaoServicoModel';
 import { sendPushToUsers } from '../services/pushService';
 
 export class OrcamentoController {
@@ -104,6 +105,12 @@ export class OrcamentoController {
         error: 'Orçamento não encontrado ou já está em status final (APROVADO, REJEITADO ou PAGO)',
       });
     }
+
+    // Garante que todo orçamento aprovado tenha uma OS associada.
+    await ExecucaoServicoModel.ensureByOrcamentoId(
+      orcamento.id,
+      orcamento.funcionario_id,
+    );
 
     try {
       const internalUserIds = await NotificationModel.findInternalUserIds();
