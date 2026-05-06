@@ -3,7 +3,7 @@ import 'models/internal_service.dart';
 import 'models/catalogo_servico_item.dart';
 import 'models/internal_budget_item.dart';
 import 'models/produto_item.dart';
-import 'models/internal_chat_message.dart';
+import 'models/internal_chat_models.dart';
 
 abstract class InternalFlowRepository extends ChangeNotifier {
   Future<List<CatalogoServicoItem>> fetchCatalogoServicos();

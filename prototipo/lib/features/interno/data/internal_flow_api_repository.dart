@@ -5,7 +5,7 @@ import 'models/catalogo_servico_item.dart';
 import 'models/internal_budget_item.dart';
 import 'models/produto_item.dart';
 import 'models/internal_service.dart';
-import 'models/internal_chat_message.dart';
+import 'models/internal_chat_models.dart';
 
 class InternalFlowApiRepository extends InternalFlowRepository {
   final String baseUrl;

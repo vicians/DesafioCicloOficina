@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/colors.dart';
 import '../data/internal_flow_repository.dart';
-import '../data/models/internal_chat_message.dart';
+import '../data/models/internal_chat_models.dart';
 
 class ServiceClientChatScreen extends StatefulWidget {
   final InternalFlowRepository repository;
