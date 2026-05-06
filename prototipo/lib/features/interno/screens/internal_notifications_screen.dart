@@ -6,11 +6,13 @@ import '../../../data/mock_data.dart';
 class InternalNotificationsScreen extends StatelessWidget {
   final List<NotificationItem> items;
   final ValueChanged<String> onMarkRead;
+  final VoidCallback? onMarkAllRead;
 
   const InternalNotificationsScreen({
     super.key,
     required this.items,
     required this.onMarkRead,
+    this.onMarkAllRead,
   });
 
   @override
@@ -27,13 +29,30 @@ class InternalNotificationsScreen extends StatelessWidget {
               colors: [navyDark, navyMid],
             ),
           ),
-          child: Text(
-            'Alertas',
-            style: GoogleFonts.dmSans(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Alertas',
+                style: GoogleFonts.dmSans(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+              if (onMarkAllRead != null && items.any((n) => n.unread))
+                GestureDetector(
+                  onTap: onMarkAllRead,
+                  child: Text(
+                    'Marcar todas como lidas',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white.withValues(alpha: 0.75),
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
         Expanded(
@@ -170,6 +189,8 @@ class _NotifCard extends StatelessWidget {
         return Icons.receipt_long_rounded;
       case 'low_stock':
         return Icons.inventory_2_rounded;
+      case 'rejected_budget':
+        return Icons.cancel_rounded;
       default:
         return Icons.notifications_rounded;
     }
@@ -183,6 +204,8 @@ class _NotifCard extends StatelessWidget {
         return greenBg;
       case 'low_stock':
         return yellowBg;
+      case 'rejected_budget':
+        return redBg;
       default:
         return dividerColor;
     }
@@ -196,6 +219,8 @@ class _NotifCard extends StatelessWidget {
         return green;
       case 'low_stock':
         return yellow;
+      case 'rejected_budget':
+        return red;
       default:
         return textMuted;
     }
