@@ -35,7 +35,9 @@ class ClientFlowApiRepository extends ClientFlowRepository {
       if (orcResp.statusCode == 200) {
         final List orcs = jsonDecode(orcResp.body);
         final pendingOrc = orcs.firstWhere(
-          (o) => o['cliente_id'] == clientId && o['status'] == 'enviado',
+          (o) =>
+              o['cliente_id'] == clientId &&
+              (o['status'] as String).toLowerCase() == 'enviado',
           orElse: () => null,
         );
 
@@ -47,7 +49,7 @@ class ClientFlowApiRepository extends ClientFlowRepository {
       return null;
     } catch (e) {
       print('Erro ao buscar serviço atual: $e');
-      return null;
+      rethrow;
     }
   }
 

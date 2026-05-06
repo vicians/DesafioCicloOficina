@@ -19,6 +19,7 @@ class BudgetApprovalScreen extends StatefulWidget {
 class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
     with SingleTickerProviderStateMixin {
   bool _loading = false;
+  bool _error = false;
   bool _approved = false;
   bool _refused = false;
   ServiceModel? _service;
@@ -40,9 +41,24 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
   }
 
   Future<void> _loadService() async {
-    final svc = await widget.repository.fetchCurrentService();
-    if (!mounted) return;
-    setState(() => _service = svc);
+    setState(() {
+      _loading = true;
+      _error = false;
+    });
+    try {
+      final svc = await widget.repository.fetchCurrentService();
+      if (!mounted) return;
+      setState(() {
+        _service = svc;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = true;
+      });
+    }
   }
 
   @override
@@ -109,20 +125,62 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
   Widget build(BuildContext context) {
     final svc = _service;
     
-    if (svc == null) {
+    if (_loading) {
       return Scaffold(
         backgroundColor: bgPage,
         body: const Center(child: CircularProgressIndicator(color: orange)),
       );
     }
 
-    if (svc.status != 'orcamento' && !_approved) {
+    if (_error) {
       return Scaffold(
         backgroundColor: bgPage,
         body: Center(
-          child: Text(
-            'Nenhum orçamento pendente para este serviço.',
-            style: GoogleFonts.dmSans(color: textMuted),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline_rounded, color: red, size: 48),
+              const SizedBox(height: 16),
+              Text(
+                'Erro ao carregar orçamento',
+                style: GoogleFonts.dmSans(color: textPrimary, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              AppButton(
+                label: 'Tentar novamente',
+                onPressed: _loadService,
+                variant: AppButtonVariant.outline,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (svc == null || (svc.status != 'orcamento' && svc.status != 'enviado' && !_approved)) {
+      return Scaffold(
+        backgroundColor: bgPage,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.receipt_long_rounded, color: textMuted.withValues(alpha: 0.5), size: 64),
+              const SizedBox(height: 16),
+              Text(
+                'Nenhum orçamento pendente',
+                style: GoogleFonts.dmSans(
+                  color: textPrimary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Você será notificado quando um novo\norçamento estiver disponível.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.dmSans(color: textMuted, fontSize: 13),
+              ),
+            ],
           ),
         ),
       );

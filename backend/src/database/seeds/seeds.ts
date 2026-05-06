@@ -98,6 +98,15 @@ export const runSeeds = async () => {
       ('${clienteIds[0]}', 'employee', 'Bom dia! Sim, o veículo já está em execução e seguimos com a troca de óleo.', NOW() - interval '110 minutes'),
       ('${clienteIds[0]}', 'client', 'Perfeito, me avisem quando estiver pronto para retirada.', NOW() - interval '95 minutes')`);
 
+    // 12. Cenário 4: Cliente Teste - Orçamento ENVIADO para aprovação
+    const v4 = (await db.query(`INSERT INTO veiculos (cliente_id, placa, marca, modelo, ano) VALUES ('${clienteIds[5]}', 'TST-1234', 'Volkswagen', 'Golf', 2022) RETURNING id`)).rows[0].id;
+    const a4 = (await db.query(`INSERT INTO agendamentos (cliente_id, veiculo_id, funcionario_id, status, agendado_para, fim_estimado_em, duracao_total_minutos)
+      VALUES ('${clienteIds[5]}', '${v4}', '${mecanicoId}', 'CONFIRMADO', NOW() + interval '1 day', NOW() + interval '1 day' + interval '60 minutes', 60) RETURNING id`)).rows[0].id;
+    const o4 = (await db.query(`INSERT INTO orcamentos (agendamento_id, cliente_id, funcionario_id, status, valor_total, valido_ate)
+      VALUES ('${a4}', '${clienteIds[5]}', '${mecanicoId}', 'ENVIADO', 53000, NOW() + interval '7 days') RETURNING id`)).rows[0].id;
+    await db.query(`INSERT INTO itens_orcamento_servico (orcamento_id, servico_id, quantidade, preco_unitario) VALUES ('${o4}', '${s2}', 1, 35000)`);
+    await db.query(`INSERT INTO itens_orcamento_produto (orcamento_id, produto_id, quantidade, preco_unitario) VALUES ('${o4}', '${p1}', 3, 6000)`);
+
     console.log('🏁 Seeds finalizados! Tente logar com as senhas fixas agora.');
     process.exit(0);
   } catch (error) {
