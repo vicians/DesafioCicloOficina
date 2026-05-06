@@ -64,6 +64,15 @@ export class OrcamentoModel {
     return result.rows[0] ?? null;
   }
 
+  static async findByAgendamentoId(agendamentoId: string): Promise<OrcamentoDTO | null> {
+    const db = getDb();
+    const result = await db.query(
+      'SELECT * FROM orcamentos WHERE agendamento_id = $1 ORDER BY criado_em DESC LIMIT 1',
+      [agendamentoId]
+    );
+    return result.rows[0] ?? null;
+  }
+
   static async create(data: CreateOrcamentoDTO): Promise<OrcamentoDTO> {
     const db = getDb();
     const { agendamento_id, cliente_id, funcionario_id } = data;

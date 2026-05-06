@@ -8,10 +8,14 @@ import '../data/scheduling_repository.dart';
 
 class ScheduledServicesScreen extends StatefulWidget {
   final SchedulingRepository repository;
+  final bool isManager;
+  final VoidCallback? onOpenBudgets;
 
   const ScheduledServicesScreen({
     super.key,
     required this.repository,
+    this.isManager = false,
+    this.onOpenBudgets,
   });
 
   @override
@@ -22,6 +26,7 @@ class _ScheduledServicesScreenState extends State<ScheduledServicesScreen> {
   late Future<List<ScheduledServiceItem>> _future;
   String _search = '';
   String _statusFilter = 'todos';
+  bool _sendingToBudget = false;
 
   @override
   void initState() {
@@ -55,6 +60,41 @@ class _ScheduledServicesScreenState extends State<ScheduledServicesScreen> {
 
       return matchesStatus && matchesSearch;
     }).toList();
+  }
+
+  Future<void> _sendToBudget(ScheduledServiceItem item) async {
+    if (_sendingToBudget) return;
+
+    setState(() => _sendingToBudget = true);
+    try {
+      final budgetId = await widget.repository.sendScheduleToBudgets(
+        schedule: item,
+      );
+      await _reload();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Enviado para orçamentos: $budgetId'),
+          action: widget.onOpenBudgets == null
+              ? null
+              : SnackBarAction(
+                  label: 'Abrir',
+                  onPressed: widget.onOpenBudgets!,
+                ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Falha ao enviar para orçamentos: $error'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _sendingToBudget = false);
+      }
+    }
   }
 
   @override
@@ -103,7 +143,11 @@ class _ScheduledServicesScreenState extends State<ScheduledServicesScreen> {
                   separatorBuilder: (context, index) => const SizedBox(height: 10),
                   itemBuilder: (context, index) {
                     final item = filtered[index];
-                    return _ScheduledCard(item: item);
+                    return _ScheduledCard(
+                      item: item,
+                      isManager: widget.isManager,
+                      onSendToBudget: () => _sendToBudget(item),
+                    );
                   },
                 ),
               );
@@ -238,15 +282,23 @@ class _StatusFilterBar extends StatelessWidget {
 
 class _ScheduledCard extends StatelessWidget {
   final ScheduledServiceItem item;
+  final bool isManager;
+  final VoidCallback onSendToBudget;
 
-  const _ScheduledCard({required this.item});
+  const _ScheduledCard({
+    required this.item,
+    required this.isManager,
+    required this.onSendToBudget,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final ag = item.agendadoPara.toLocal();
+    final agendamento = item.agendadoPara.toLocal();
     final data =
-        '${ag.day.toString().padLeft(2, '0')}/${ag.month.toString().padLeft(2, '0')}/${ag.year}';
-    final hora = '${ag.hour.toString().padLeft(2, '0')}h';
+        '${agendamento.day.toString().padLeft(2, '0')}/${agendamento.month.toString().padLeft(2, '0')}/${agendamento.year}';
+    final hora = '${agendamento.hour.toString().padLeft(2, '0')}h';
+    final canSendToBudget =
+        isManager && item.status.toLowerCase() == 'concluido' && !item.possuiOrcamento;
 
     return AppCard(
       child: Column(
@@ -290,6 +342,14 @@ class _ScheduledCard extends StatelessWidget {
               ),
             ],
           ),
+          if (canSendToBudget) ...[
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: onSendToBudget,
+              icon: const Icon(Icons.receipt_long_rounded, size: 16),
+              label: const Text('Enviar para orçamentos'),
+            ),
+          ],
           if ((item.notasCliente ?? '').trim().isNotEmpty) ...[
             const SizedBox(height: 10),
             Text(

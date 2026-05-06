@@ -25,6 +25,16 @@ export class OrcamentoController {
       return res.status(400).json({ error: 'cliente_id é obrigatório' });
     }
 
+    if (agendamento_id) {
+      const existing = await OrcamentoModel.findByAgendamentoId(agendamento_id);
+      if (existing) {
+        return res.status(409).json({
+          error: 'Este agendamento já foi enviado para orçamentos',
+          orcamento_id: existing.id,
+        });
+      }
+    }
+
     const orcamento = await OrcamentoModel.create({ cliente_id, funcionario_id, agendamento_id });
     return res.status(201).json(orcamento);
   }
