@@ -7,6 +7,7 @@ export interface OrcamentoDTO {
   funcionario_id?: string;
   status: string;
   valor_total: number;
+  observacoes?: string;
   valido_ate?: Date;
   criado_em?: Date;
 }
@@ -18,6 +19,7 @@ export interface OrcamentoDetalhadoDTO extends OrcamentoDTO {
   veiculo_placa: string;
   servicos: ItemOrcamentoDTO[];
   produtos: ItemOrcamentoDTO[];
+  observacoes?: string;
 }
 
 export interface CreateOrcamentoDTO {

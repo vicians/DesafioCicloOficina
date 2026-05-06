@@ -16,7 +16,7 @@ class ProdutoItem {
       id: json['id'] as String,
       nome: json['nome'] as String,
       marca: json['marca'] as String?,
-      valor: (json['valor'] as num).toDouble(),
+      valor: (json['valor'] as num).toDouble() / 100.0,
     );
   }
 }

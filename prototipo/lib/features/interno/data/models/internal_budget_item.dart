@@ -112,6 +112,7 @@ class InternalBudgetItem {
       plate: json['veiculo_placa'] as String? ?? '---',
       status: (json['status'] as String? ?? 'RASCUNHO').toLowerCase(),
       createdAt: formattedDate,
+      observation: json['observacoes'] as String? ?? '',
       services: servicesJson
               ?.map((e) => BudgetLineItem.fromJson(e as Map<String, dynamic>))
               .toList() ??

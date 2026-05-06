@@ -84,6 +84,35 @@ export class OrcamentoModel {
     return result.rows[0];
   }
 
+  static async update(id: string, data: Partial<OrcamentoDTO>): Promise<OrcamentoDTO | null> {
+    const db = getDb();
+    const fields: string[] = [];
+    const values: any[] = [];
+    let idx = 1;
+
+    if (data.observacoes !== undefined) {
+      fields.push(`observacoes = $${idx++}`);
+      values.push(data.observacoes);
+    }
+
+    if (data.status !== undefined) {
+      fields.push(`status = $${idx++}`);
+      values.push(data.status);
+    }
+
+    if (data.valido_ate !== undefined) {
+      fields.push(`valido_ate = $${idx++}`);
+      values.push(data.valido_ate);
+    }
+
+    if (fields.length === 0) return this.findById(id);
+
+    values.push(id);
+    const query = `UPDATE orcamentos SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`;
+    const result = await db.query(query, values);
+    return result.rows[0] ?? null;
+  }
+
   // Recalcula valor_total somando todos os itens de serviço e produto em SQL
   static async recalcularTotal(orcamento_id: string): Promise<void> {
     const db = getDb();
