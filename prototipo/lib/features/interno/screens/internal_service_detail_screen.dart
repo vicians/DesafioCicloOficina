@@ -52,6 +52,7 @@ class _InternalServiceDetailScreenState
   late InternalService _service;
   late String _currentStatus;
   late String _pendingStatus;
+  bool _isUpdating = false;
 
   final _statuses = [
     ('aguardando', 'Aguardando'),
@@ -71,6 +72,11 @@ class _InternalServiceDetailScreenState
     _currentStatus = _service.status;
     _pendingStatus = _currentStatus;
     widget.repository.addListener(_reloadService);
+    
+    // Fetch full details immediately to ensure parts/labor are loaded
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _reloadService();
+    });
   }
 
   @override
@@ -91,17 +97,32 @@ class _InternalServiceDetailScreenState
   }
 
   Future<void> _confirmStatusChange() async {
-    final updated = await widget.repository.updateServicoStatus(
-      _service.id,
-      _pendingStatus,
-    );
-    if (!mounted) return;
-    setState(() {
-      _service = updated;
-      _currentStatus = updated.status;
-      _pendingStatus = updated.status;
-      _showStatusSheet = false;
-    });
+    if (_pendingStatus == _currentStatus) {
+      setState(() => _showStatusSheet = false);
+      return;
+    }
+    
+    setState(() => _isUpdating = true);
+    try {
+      final updated = await widget.repository.updateServicoStatus(
+        _service.id,
+        _pendingStatus,
+      );
+      if (!mounted) return;
+      setState(() {
+        _service = updated;
+        _currentStatus = updated.status;
+        _pendingStatus = updated.status;
+        _showStatusSheet = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Falha ao atualizar status da OS. Tente novamente.')),
+      );
+    } finally {
+      if (mounted) setState(() => _isUpdating = false);
+    }
   }
 
   void _openClientConversation() {
@@ -254,6 +275,7 @@ class _InternalServiceDetailScreenState
                 }),
                 onConfirm: _confirmStatusChange,
                 onCancel: () => setState(() => _showStatusSheet = false),
+                isLoading: _isUpdating,
               ),
             ),
           ],
@@ -812,6 +834,7 @@ class _StatusSheet extends StatelessWidget {
   final ValueChanged<String> onSelect;
   final VoidCallback onConfirm;
   final VoidCallback onCancel;
+  final bool isLoading;
 
   const _StatusSheet({
     required this.statuses,
@@ -819,6 +842,7 @@ class _StatusSheet extends StatelessWidget {
     required this.onSelect,
     required this.onConfirm,
     required this.onCancel,
+    this.isLoading = false,
   });
 
   @override
@@ -891,9 +915,9 @@ class _StatusSheet extends StatelessWidget {
           }),
           const SizedBox(height: 8),
           AppButton(
-            label: 'Confirmar mudança de status',
+            label: isLoading ? 'Atualizando...' : 'Confirmar mudança de status',
             fullWidth: true,
-            onPressed: onConfirm,
+            onPressed: isLoading ? () {} : onConfirm,
           ),
           const SizedBox(height: 8),
           AppButton(

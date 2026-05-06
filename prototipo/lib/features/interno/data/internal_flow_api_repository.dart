@@ -247,6 +247,18 @@ class InternalFlowApiRepository extends InternalFlowRepository {
         );
         return InternalService.fromJson(jsonDecode(res.body));
       }
+    } else {
+      final response = await _client.patch(
+        Uri.parse('$baseUrl/execucoes/$serviceId/status'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'status': status.toUpperCase()}),
+      );
+      if (response.statusCode == 200) {
+        final res = await _client.get(
+          Uri.parse('$baseUrl/execucoes/$serviceId'),
+        );
+        return InternalService.fromJson(jsonDecode(res.body));
+      }
     }
     throw Exception('Falha ao atualizar status da OS');
   }

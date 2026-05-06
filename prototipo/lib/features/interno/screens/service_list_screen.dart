@@ -81,35 +81,45 @@ class _ServiceListScreenState extends State<ServiceListScreen>
   }
 
   List<InternalService> _ativosFrom(List<InternalService> services) {
-    return services
+    final filtered = services
         .where((s) => s.status != 'concluido' && s.status != 'cancelado')
         .where(_matchesSearch)
         .where((s) => _statusFilter == 'todos' || s.status == _statusFilter)
         .toList();
+        
+    // Sort active services by newest first
+    filtered.sort((a, b) => (b.openedAtDate ?? DateTime(0))
+        .compareTo(a.openedAtDate ?? DateTime(0)));
+        
+    return filtered;
   }
 
   List<InternalService> _finalizadosFrom(List<InternalService> services) {
-    return services
+    final filtered = services
         .where((s) => s.status == 'concluido' || s.status == 'cancelado')
         .where(_matchesSearch)
         .where((s) {
           if (_periodFilter == 'todos') return true;
-          if (s.finishedAt == null) return false;
-          final parts = s.finishedAt!.split('/');
-          if (parts.length != 3) return false;
-          final dt = DateTime.tryParse(
-              '${parts[2]}-${parts[1].padLeft(2, '0')}-${parts[0].padLeft(2, '0')}');
-          if (dt == null) return false;
+          if (s.finishedAtDate == null) return false;
+          
+          final dt = s.finishedAtDate!;
           final now = DateTime.now();
           final today = DateTime(now.year, now.month, now.day);
           final finDay = DateTime(dt.year, dt.month, dt.day);
           final diff = today.difference(finDay).inDays;
+          
           if (_periodFilter == 'hoje') return diff == 0;
           if (_periodFilter == '7dias') return diff <= 7;
           if (_periodFilter == '30dias') return diff <= 30;
           return true;
         })
         .toList();
+
+    // Sort finalized services by most recently finished
+    filtered.sort((a, b) => (b.finishedAtDate ?? DateTime(0))
+        .compareTo(a.finishedAtDate ?? DateTime(0)));
+        
+    return filtered;
   }
 
   @override
