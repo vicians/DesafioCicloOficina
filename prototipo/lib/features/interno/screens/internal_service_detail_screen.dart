@@ -52,6 +52,7 @@ class _InternalServiceDetailScreenState
   late InternalService _service;
   late String _currentStatus;
   late String _pendingStatus;
+  bool _isUpdating = false;
 
   final _statuses = [
     ('aguardando', 'Aguardando'),
@@ -71,6 +72,11 @@ class _InternalServiceDetailScreenState
     _currentStatus = _service.status;
     _pendingStatus = _currentStatus;
     widget.repository.addListener(_reloadService);
+    
+    // Fetch full details immediately to ensure parts/labor are loaded
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _reloadService();
+    });
   }
 
   @override
@@ -149,6 +155,12 @@ class _InternalServiceDetailScreenState
       }
     }
 
+    if (_pendingStatus == _currentStatus) {
+      setState(() => _showStatusSheet = false);
+      return;
+    }
+
+    setState(() => _isUpdating = true);
     try {
       final updated = await widget.repository.updateServicoStatus(
         _service.id,
@@ -166,6 +178,8 @@ class _InternalServiceDetailScreenState
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Falha ao atualizar status: $error')),
       );
+    } finally {
+      if (mounted) setState(() => _isUpdating = false);
     }
   }
 
@@ -328,6 +342,7 @@ class _InternalServiceDetailScreenState
                 }),
                 onConfirm: _confirmStatusChange,
                 onCancel: () => setState(() => _showStatusSheet = false),
+                isLoading: _isUpdating,
               ),
             ),
           ],
@@ -900,6 +915,7 @@ class _StatusSheet extends StatelessWidget {
   final ValueChanged<String> onSelect;
   final VoidCallback onConfirm;
   final VoidCallback onCancel;
+  final bool isLoading;
 
   const _StatusSheet({
     required this.statuses,
@@ -907,6 +923,7 @@ class _StatusSheet extends StatelessWidget {
     required this.onSelect,
     required this.onConfirm,
     required this.onCancel,
+    this.isLoading = false,
   });
 
   @override
@@ -993,14 +1010,17 @@ class _StatusSheet extends StatelessWidget {
           }),
           const SizedBox(height: 8),
           AppButton(
-            label: isCancelSelected
+            label: isLoading
+              ? 'Atualizando...'
+              : (isCancelSelected
                 ? 'Cancelar serviço'
-                : 'Confirmar mudança de status',
+                : 'Confirmar mudança de status'),
             fullWidth: true,
+            loading: isLoading,
             variant: isCancelSelected
-                ? AppButtonVariant.danger
-                : AppButtonVariant.primary,
-            onPressed: onConfirm,
+              ? AppButtonVariant.danger
+              : AppButtonVariant.primary,
+            onPressed: isLoading ? null : onConfirm,
           ),
           const SizedBox(height: 8),
           AppButton(

@@ -18,6 +18,8 @@ class InternalService {
   final int progress;
   final String openedAt; // 'dd/MM/yyyy'
   final String? finishedAt; // 'dd/MM/yyyy', presente quando concluido/cancelado
+  final DateTime? openedAtDate;
+  final DateTime? finishedAtDate;
 
   const InternalService({
     required this.id,
@@ -37,6 +39,8 @@ class InternalService {
     required this.progress,
     required this.openedAt,
     this.finishedAt,
+    this.openedAtDate,
+    this.finishedAtDate,
   });
 
   factory InternalService.fromJson(Map<String, dynamic> json) {
@@ -48,9 +52,13 @@ class InternalService {
         json['iniciado_em'] as String? ?? json['criado_em'] as String? ?? '';
     String formattedDate = '';
     String formattedTime = '—';
-    if (rawDate.length >= 10) {
-      formattedDate =
-          '${rawDate.substring(8, 10)}/${rawDate.substring(5, 7)}/${rawDate.substring(0, 4)}';
+    DateTime? openedAtDateObj;
+    if (rawDate.isNotEmpty) {
+      openedAtDateObj = DateTime.tryParse(rawDate);
+      if (rawDate.length >= 10) {
+        formattedDate =
+            '${rawDate.substring(8, 10)}/${rawDate.substring(5, 7)}/${rawDate.substring(0, 4)}';
+      }
     }
     if (rawDate.length >= 16) {
       formattedTime = rawDate.substring(11, 16);
@@ -58,9 +66,13 @@ class InternalService {
 
     String? rawFinished = json['finalizado_em'] as String?;
     String? formattedFinished;
-    if (rawFinished != null && rawFinished.length >= 10) {
-      formattedFinished =
-          '${rawFinished.substring(8, 10)}/${rawFinished.substring(5, 7)}/${rawFinished.substring(0, 4)}';
+    DateTime? finishedAtDateObj;
+    if (rawFinished != null) {
+      finishedAtDateObj = DateTime.tryParse(rawFinished);
+      if (rawFinished.length >= 10) {
+        formattedFinished =
+            '${rawFinished.substring(8, 10)}/${rawFinished.substring(5, 7)}/${rawFinished.substring(0, 4)}';
+      }
     }
 
     // Calcula progresso aproximado
@@ -117,6 +129,8 @@ class InternalService {
       progress: progressVal,
       openedAt: formattedDate,
       finishedAt: formattedFinished,
+      openedAtDate: openedAtDateObj,
+      finishedAtDate: finishedAtDateObj,
       employeeObservation: json['notas_internas'] as String? ?? '',
       budgetServices:
           servicesJson

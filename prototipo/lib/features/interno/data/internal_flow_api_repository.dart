@@ -195,7 +195,8 @@ class InternalFlowApiRepository extends InternalFlowRepository {
 
   @override
   Future<InternalService> approveOrcamento(String budgetId) async {
-    // Para aprovação, precisamos passar um valido_ate genérico para o mockup
+    // O endpoint /aprovar agora cria a execucao automaticamente e retorna
+    // os dados detalhados da OS gerada (com todos os joins necessários).
     final response = await _client.patch(
       Uri.parse('$baseUrl/orcamentos/$budgetId/aprovar'),
       headers: {'Content-Type': 'application/json'},
@@ -205,20 +206,11 @@ class InternalFlowApiRepository extends InternalFlowRepository {
             .toIso8601String(),
       }),
     );
-    if (response.statusCode == 200 || response.statusCode == 204) {
-      final res = await _client.get(
-        Uri.parse('$baseUrl/execucoes/orcamento/$budgetId'),
-      );
-      if (res.statusCode == 200) {
-        notifyListeners();
-        return InternalService.fromJson(jsonDecode(res.body));
-      }
-
-      final budgetRes = await _client.get(
-        Uri.parse('$baseUrl/orcamentos/$budgetId'),
-      );
+    if (response.statusCode == 200) {
       notifyListeners();
-      return InternalService.fromJson(jsonDecode(budgetRes.body));
+      return InternalService.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>,
+      );
     }
     throw Exception('Falha ao aprovar orçamento');
   }
@@ -228,22 +220,39 @@ class InternalFlowApiRepository extends InternalFlowRepository {
     String serviceId,
     String status,
   ) async {
-    final response = await _client.patch(
-      Uri.parse('$baseUrl/execucoes/$serviceId/status'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'status': _mapServiceStatusToApi(status),
-      }),
-    );
-    if (response.statusCode == 200) {
-      final res = await _client.get(
-        Uri.parse('$baseUrl/execucoes/$serviceId'),
+    if (status.toLowerCase() == 'concluido') {
+      final response = await _client.patch(
+        Uri.parse('$baseUrl/execucoes/$serviceId/finalizar'),
       );
-      if (res.statusCode == 200) {
-        notifyListeners();
-        return InternalService.fromJson(
-          jsonDecode(res.body) as Map<String, dynamic>,
+      if (response.statusCode == 200) {
+        final res = await _client.get(
+          Uri.parse('$baseUrl/execucoes/$serviceId'),
         );
+        if (res.statusCode == 200) {
+          notifyListeners();
+          return InternalService.fromJson(
+            jsonDecode(res.body) as Map<String, dynamic>,
+          );
+        }
+      }
+    } else {
+      final response = await _client.patch(
+        Uri.parse('$baseUrl/execucoes/$serviceId/status'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'status': _mapServiceStatusToApi(status),
+        }),
+      );
+      if (response.statusCode == 200) {
+        final res = await _client.get(
+          Uri.parse('$baseUrl/execucoes/$serviceId'),
+        );
+        if (res.statusCode == 200) {
+          notifyListeners();
+          return InternalService.fromJson(
+            jsonDecode(res.body) as Map<String, dynamic>,
+          );
+        }
       }
     }
     throw Exception('Falha ao atualizar status da OS');
