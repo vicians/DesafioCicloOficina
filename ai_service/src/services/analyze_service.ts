@@ -1,23 +1,23 @@
 import { prisma } from '../config/prisma';
-import { chat_model } from '../config/ai_model';
+import { model } from '../config/ai_model';
 import { queryProdutos } from '../vectorstore/productVectorStore';
-import dotenv from 'dotenv';
+import { queryServicos } from '../vectorstore/serviceVectorStore';
+import { getTools } from '../tools';
+import { HumanMessage, SystemMessage, AIMessage, ToolMessage } from '@langchain/core/messages';
 
+import dotenv from 'dotenv';
 dotenv.config();
 
 export async function analyzeMessage(message: string, number: string) {
   console.log(`\n[AI Service] 📩 Requisição recebida de: ${number}`);
   console.log(`[AI Service] 💬 Mensagem: "${message}"`);
 
-  // 1. Identificar se o atendimento deve ser humano ou bot
-  console.log(`[AI Service] 🔍 Verificando status do cliente no banco...`);
+  // 1. Identificar status do cliente
   let customer = await prisma.usuarios.findUnique({
     where: { telefone: number },
   });
 
-  // Se não for cliente (tipo_id: 2), tratamos como manual para evitar conflito com funcionários/admins
   if (customer && customer.tipo_id !== 2) {
-    console.log(`[AI Service] 👤 Usuário não é cliente (Tipo: ${customer.tipo_id}). Encaminhando para humano.`);
     return {
       result: null,
       action: 'MANUAL_WAIT',
@@ -25,52 +25,69 @@ export async function analyzeMessage(message: string, number: string) {
     };
   }
 
-  // 2. Consultar base de produtos (RAG)
-  console.log(`[AI Service] 📚 Consultando base de produtos (RAG)...`);
-  const ragDocs = await queryProdutos(message);
-  const contextBlock =
-    ragDocs.length > 0
-      ? `\n\nProdutos e preços disponíveis na oficina:\n${ragDocs.map((d) => `- ${d}`).join('\n')}`
-      : '';
-
-  // 3. Chamar o Modelo de IA
-  console.log(`[AI Service] 🤖 Chamando NVIDIA NIM...`);
-  const response = await chat_model.invoke([
-    ['system', `És o assistente virtual da CicloOficina.
-Objetivos:
-1. Identificar se o cliente quer agendar um serviço de Borracharia ou Mecânica.
-2. Fornecer informações de preços e produtos baseando-se no contexto abaixo.
-3. Para agendamentos, responda EXATAMENTE no formato JSON: {"action":"CREATE_OS","customerName":"<nome>","vehiclePlate":"<placa>","description":"<problema>","serviceType":"<serviço>"}
-
-Regras:
-- Se não for um agendamento, responda cordialmente em texto puro.
-- Nunca invente preços. Se não estiver no contexto, diga que o consultor informará.
-${contextBlock}`],
-    ['user', message],
+  // 2. Consultar RAG (Produtos + Serviços)
+  const [ragProdutos, ragServicos] = await Promise.all([
+    queryProdutos(message),
+    queryServicos(message)
   ]);
 
-  const content = String(response.content).trim();
+  const contextBlock = `
+CATÁLOGO DE PRODUTOS:
+${ragProdutos.length > 0 ? ragProdutos.map(d => `- ${d}`).join('\n') : 'Nenhum produto relevante encontrado.'}
 
-  // 4. Tenta parsear se a IA retornou um comando de ação
-  try {
-    const parsed = JSON.parse(content);
-    if (parsed.action === 'CREATE_OS') {
-      console.log(`[AI Service] 🛠️ Ação identificada: Criar Ordem de Serviço.`);
-      return {
-        result: 'Identifiquei que você precisa de um agendamento. Estou gerando sua Ordem de Serviço...',
-        action: 'CREATE_OS',
-        demand: {
-          number,
-          customerName: parsed.customerName,
-          vehiclePlate: parsed.vehiclePlate,
-          description: parsed.description,
-          serviceType: parsed.serviceType,
-        },
-      };
+CATÁLOGO DE SERVIÇOS:
+${ragServicos.length > 0 ? ragServicos.map(d => `- ${d}`).join('\n') : 'Nenhum serviço relevante encontrado.'}
+`;
+
+  // 3. Configurar Agent/Tools
+  const tools = getTools(number);
+  const modelWithTools = model.bindTools(tools);
+
+  const messages: any[] = [
+    new SystemMessage(`És o assistente virtual da CicloOficina.
+Objetivos:
+1. Ajudar clientes com informações sobre produtos, preços e serviços.
+2. Identificar serviços desejados no CATÁLOGO DE SERVIÇOS e usá-los ao criar agendamentos.
+3. Facilitar agendamentos e consultas de disponibilidade.
+
+Regras:
+- Nunca invente preços. Use apenas o que está no contexto.
+- Se o cliente quiser agendar, use a ferramenta 'create_appointment'.
+- Se identificar um serviço específico do catálogo (ex: Troca de óleo), passe-o no parâmetro 'services'.
+- Responda de forma cordial e profissional.
+
+CONTEXTO ATUAL:
+${contextBlock}`),
+    new HumanMessage(message)
+  ];
+
+  // 4. Execução do Loop de IA
+  console.log(`[AI Service] 🤖 Processando com NVIDIA NIM e Tools...`);
+  let response = await modelWithTools.invoke(messages);
+
+  // Se houver chamadas de ferramentas, executamos
+  if (response.tool_calls && response.tool_calls.length > 0) {
+    for (const toolCall of response.tool_calls) {
+      const tool = tools.find(t => t.name === toolCall.name);
+      if (tool) {
+        console.log(`[AI Service] 🛠️ Executando ferramenta: ${toolCall.name}`);
+        const toolResult = await (tool as any).call(toolCall.args);
+        messages.push(response);
+        messages.push(new ToolMessage({
+          tool_call_id: toolCall.id!,
+          content: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult)
+        }));
+      }
     }
-  } catch {
-    // Não é JSON — resposta textual normal
+    // Segunda chamada para gerar a resposta final com base no resultado da ferramenta
+    response = await modelWithTools.invoke(messages);
   }
 
-  return { result: content, action: 'REPLY' };
+  const finalContent = String(response.content).trim();
+  
+  // O retorno segue o padrão esperado pelo frontend/whatsapp
+  return { 
+    result: finalContent, 
+    action: 'REPLY' 
+  };
 }

@@ -4,8 +4,8 @@ import { nextBusinessDay9am } from '../utils/date_utils';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
 
-export async function createOsWorkflow(body: CreateOsBody) {
-  const { number, customerName, vehiclePlate, description, serviceType } = body;
+export async function createOsWorkflow(body: CreateOsBody & { services?: string[] }) {
+  const { number, customerName, vehiclePlate, description, serviceType, services } = body;
 
   if (!number || !description) {
     throw new Error('number e description são obrigatórios');
@@ -29,7 +29,7 @@ export async function createOsWorkflow(body: CreateOsBody) {
     console.log(`[OS] Cliente não encontrado. Criando novo registro...`);
     const novoCliente = await axios.post(`${BACKEND_URL}/usuarios`, {
       tipo_id: 2,
-      cpf_cnpj: number.replace(/\D/g, '').slice(0, 20), // Garante formato válido para o banco
+      cpf_cnpj: number.replace(/\D/g, '').slice(0, 20),
       nome: customerName ?? `Cliente WhatsApp ${number}`,
       telefone: number,
     });
@@ -80,15 +80,12 @@ export async function createOsWorkflow(body: CreateOsBody) {
       mecanicoId = mecanicos[0].id;
       mecanicoNome = mecanicos[0].nome;
       console.log(`[OS] Mecânico atribuído: ${mecanicoNome} (${mecanicoId})`);
-    } else {
-      console.warn('[OS] Nenhum mecânico disponível — OS criada sem atribuição');
     }
   } catch (err: any) {
     console.warn('[OS] Aviso: não foi possível buscar mecânicos:', err.message);
   }
 
   // ── 4. Criar agendamento (próximo dia útil às 09:00) ─────────────────────
-  let agendamentoId: string;
   const agendadoPara = nextBusinessDay9am();
 
   const agendRes = await axios.post(`${BACKEND_URL}/agendamentos`, {
@@ -99,31 +96,53 @@ export async function createOsWorkflow(body: CreateOsBody) {
     duracao_total_minutos: 60,
     notas_cliente: `[WhatsApp] ${serviceType ?? ''} — ${description}`.trim(),
   });
-  agendamentoId = agendRes.data.id;
+  const agendamentoId = agendRes.data.id;
   console.log(`[OS] Agendamento criado: ${agendamentoId}`);
 
   // ── 5. Criar orçamento (rascunho) ─────────────────────────────────────────
-  let orcamentoId: string;
   const orcRes = await axios.post(`${BACKEND_URL}/orcamentos`, {
     agendamento_id: agendamentoId,
     cliente_id: clienteId,
     funcionario_id: mecanicoId,
   });
-  orcamentoId = orcRes.data.id;
+  const orcamentoId = orcRes.data.id;
   console.log(`[OS] Orçamento criado: ${orcamentoId}`);
 
-  // ── 6. Gerar magic link para o cliente ────────────────────────────────────
-  let magicLinkUrl: string | null = null;
+  // ── 6. Adicionar serviços identificados ───────────────────────────────────
+  if (services && services.length > 0) {
+    console.log(`[OS] 🛠️ Adicionando serviços identificados: ${services.join(', ')}`);
+    const catalogoRes = await axios.get(`${BACKEND_URL}/servicos`);
+    const catalogo: any[] = catalogoRes.data ?? [];
 
+    for (const sName of services) {
+      const match = catalogo.find(s => 
+        s.nome.toLowerCase().includes(sName.toLowerCase()) || 
+        sName.toLowerCase().includes(s.nome.toLowerCase())
+      );
+
+      if (match) {
+        try {
+          await axios.post(`${BACKEND_URL}/orcamentos/${orcamentoId}/servicos`, {
+            servico_id: match.id,
+            quantidade: 1,
+            preco_unitario: match.preco
+          });
+          console.log(`[OS] Serviço adicionado: ${match.nome}`);
+        } catch (err: any) {
+          console.error(`[OS] Erro ao adicionar serviço ${match.nome}:`, err.message);
+        }
+      }
+    }
+  }
+
+  // ── 7. Gerar magic link ────────────────────────────────────────────────────
+  let magicLinkUrl: string | null = null;
   try {
     const mlRes = await axios.post(`${BACKEND_URL}/auth/magic-link`, {
       telefone: clienteTelefone,
     });
     magicLinkUrl = mlRes.data.url;
-    console.log(`[OS] Magic link gerado: ${magicLinkUrl}`);
-  } catch (err: any) {
-    console.warn('[OS] Aviso: não foi possível gerar magic link:', err.response?.data ?? err.message);
-  }
+  } catch (err) {}
 
   return {
     agendamento_id: agendamentoId,
@@ -132,7 +151,54 @@ export async function createOsWorkflow(body: CreateOsBody) {
     agendado_para: agendadoPara.toISOString(),
     magic_link_url: magicLinkUrl,
     message: magicLinkUrl
-      ? `OS criada com sucesso! Acesse o app pelo link: ${magicLinkUrl}`
-      : 'OS criada com sucesso! Entre em contato para obter acesso ao app.',
+      ? `Agendamento e Orçamento criados com sucesso! Acesse pelo link: ${magicLinkUrl}`
+      : 'Agendamento criado! Entre em contato para detalhes do orçamento.',
   };
+}
+
+export async function checkAvailability(date: string) {
+  console.log(`[AI] Consultando disponibilidade para: ${date}`);
+  const res = await axios.get(`${BACKEND_URL}/agendamentos`);
+  const all: any[] = res.data ?? [];
+  
+  const targetDate = new Date(date);
+  const dailySchedules = all.filter(a => {
+    const d = new Date(a.agendado_para);
+    return d.getFullYear() === targetDate.getFullYear() &&
+           d.getMonth() === targetDate.getMonth() &&
+           d.getDate() === targetDate.getDate();
+  });
+
+  if (dailySchedules.length === 0) {
+    return "O dia está totalmente livre. Atendemos das 08:00 às 18:00.";
+  }
+
+  const occupied = dailySchedules.map(a => {
+    const start = new Date(a.agendado_para);
+    const end = new Date(start.getTime() + a.duracao_total_minutos * 60000);
+    return `${start.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})} - ${end.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}`;
+  });
+
+  return `Horários já ocupados em ${targetDate.toLocaleDateString('pt-BR')}: \n${occupied.join('\n')}\nOs demais horários entre 08:00 e 18:00 estão disponíveis.`;
+}
+
+export async function getCustomerHistory(number: string) {
+  console.log(`[AI] Buscando histórico para o número: ${number}`);
+  
+  const usuariosRes = await axios.get(`${BACKEND_URL}/usuarios`, { params: { tipo_id: 2 } });
+  const cliente = (usuariosRes.data ?? []).find((u: any) => u.telefone === number);
+
+  if (!cliente) return "Cliente não encontrado na base de dados.";
+
+  const agendRes = await axios.get(`${BACKEND_URL}/agendamentos/cliente/${cliente.id}`);
+  const history: any[] = agendRes.data ?? [];
+
+  if (history.length === 0) return "Não há histórico de atendimentos para este cliente.";
+
+  const summary = history.map(h => {
+    const data = new Date(h.agendado_para).toLocaleDateString('pt-BR');
+    return `- ${data}: ${h.notas_cliente || 'Sem descrição'}`;
+  }).join('\n');
+
+  return `Histórico de atendimentos do cliente ${cliente.nome}:\n${summary}`;
 }

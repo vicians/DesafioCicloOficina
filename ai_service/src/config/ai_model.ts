@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const chat_model = new ChatOpenAI({
+const model = new ChatOpenAI({
   apiKey: process.env.NVIDIA_API_KEY,
   configuration: {
     baseURL: process.env.NVIDIA_BASE_URL,
@@ -11,9 +11,11 @@ const chat_model = new ChatOpenAI({
   modelName: process.env.AI_MODEL,
   temperature: 0.3, // Pode ser usado para aumentar a segurança posteriormente
   maxRetries: 1,
-}).withConfig({
+});
+
+const chat_model = model.withConfig({
   runName: "TiaoApp_AI",
   timeout: 15000,
 });
 
-export { chat_model };
+export { chat_model, model };

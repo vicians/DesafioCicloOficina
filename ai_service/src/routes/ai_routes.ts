@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { analyzeMessage } from '../services/analyze_service';
-import { createOsWorkflow } from '../services/os_service';
+import { createOsWorkflow } from '../services/appointment_service';
 import { upsertProduto } from '../vectorstore/productVectorStore';
-import { AnalyzeRequestBody, CreateOsBody, ProdutoPayload } from '../schemas/ai_schemas';
+import { upsertServico } from '../vectorstore/serviceVectorStore';
+import { AnalyzeRequestBody, CreateOsBody, ProdutoPayload, ServicoPayload } from '../schemas/ai_schemas';
 
 const router = Router();
 
@@ -28,6 +29,31 @@ router.post('/ai/produtos/sync', async (req: Request, res: Response) => {
   return res.json({
     ok: true,
     message: `Produto "${produto.nome}" indexado no Vector DB`,
+  });
+});
+
+/**
+ * Chamado pelo backend sempre que um serviço do catálogo é criado ou atualizado.
+ */
+
+router.post('/ai/servicos/sync', async (req: Request, res: Response) => {
+  const servico = req.body as Partial<ServicoPayload>;
+
+  if (!servico.id || !servico.nome) {
+    return res.status(400).json({ error: 'id e nome são obrigatórios' });
+  }
+
+  await upsertServico({
+    id: servico.id,
+    nome: servico.nome,
+    descricao: servico.descricao ?? '',
+    preco: servico.preco ?? 0,
+    duracao_minutos: servico.duracao_minutos ?? 0,
+  });
+
+  return res.json({
+    ok: true,
+    message: `Serviço "${servico.nome}" indexado no Vector DB`,
   });
 });
 

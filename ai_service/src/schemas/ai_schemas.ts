@@ -1,4 +1,4 @@
-export interface ProdutoPayload {
+interface ProdutoPayload {
   id: string;
   nome: string;
   valor: number;
@@ -6,7 +6,7 @@ export interface ProdutoPayload {
   marca?: string;
 }
 
-export interface CreateOsBody {
+interface CreateOsBody {
   number: string;
   customerName?: string;
   vehiclePlate?: string;
@@ -14,7 +14,17 @@ export interface CreateOsBody {
   serviceType?: string;
 }
 
-export interface AnalyzeRequestBody {
+interface AnalyzeRequestBody {
   message: string;
   number: string;
 }
+
+interface ServicoPayload {
+  id: string;
+  nome: string;
+  descricao: string;
+  preco: number;
+  duracao_minutos: number;
+}
+
+export { ProdutoPayload, CreateOsBody, AnalyzeRequestBody, ServicoPayload };

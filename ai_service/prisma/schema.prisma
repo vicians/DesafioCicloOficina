@@ -191,3 +191,10 @@ model produto_embeddings {
   embedding Unsupported("vector(1024)")?
   metadata  Json
 }
+
+model servico_embeddings {
+  id        String                       @id @db.Uuid
+  content   String
+  embedding Unsupported("vector(1024)")?
+  metadata  Json
+}
