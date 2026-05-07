@@ -8,6 +8,7 @@ import '../../../core/widgets/app_input.dart';
 import '../interno_app.dart';
 import '../../cliente/cliente_app.dart';
 import '../../../data/auth_repository.dart';
+import '../../../core/config/api_config.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -24,9 +25,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passCtrl = TextEditingController();
   
   late final _authRepository = AuthRepository(
-    baseUrl: kIsWeb || !Platform.isAndroid 
-      ? 'http://localhost:3000' 
-      : 'http://10.0.2.2:3000'
+    baseUrl: ApiConfig.baseUrl
   );
 
   @override

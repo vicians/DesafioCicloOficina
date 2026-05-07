@@ -20,13 +20,13 @@ import 'screens/reports_screen.dart';
 import 'screens/internal_notifications_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/internal_messages_screen.dart';
+import '../../data/mock_data.dart';
+import '../../core/config/api_config.dart';
 import '../shared/models/notification_item.dart';
 import '../../services/firebase_messaging_service.dart';
 
 // TODO(prod): substituir pela URL real de produção e autenticação adequada.
-final _kApiBaseUrl = kIsWeb || !Platform.isAndroid
-    ? 'http://localhost:3000'
-    : 'http://10.0.2.2:3000';
+final _kApiBaseUrl = ApiConfig.baseUrl;
 // TODO(prod): desativar seed DEV automático antes de publicar.
 const _kEnableDevLowStockSeedOnStartup = true;
 

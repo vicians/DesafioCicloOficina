@@ -1,0 +1,29 @@
+import 'package:flutter/foundation.dart';
+
+/// ESTE É UM ARQUIVO DE EXEMPLO.
+/// 1. Copie este arquivo e renomeie para 'api_config.dart'
+/// 2. Altere o valor de '_localIp' para o IP da sua máquina
+/// 3. Certifique-se de que o seu celular/emulador está na mesma rede do seu computador.
+
+class ApiConfig {
+  /// Altere para o seu IP local (ex: 192.168.0.X)
+  /// Para emulador Android padrão, use: 10.0.2.2
+  static const String _localIp = 'SUA_MAQUINA_AQUI'; 
+  
+  static const String _port = '3000';
+  static const String _aiPort = '3001';
+
+  static String get baseUrl {
+    if (kIsWeb) {
+      return 'http://localhost:$_port';
+    }
+    return 'http://$_localIp:$_port';
+  }
+
+  static String get aiServiceUrl {
+    if (kIsWeb) {
+      return 'http://localhost:$_aiPort';
+    }
+    return 'http://$_localIp:$_aiPort';
+  }
+}

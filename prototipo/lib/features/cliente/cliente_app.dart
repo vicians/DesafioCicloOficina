@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/colors.dart';
 import '../../core/widgets/quick_action_fab.dart';
+import '../../data/mock_data.dart';
+import '../../core/config/api_config.dart';
 import '../shared/models/notification_item.dart';
 import '../../services/firebase_messaging_service.dart';
 import '../interno/screens/login_screen.dart';
@@ -19,9 +21,7 @@ import 'screens/history_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/schedule_service_sheet.dart';
 
-final _kApiBaseUrl = kIsWeb || !Platform.isAndroid 
-    ? 'http://localhost:3000' 
-    : 'http://10.0.2.2:3000';
+final _kApiBaseUrl = ApiConfig.baseUrl;
 const _kEnableDevClientSeedOnStartup = true;
 
 class ClienteApp extends StatefulWidget {
