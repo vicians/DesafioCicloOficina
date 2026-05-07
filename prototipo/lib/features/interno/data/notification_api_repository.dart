@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../../../data/mock_data.dart';
+import '../../shared/models/notification_item.dart';
 import 'notification_repository.dart';
 
 class NotificationApiRepository implements NotificationRepository {

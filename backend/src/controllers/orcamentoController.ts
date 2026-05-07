@@ -116,12 +116,6 @@ export class OrcamentoController {
       });
     }
 
-    // Garante que todo orçamento aprovado tenha uma OS associada.
-    await ExecucaoServicoModel.ensureByOrcamentoId(
-      orcamento.id,
-      orcamento.funcionario_id,
-    );
-
     try {
       const internalUserIds = await NotificationModel.findInternalUserIds();
       const titulo = 'Orçamento recusado pelo cliente';
@@ -182,6 +176,46 @@ export class OrcamentoController {
     );
 
     return res.json(execucao ?? orcamento);
+  }
+
+  static async enviarAddons(req: Request, res: Response) {
+    const orcamento = await OrcamentoModel.enviarAddons(req.params.id);
+
+    if (!orcamento) {
+      return res.status(409).json({
+        error: 'Somente orçamentos aprovados podem ser reenviados como add-ons para o cliente',
+      });
+    }
+
+    try {
+      const internalUserIds = await NotificationModel.findInternalUserIds();
+      const titulo = 'Add-ons enviados para aprovação';
+      const mensagem = `Orçamento ${orcamento.id} possui itens extras pendentes de aprovação do cliente.`;
+      const notifIds = await NotificationModel.createForUsers(internalUserIds, {
+        tipo: 'addons_sent',
+        titulo,
+        mensagem,
+        referencia_id: orcamento.id,
+        referencia_tipo: 'orcamento',
+      });
+      await sendPushToUsers(internalUserIds, notifIds, titulo, mensagem);
+    } catch (error) {
+      console.error('Falha ao criar notificações de add-ons enviados:', error);
+    }
+
+    return res.json(orcamento);
+  }
+
+  static async rejeitarAddons(req: Request, res: Response) {
+    const orcamento = await OrcamentoModel.rejeitarAddons(req.params.id);
+
+    if (!orcamento) {
+      return res.status(409).json({
+        error: 'Somente orçamentos em ENVIADO podem ter add-ons rejeitados',
+      });
+    }
+
+    return res.json(orcamento);
   }
 
   static async update(req: Request, res: Response) {

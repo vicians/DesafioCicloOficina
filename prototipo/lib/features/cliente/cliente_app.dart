@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/colors.dart';
 import '../../core/widgets/quick_action_fab.dart';
-import '../../data/mock_data.dart';
+import '../shared/models/notification_item.dart';
 import '../../services/firebase_messaging_service.dart';
 import '../interno/screens/login_screen.dart';
 import 'data/client_notification_api_repository.dart';
@@ -121,7 +121,7 @@ class _ClienteAppState extends State<ClienteApp> {
   @override
   Widget build(BuildContext context) {
     final unreadCount = _clientNotifications.where((n) => n.unread).length;
-    final hasPendingBudget = _currentService?.status == 'orcamento';
+    final hasPendingBudget = _currentService?.status == 'orcamento' || _currentService?.status == 'enviado';
 
     return Scaffold(
       backgroundColor: bgPage,

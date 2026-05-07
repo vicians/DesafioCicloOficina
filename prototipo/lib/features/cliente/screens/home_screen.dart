@@ -113,8 +113,36 @@ class _HomeScreenState extends State<HomeScreen> {
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  'Ação necessária: Aprove o orçamento para iniciar o serviço.',
+                                  svc.status == 'enviado'
+                                      ? 'Alteração de orçamento pendente de aprovação.'
+                                      : 'Ação necessária: Aprove o orçamento para iniciar o serviço.',
                                   style: GoogleFonts.dmSans(fontSize: 13, color: Colors.redAccent, fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      if (svc.status == 'enviado')
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: orangeLight,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: orange.withValues(alpha: 0.5)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.edit_note_rounded, color: orange, size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'A oficina alterou o orçamento. Revise e aprove para continuar.',
+                                  style: GoogleFonts.dmSans(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: textPrimary,
+                                  ),
                                 ),
                               ),
                             ],
@@ -129,7 +157,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       const SizedBox(height: 10),
-                      _MechanicCard(svc: svc),
+                      GestureDetector(
+                        onTap: () => Navigator.push(
+                          context,
+                          _fadeRoute(ServiceDetailScreen(service: svc)),
+                        ),
+                        child: _MechanicCard(svc: svc),
+                      ),
                       const SizedBox(height: 10),
                       _NextStepCard(svc: svc),
                     ] else ...[

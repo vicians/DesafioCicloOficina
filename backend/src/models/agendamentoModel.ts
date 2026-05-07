@@ -1,6 +1,7 @@
 import { getDb } from '../config/database';
 import type { AgendamentoDTO, CreateAgendamentoDTO } from '../../../shared/dtos/agendamentoDto';
 import type { ExecucaoServicoDTO } from '../../../shared/dtos/execucaoServicoDto';
+import type { OrcamentoDTO } from '../../../shared/dtos/orcamentoDto';
 
 export class AgendamentoModel {
   static async findAll(): Promise<any[]> {
@@ -10,6 +11,12 @@ export class AgendamentoModel {
         a.*,
         c.nome AS cliente_nome,
         EXISTS (SELECT 1 FROM orcamentos o WHERE o.agendamento_id = a.id) AS possui_orcamento,
+        EXISTS (
+          SELECT 1
+          FROM orcamentos o
+          JOIN execucoes_servico e ON e.orcamento_id = o.id
+          WHERE o.agendamento_id = a.id
+        ) AS possui_execucao,
         (SELECT nome FROM oficinas ORDER BY criado_em ASC LIMIT 1) AS oficina_nome,
         v.marca AS veiculo_marca,
         v.modelo AS veiculo_modelo,
@@ -26,10 +33,23 @@ export class AgendamentoModel {
   static async findByClienteId(clienteId: string): Promise<AgendamentoDTO[]> {
     const db = getDb();
     const result = await db.query(
-      'SELECT * FROM agendamentos WHERE cliente_id = $1 ORDER BY agendado_para ASC',
+      `SELECT a.*,
+              v.marca AS veiculo_marca,
+              v.modelo AS veiculo_modelo,
+              v.placa AS veiculo_placa
+       FROM agendamentos a
+       LEFT JOIN veiculos v ON a.veiculo_id = v.id
+       WHERE a.cliente_id = $1
+       ORDER BY a.agendado_para ASC`,
       [clienteId]
     );
     return result.rows;
+  }
+
+  static async findById(id: string): Promise<AgendamentoDTO | null> {
+    const db = getDb();
+    const result = await db.query('SELECT * FROM agendamentos WHERE id = $1 LIMIT 1', [id]);
+    return result.rows[0] ?? null;
   }
 
   static async clienteVeiculoRelacionados(clienteId: string, veiculoId: string): Promise<boolean> {
@@ -176,6 +196,63 @@ export class AgendamentoModel {
       [cliente_id, veiculo_id, funcionario_id, agendado_para, duracao_total_minutos, fimEstimado, notas_cliente]
     );
     return result.rows[0];
+  }
+
+  static async createWithApprovedInitialBudget(
+    data: CreateAgendamentoDTO
+  ): Promise<{ agendamento: AgendamentoDTO; orcamento: OrcamentoDTO }> {
+    const db = getDb();
+    const client = await db.connect();
+    const {
+      cliente_id,
+      veiculo_id,
+      funcionario_id,
+      agendado_para,
+      duracao_total_minutos,
+      notas_cliente,
+    } = data;
+
+    const agendadoParaDate = new Date(agendado_para);
+    const fimEstimado = new Date(agendadoParaDate.getTime() + duracao_total_minutos * 60000);
+
+    try {
+      await client.query('BEGIN');
+
+      const agendamentoResult = await client.query(
+        `INSERT INTO agendamentos (cliente_id, veiculo_id, funcionario_id, agendado_para, duracao_total_minutos, fim_estimado_em, status, notas_cliente)
+         VALUES ($1, $2, $3, $4, $5, $6, 'PENDENTE', $7)
+         RETURNING *`,
+        [
+          cliente_id,
+          veiculo_id,
+          funcionario_id,
+          agendado_para,
+          duracao_total_minutos,
+          fimEstimado,
+          notas_cliente,
+        ]
+      );
+
+      const agendamento = agendamentoResult.rows[0] as AgendamentoDTO;
+
+      const orcamentoResult = await client.query(
+        `INSERT INTO orcamentos (agendamento_id, cliente_id, funcionario_id, status, valor_total, valido_ate)
+         VALUES ($1, $2, $3, 'APROVADO', 0, NOW() + INTERVAL '7 days')
+         RETURNING *`,
+        [agendamento.id, cliente_id, funcionario_id ?? null]
+      );
+
+      await client.query('COMMIT');
+      return {
+        agendamento,
+        orcamento: orcamentoResult.rows[0] as OrcamentoDTO,
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   static async updateStatus(id: string, status: string): Promise<AgendamentoDTO | null> {

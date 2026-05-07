@@ -10,6 +10,7 @@ class ScheduledServiceItem {
   final int duracaoMinutos;
   final String status;
   final bool possuiOrcamento;
+  final bool possuiExecucao;
   final String? notasCliente;
 
   const ScheduledServiceItem({
@@ -24,6 +25,7 @@ class ScheduledServiceItem {
     required this.duracaoMinutos,
     required this.status,
     this.possuiOrcamento = false,
+    this.possuiExecucao = false,
     this.notasCliente,
   });
 }

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/colors.dart';
-import '../../../data/mock_data.dart';
+import '../../shared/models/notification_item.dart';
 import 'client_screen_header.dart';
 
 class NotificationsScreen extends StatefulWidget {

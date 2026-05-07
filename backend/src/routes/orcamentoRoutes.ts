@@ -246,6 +246,28 @@ orcamentoRouter.patch('/:id/aprovar', OrcamentoController.aprovar);
 
 /**
  * @openapi
+ * /orcamentos/{id}/enviar-addons:
+ *   patch:
+ *     tags:
+ *       - Orçamentos
+ *     summary: Envia itens extras para aprovação do cliente
+ *     description: Move um orçamento aprovado para ENVIADO quando houver add-ons.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Add-ons enviados com sucesso
+ */
+orcamentoRouter.patch('/:id/enviar-addons', OrcamentoController.enviarAddons);
+orcamentoRouter.patch('/:id/rejeitar-addons', OrcamentoController.rejeitarAddons);
+
+/**
+ * @openapi
  * /orcamentos/{id}:
  *   patch:
  *     tags:

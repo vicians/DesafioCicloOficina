@@ -131,6 +131,27 @@ agendamentoRouter.patch('/:id/status', AgendamentoController.updateStatus);
 
 /**
  * @openapi
+ * /agendamentos/{id}/confirmar-recebimento:
+ *   patch:
+ *     tags:
+ *       - Agendamentos
+ *     summary: Confirma recebimento na oficina e abre a OS
+ *     description: Converte o agendamento recebido em execução de serviço (OS), sem exigir nova aprovação do orçamento inicial.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       201:
+ *         description: OS aberta com sucesso
+ */
+agendamentoRouter.patch('/:id/confirmar-recebimento', AgendamentoController.confirmarRecebimento);
+
+/**
+ * @openapi
  * /agendamentos/{id}/iniciar:
  *   patch:
  *     tags:
