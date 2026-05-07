@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/colors.dart';
+import '../../../core/config/api_config.dart';
 import '../../../core/widgets/app_card.dart';
 import '../data/internal_chat_api_repository.dart';
 import '../data/internal_chat_repository.dart';
@@ -39,7 +40,7 @@ class _InternalMessagesScreenState extends State<InternalMessagesScreen> {
   void initState() {
     super.initState();
     // Defaulting to Android emulator local address. Use localhost for iOS/Web.
-    _repository = InternalChatApiRepository(baseUrl: 'http://10.0.2.2:3000');
+    _repository = InternalChatApiRepository(baseUrl: ApiConfig.baseUrl);
     
     // TODO: Refactor to WebSockets when available
     _conversationsStream = _repository.streamConversations().asBroadcastStream();

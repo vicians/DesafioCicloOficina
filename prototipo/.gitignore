@@ -56,5 +56,8 @@ ios/Pods/
 ios/.symlinks/
 ios/Flutter/flutter_export_environment.sh
 
+# Configurações locais de API (Ignoradas para evitar conflitos de IP entre colaboradores)
+lib/core/config/api_config.dart
+
 # flutter-plugins (gerado automaticamente)
 .flutter-plugins

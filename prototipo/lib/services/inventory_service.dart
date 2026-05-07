@@ -1,12 +1,13 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../core/config/api_config.dart';
 import '../data/mock_data.dart';
 
 // 10.0.2.2 é o alias do Android emulator para o localhost da máquina host.
 // Para USB debugging com dispositivo físico, substitua pelo IP da máquina
 // (ex: http://192.168.1.X:3000) ou use uma variável de ambiente.
-const _backendUrl = 'http://10.0.2.2:3000';
-const _aiServiceUrl = 'http://10.0.2.2:3001';
+final _backendUrl = ApiConfig.baseUrl;
+final _aiServiceUrl = ApiConfig.aiServiceUrl;
 const _timeout = Duration(seconds: 8);
 
 class InventoryService {
