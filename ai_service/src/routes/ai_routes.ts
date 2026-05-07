@@ -1,22 +1,15 @@
 import { Router, Request, Response } from 'express';
 import { analyzeMessage } from '../services/analyze_service';
 import { createOsWorkflow } from '../services/os_service';
-import { upsertProduto, ProdutoPayload } from '../vectorstore/productVectorStore';
-import { AnalyzeRequestBody, CreateOsBody } from '../schemas/ai_schemas';
+import { upsertProduto } from '../vectorstore/productVectorStore';
+import { AnalyzeRequestBody, CreateOsBody, ProdutoPayload } from '../schemas/ai_schemas';
 
 const router = Router();
-
-router.get('/health', (_req: Request, res: Response) => {
-  res.json({
-    status: 'ok',
-    service: 'CicloOficina AI Service',
-    model: process.env.AI_MODEL,
-  });
-});
 
 /**
  * Chamado pelo backend sempre que um produto é criado ou atualizado.
  */
+
 router.post('/ai/produtos/sync', async (req: Request, res: Response) => {
   const produto = req.body as Partial<ProdutoPayload>;
 
@@ -41,6 +34,7 @@ router.post('/ai/produtos/sync', async (req: Request, res: Response) => {
 /**
  * Análise de mensagem com contexto RAG
  */
+
 router.post('/ai/analyze', async (req: Request, res: Response) => {
   const { message, number } = req.body as AnalyzeRequestBody;
 
@@ -60,6 +54,7 @@ router.post('/ai/analyze', async (req: Request, res: Response) => {
 /**
  * Sub-Agent: Criação de OS
  */
+
 router.post('/ai/create-os', async (req: Request, res: Response) => {
   const body = req.body as CreateOsBody;
 

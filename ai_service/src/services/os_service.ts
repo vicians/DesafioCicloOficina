@@ -12,6 +12,7 @@ export async function createOsWorkflow(body: CreateOsBody) {
   }
 
   // ── 1. Localizar ou criar cliente ─────────────────────────────────────────
+  console.log(`[OS] 📝 Iniciando processo de criação para: ${number}`);
   let clienteId: string;
   let clienteTelefone: string = number;
 
@@ -25,9 +26,10 @@ export async function createOsWorkflow(body: CreateOsBody) {
     clienteId = found.id;
     console.log(`[OS] Cliente encontrado: ${found.nome} (${clienteId})`);
   } else {
+    console.log(`[OS] Cliente não encontrado. Criando novo registro...`);
     const novoCliente = await axios.post(`${BACKEND_URL}/usuarios`, {
       tipo_id: 2,
-      cpf_cnpj: number.replace(/\D/g, '').slice(0, 20),
+      cpf_cnpj: number.replace(/\D/g, '').slice(0, 20), // Garante formato válido para o banco
       nome: customerName ?? `Cliente WhatsApp ${number}`,
       telefone: number,
     });
@@ -52,6 +54,7 @@ export async function createOsWorkflow(body: CreateOsBody) {
     veiculoId = veiculoFound.id;
     console.log(`[OS] Veículo encontrado: ${vehiclePlate} (${veiculoId})`);
   } else {
+    console.log(`[OS] Veículo não encontrado. Cadastrando placa ${vehiclePlate}...`);
     const novoVeiculo = await axios.post(`${BACKEND_URL}/veiculos`, {
       cliente_id: clienteId,
       placa: vehiclePlate.toUpperCase(),

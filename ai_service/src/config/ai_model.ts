@@ -9,7 +9,11 @@ const chat_model = new ChatOpenAI({
     baseURL: process.env.NVIDIA_BASE_URL,
   },
   modelName: process.env.AI_MODEL,
-  temperature: 0.3, // Possível local para aumentar a segurança posteriormente
+  temperature: 0.3, // Pode ser usado para aumentar a segurança posteriormente
+  maxRetries: 1,
+}).withConfig({
+  runName: "TiaoApp_AI",
+  timeout: 15000,
 });
 
 export { chat_model };
