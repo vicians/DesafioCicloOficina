@@ -12,6 +12,7 @@ import 'budget_detail_screen.dart';
 class ScheduledServicesScreen extends StatefulWidget {
   final SchedulingRepository repository;
   final InternalFlowRepository? budgetRepository;
+  final ValueNotifier<int>? refreshSignal;
   final VoidCallback? onOpenServices;
   final VoidCallback? onOpenBudgets;
 
@@ -19,6 +20,7 @@ class ScheduledServicesScreen extends StatefulWidget {
     super.key,
     required this.repository,
     this.budgetRepository,
+    this.refreshSignal,
     this.onOpenServices,
     this.onOpenBudgets,
   });
@@ -38,6 +40,15 @@ class _ScheduledServicesScreenState extends State<ScheduledServicesScreen> {
   void initState() {
     super.initState();
     _future = widget.repository.fetchScheduledServices();
+    widget.refreshSignal?.addListener(_onRefreshSignal);
+  }
+
+  void _onRefreshSignal() => _reload();
+
+  @override
+  void dispose() {
+    widget.refreshSignal?.removeListener(_onRefreshSignal);
+    super.dispose();
   }
 
   Future<void> _reload() async {

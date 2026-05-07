@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
-import 'dart:io' show Platform;
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/colors.dart';
 import 'data/internal_flow_api_repository.dart';
@@ -41,6 +39,7 @@ class InternoApp extends StatefulWidget {
 
 class _InternoAppState extends State<InternoApp> {
   int _currentIndex = 0;
+  final _schedulingRefresh = ValueNotifier<int>(0);
   late final InternalFlowRepository _flowRepository;
   late final NotificationRepository _notificationRepository;
   late final SchedulingRepository _schedulingRepository;
@@ -79,6 +78,7 @@ class _InternoAppState extends State<InternoApp> {
   @override
   void dispose() {
     _flowRepository.dispose();
+    _schedulingRefresh.dispose();
     super.dispose();
   }
 
@@ -123,6 +123,7 @@ class _InternoAppState extends State<InternoApp> {
         ScheduledServicesScreen(
           repository: _schedulingRepository,
           budgetRepository: _flowRepository,
+          refreshSignal: _schedulingRefresh,
           onOpenServices: () => setState(() => _currentIndex = 3),
           onOpenBudgets: () => setState(() => _currentIndex = 2),
         ),
@@ -148,6 +149,7 @@ class _InternoAppState extends State<InternoApp> {
       ScheduledServicesScreen(
         repository: _schedulingRepository,
         budgetRepository: _flowRepository,
+        refreshSignal: _schedulingRefresh,
         onOpenServices: () => setState(() => _currentIndex = 3),
         onOpenBudgets: () => setState(() => _currentIndex = 2),
       ),
@@ -207,7 +209,11 @@ class _InternoAppState extends State<InternoApp> {
       bottomNavigationBar: _InternoNavBar(
         items: _navItems,
         currentIndex: _currentIndex,
-        onTap: (i) => setState(() => _currentIndex = i),
+        onTap: (i) {
+          setState(() => _currentIndex = i);
+          // índice 1 = agendamentos; sinaliza reload ao voltar para a aba
+          if (i == 1) _schedulingRefresh.value++;
+        },
       ),
     );
   }
