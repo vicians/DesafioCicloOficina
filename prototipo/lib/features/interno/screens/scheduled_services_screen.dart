@@ -3,18 +3,23 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/status_badge.dart';
+import '../data/internal_flow_repository.dart';
+import '../data/models/internal_budget_item.dart';
 import '../data/models/scheduled_service_item.dart';
 import '../data/scheduling_repository.dart';
+import 'budget_detail_screen.dart';
 
 class ScheduledServicesScreen extends StatefulWidget {
   final SchedulingRepository repository;
-  final bool isManager;
+  final InternalFlowRepository? budgetRepository;
+  final VoidCallback? onOpenServices;
   final VoidCallback? onOpenBudgets;
 
   const ScheduledServicesScreen({
     super.key,
     required this.repository,
-    this.isManager = false,
+    this.budgetRepository,
+    this.onOpenServices,
     this.onOpenBudgets,
   });
 
@@ -26,7 +31,8 @@ class _ScheduledServicesScreenState extends State<ScheduledServicesScreen> {
   late Future<List<ScheduledServiceItem>> _future;
   String _search = '';
   String _statusFilter = 'todos';
-  bool _sendingToBudget = false;
+  bool _confirmingReceipt = false;
+  bool _openingBudget = false;
 
   @override
   void initState() {
@@ -62,19 +68,104 @@ class _ScheduledServicesScreenState extends State<ScheduledServicesScreen> {
     }).toList();
   }
 
-  Future<void> _sendToBudget(ScheduledServiceItem item) async {
-    if (_sendingToBudget) return;
+  Future<void> _confirmReceipt(ScheduledServiceItem item) async {
+    if (_confirmingReceipt) return;
 
-    setState(() => _sendingToBudget = true);
+    setState(() => _confirmingReceipt = true);
     try {
-      final budgetId = await widget.repository.sendScheduleToBudgets(
+      final serviceId = await widget.repository.confirmScheduleToService(
         schedule: item,
       );
       await _reload();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Enviado para orçamentos: $budgetId'),
+          content: Text('Agendamento confirmado. OS aberta: $serviceId'),
+          action: widget.onOpenServices == null
+              ? null
+              : SnackBarAction(
+                  label: 'Abrir',
+                  onPressed: widget.onOpenServices!,
+                ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Falha ao confirmar recebimento: $error'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _confirmingReceipt = false);
+      }
+    }
+  }
+
+  Future<void> _openBudget(ScheduledServiceItem item) async {
+    if (_openingBudget) return;
+
+    setState(() => _openingBudget = true);
+    try {
+      final budgetId = await widget.repository.openScheduleBudget(schedule: item);
+      await _reload();
+      if (!mounted) return;
+
+      if (widget.budgetRepository != null) {
+        final budgets = await widget.budgetRepository!.fetchOrcamentos();
+        if (!mounted) return;
+        InternalBudgetItem? target;
+        for (final budget in budgets) {
+          if (budget.id == budgetId) {
+            target = budget;
+            break;
+          }
+        }
+
+        if (target != null) {
+          final result = await Navigator.push<Object?>(
+            context,
+            MaterialPageRoute(
+              builder: (_) => BudgetDetailScreen(
+                repository: widget.budgetRepository!,
+                budget: target!,
+              ),
+            ),
+          );
+          if (!mounted) return;
+
+          if (result == true) {
+            final refreshedBudgets = await widget.budgetRepository!.fetchOrcamentos();
+            if (!mounted) return;
+
+            InternalBudgetItem? refreshed;
+            for (final budget in refreshedBudgets) {
+              if (budget.id == budgetId) {
+                refreshed = budget;
+                break;
+              }
+            }
+
+            if (refreshed != null && refreshed.status.toLowerCase() == 'aprovado') {
+              await widget.budgetRepository!.sendAddons(budgetId);
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Alterações enviadas para aprovação do cliente.'),
+                ),
+              );
+            }
+          }
+
+          await _reload();
+          return;
+        }
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Orçamento pronto: $budgetId'),
           action: widget.onOpenBudgets == null
               ? null
               : SnackBarAction(
@@ -87,12 +178,12 @@ class _ScheduledServicesScreenState extends State<ScheduledServicesScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Falha ao enviar para orçamentos: $error'),
+          content: Text('Falha ao abrir orçamento: $error'),
         ),
       );
     } finally {
       if (mounted) {
-        setState(() => _sendingToBudget = false);
+        setState(() => _openingBudget = false);
       }
     }
   }
@@ -145,8 +236,8 @@ class _ScheduledServicesScreenState extends State<ScheduledServicesScreen> {
                     final item = filtered[index];
                     return _ScheduledCard(
                       item: item,
-                      isManager: widget.isManager,
-                      onSendToBudget: () => _sendToBudget(item),
+                      onConfirmReceipt: () => _confirmReceipt(item),
+                      onOpenBudget: () => _openBudget(item),
                     );
                   },
                 ),
@@ -282,13 +373,13 @@ class _StatusFilterBar extends StatelessWidget {
 
 class _ScheduledCard extends StatelessWidget {
   final ScheduledServiceItem item;
-  final bool isManager;
-  final VoidCallback onSendToBudget;
+  final VoidCallback onConfirmReceipt;
+  final VoidCallback onOpenBudget;
 
   const _ScheduledCard({
     required this.item,
-    required this.isManager,
-    required this.onSendToBudget,
+    required this.onConfirmReceipt,
+    required this.onOpenBudget,
   });
 
   @override
@@ -297,8 +388,10 @@ class _ScheduledCard extends StatelessWidget {
     final data =
         '${agendamento.day.toString().padLeft(2, '0')}/${agendamento.month.toString().padLeft(2, '0')}/${agendamento.year}';
     final hora = '${agendamento.hour.toString().padLeft(2, '0')}h';
-    final canSendToBudget =
-        isManager && item.status.toLowerCase() == 'concluido' && !item.possuiOrcamento;
+    final canConfirmReceipt =
+        (item.status.toLowerCase() == 'pendente' ||
+          item.status.toLowerCase() == 'confirmado') &&
+        !item.possuiExecucao;
 
     return AppCard(
       child: Column(
@@ -342,12 +435,23 @@ class _ScheduledCard extends StatelessWidget {
               ),
             ],
           ),
-          if (canSendToBudget) ...[
+          if (canConfirmReceipt) ...[
             const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: onSendToBudget,
-              icon: const Icon(Icons.receipt_long_rounded, size: 16),
-              label: const Text('Enviar para orçamentos'),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: onOpenBudget,
+                  icon: const Icon(Icons.receipt_long_outlined, size: 16),
+                  label: const Text('Atualizar orçamento'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: onConfirmReceipt,
+                  icon: const Icon(Icons.build_circle_outlined, size: 16),
+                  label: const Text('Concluir e abrir OS'),
+                ),
+              ],
             ),
           ],
           if ((item.notasCliente ?? '').trim().isNotEmpty) ...[

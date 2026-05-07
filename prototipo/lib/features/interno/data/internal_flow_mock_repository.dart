@@ -4,7 +4,7 @@ import 'internal_flow_repository.dart';
 import 'models/catalogo_servico_item.dart';
 import 'models/internal_budget_item.dart';
 import 'models/produto_item.dart';
-import 'models/internal_chat_message.dart';
+import 'models/internal_chat_models.dart';
 
 class InternalFlowMockRepository extends InternalFlowRepository {
   final List<InternalBudgetItem> _budgets = [];
@@ -167,6 +167,18 @@ class InternalFlowMockRepository extends InternalFlowRepository {
     }
 
     _budgets[index] = budget;
+    notifyListeners();
+    return _budgets[index];
+  }
+
+  @override
+  Future<InternalBudgetItem> sendAddons(String budgetId) async {
+    final index = _budgets.indexWhere((item) => item.id == budgetId);
+    if (index < 0) {
+      throw StateError('Orçamento não encontrado: $budgetId');
+    }
+
+    _budgets[index] = _budgets[index].copyWith(status: 'enviado');
     notifyListeners();
     return _budgets[index];
   }

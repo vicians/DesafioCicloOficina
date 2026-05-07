@@ -22,6 +22,7 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
   bool _error = false;
   bool _approved = false;
   bool _refused = false;
+  bool _canceled = false;
   ServiceModel? _service;
 
   late AnimationController _approvedCtrl;
@@ -91,7 +92,7 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
     if (_service == null) return;
     setState(() => _loading = true);
     try {
-      await widget.repository.refuseBudget(_service!.id);
+      await widget.repository.rejectBudgetChange(_service!.id);
       if (!mounted) return;
       HapticFeedback.heavyImpact();
       setState(() {
@@ -101,10 +102,10 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Recusa registrada. Entre em contato com a oficina.',
+            'Alteração recusada. O orçamento anterior foi mantido.',
             style: GoogleFonts.dmSans(fontSize: 13, color: Colors.white),
           ),
-          backgroundColor: red,
+          backgroundColor: navyDark,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           duration: const Duration(seconds: 3),
@@ -115,6 +116,45 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
       setState(() => _loading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Erro ao rejeitar: $e'), backgroundColor: red),
+      );
+    }
+  }
+
+  void _handleCancel() async {
+    if (_service == null) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancelar atendimento'),
+        content: const Text('Deseja cancelar o agendamento e o atendimento? Esta ação não pode ser desfeita.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Voltar')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Cancelar atendimento')),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _loading = true);
+    try {
+      await widget.repository.cancelService(
+        budgetId: _service!.id,
+        agendamentoId: _service!.agendamentoId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _canceled = true;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Atendimento cancelado com sucesso.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao cancelar atendimento: $e'), backgroundColor: red),
       );
     }
   }
@@ -157,7 +197,7 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
       );
     }
 
-    if (svc == null || (svc.status != 'orcamento' && svc.status != 'enviado' && !_approved)) {
+    if (svc == null || (svc.status != 'orcamento' && svc.status != 'enviado' && !_approved && !_canceled)) {
       return Scaffold(
         backgroundColor: bgPage,
         body: Center(
@@ -270,6 +310,25 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
       );
     }
 
+    if (_canceled) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: redBg,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: red.withValues(alpha: 0.3)),
+        ),
+        child: Text(
+          'Atendimento cancelado. O item foi movido para seu histórico.',
+          style: GoogleFonts.dmSans(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: red,
+          ),
+        ),
+      );
+    }
+
     if (_refused) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -277,9 +336,9 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: redBg,
+              color: blueBg,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: red.withValues(alpha: 0.3)),
+              border: Border.all(color: blue.withValues(alpha: 0.3)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -290,20 +349,20 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: red.withValues(alpha: 0.12),
+                        color: blue.withValues(alpha: 0.12),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.phone_rounded,
-                          color: red, size: 20),
+                      child: const Icon(Icons.undo_rounded,
+                          color: blue, size: 20),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'Entre em contato com a oficina',
+                        'Alteração recusada',
                         style: GoogleFonts.dmSans(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
-                          color: red,
+                          color: blue,
                         ),
                       ),
                     ),
@@ -311,18 +370,9 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Recusa registrada. Ligue para discutir o orçamento com o responsável.',
+                  'Seguimos com o orçamento anterior. Você pode acompanhar a execução normalmente.',
                   style: GoogleFonts.dmSans(
                       fontSize: 13, color: textPrimary),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  '(11) 99999-8888',
-                  style: GoogleFonts.dmSans(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: red,
-                  ),
                 ),
               ],
             ),
@@ -342,18 +392,26 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
         ),
         const SizedBox(height: 10),
         AppButton(
-          label: 'Rejeitar',
+          label: 'Rejeitar alteração',
           fullWidth: true,
           variant: AppButtonVariant.outline,
           onPressed: _loading ? null : _handleRefuse,
+        ),
+        const SizedBox(height: 10),
+        AppButton(
+          label: 'Cancelar atendimento',
+          fullWidth: true,
+          variant: AppButtonVariant.danger,
+          onPressed: _loading ? null : _handleCancel,
         ),
       ],
     );
   }
 
   Widget _buildHeader(ServiceModel svc) {
-    final badgeStatus =
-        _approved ? 'aprovado' : (_refused ? 'cancelado' : 'orcamento');
+    final badgeStatus = _approved
+      ? 'aprovado'
+      : (_canceled ? 'cancelado' : (_refused ? 'confirmado' : 'orcamento'));
     return ClientScreenHeader(
       title: 'Orçamento',
       subtitle: '${svc.id} · ${svc.car} · ${svc.plate}',
@@ -382,7 +440,7 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Orçamento aguardando sua aprovação. O serviço só será iniciado após a confirmação.',
+              'Orçamento aguardando sua resposta. Você pode aprovar, rejeitar a alteração ou cancelar o atendimento.',
               style: GoogleFonts.dmSans(
                 fontSize: 13,
                 color: yellow,

@@ -76,10 +76,17 @@ export class OrcamentoModel {
   static async create(data: CreateOrcamentoDTO): Promise<OrcamentoDTO> {
     const db = getDb();
     const { agendamento_id, cliente_id, funcionario_id } = data;
+
+    const isInitialFromSchedule = Boolean(agendamento_id);
+    const statusInicial = isInitialFromSchedule ? 'APROVADO' : 'RASCUNHO';
+    const validoAte = isInitialFromSchedule
+      ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+      : null;
+
     const result = await db.query(
-      `INSERT INTO orcamentos (agendamento_id, cliente_id, funcionario_id, status, valor_total)
-       VALUES ($1, $2, $3, 'RASCUNHO', 0) RETURNING *`,
-      [agendamento_id ?? null, cliente_id, funcionario_id ?? null]
+      `INSERT INTO orcamentos (agendamento_id, cliente_id, funcionario_id, status, valor_total, valido_ate)
+       VALUES ($1, $2, $3, $4, 0, $5) RETURNING *`,
+      [agendamento_id ?? null, cliente_id, funcionario_id ?? null, statusInicial, validoAte]
     );
     return result.rows[0];
   }
@@ -210,6 +217,32 @@ export class OrcamentoModel {
        SET status = 'REJEITADO'
        WHERE id = $1
          AND status IN ('RASCUNHO', 'ENVIADO')
+       RETURNING *`,
+      [id]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  static async enviarAddons(id: string): Promise<OrcamentoDTO | null> {
+    const db = getDb();
+    const result = await db.query(
+      `UPDATE orcamentos
+       SET status = 'ENVIADO', valido_ate = NOW() + INTERVAL '7 days'
+       WHERE id = $1
+         AND status = 'APROVADO'
+       RETURNING *`,
+      [id]
+    );
+    return result.rows[0] ?? null;
+  }
+
+  static async rejeitarAddons(id: string): Promise<OrcamentoDTO | null> {
+    const db = getDb();
+    const result = await db.query(
+      `UPDATE orcamentos
+       SET status = 'APROVADO'
+       WHERE id = $1
+         AND status = 'ENVIADO'
        RETURNING *`,
       [id]
     );

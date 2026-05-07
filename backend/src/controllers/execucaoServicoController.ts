@@ -12,7 +12,6 @@ const STATUS_PERMITIDOS = [
 
 export class ExecucaoServicoController {
   static async index(req: Request, res: Response) {
-    await ExecucaoServicoModel.backfillFromApprovedBudgets();
     const execucoes = await ExecucaoServicoModel.findAll();
     return res.json(execucoes);
   }

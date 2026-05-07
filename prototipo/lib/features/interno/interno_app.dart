@@ -22,6 +22,7 @@ import 'screens/login_screen.dart';
 import 'screens/internal_messages_screen.dart';
 import '../../data/mock_data.dart';
 import '../../core/config/api_config.dart';
+import '../shared/models/notification_item.dart';
 import '../../services/firebase_messaging_service.dart';
 
 // TODO(prod): substituir pela URL real de produção e autenticação adequada.
@@ -121,7 +122,8 @@ class _InternoAppState extends State<InternoApp> {
         ),
         ScheduledServicesScreen(
           repository: _schedulingRepository,
-          isManager: true,
+          budgetRepository: _flowRepository,
+          onOpenServices: () => setState(() => _currentIndex = 3),
           onOpenBudgets: () => setState(() => _currentIndex = 2),
         ),
         BudgetListScreen(repository: _flowRepository),
@@ -145,7 +147,9 @@ class _InternoAppState extends State<InternoApp> {
       ),
       ScheduledServicesScreen(
         repository: _schedulingRepository,
-        isManager: false,
+        budgetRepository: _flowRepository,
+        onOpenServices: () => setState(() => _currentIndex = 3),
+        onOpenBudgets: () => setState(() => _currentIndex = 2),
       ),
       BudgetListScreen(repository: _flowRepository),
       ServiceListScreen(repository: _flowRepository, initialFilter: null),
