@@ -15,22 +15,7 @@ class ClientFlowApiRepository extends ClientFlowRepository {
   @override
   Future<ServiceModel?> fetchCurrentService() async {
     try {
-      // 1. Tentar buscar execução ativa (em andamento)
-      final execResp = await http.get(Uri.parse('$baseUrl/execucoes'));
-      if (execResp.statusCode == 200) {
-        final List execs = jsonDecode(execResp.body);
-        // Filtrar execuções deste cliente que não estão concluídas/canceladas
-        final activeExec = execs.firstWhere(
-          (e) => e['cliente_id'] == clientId && e['status'] != 'concluido' && e['status'] != 'cancelado',
-          orElse: () => null,
-        );
-
-        if (activeExec != null) {
-          return _mapExecToServiceModel(activeExec);
-        }
-      }
-
-      // 2. Se não houver execução, buscar orçamentos pendentes
+      // 1. Priorizar orçamento pendente (add-ons ENVIADO)
       final orcResp = await http.get(Uri.parse('$baseUrl/orcamentos'));
       if (orcResp.statusCode == 200) {
         final List orcs = jsonDecode(orcResp.body);
@@ -46,21 +31,59 @@ class ClientFlowApiRepository extends ClientFlowRepository {
         }
       }
 
+      // 2. Sem orçamento pendente, buscar execução ativa
+      final execResp = await http.get(Uri.parse('$baseUrl/execucoes'));
+      if (execResp.statusCode == 200) {
+        final List execs = jsonDecode(execResp.body);
+        final activeExec = execs.firstWhere(
+          (e) {
+            final status = (e['status'] as String? ?? '').toLowerCase();
+            return e['cliente_id'] == clientId && status != 'concluido' && status != 'cancelado';
+          },
+          orElse: () => null,
+        );
+
+        if (activeExec != null) {
+          return _mapExecToServiceModel(activeExec);
+        }
+      }
+
+      // 3. Sem execução e sem orçamento pendente, buscar agendamento ativo
+      final agendResp = await http.get(
+        Uri.parse('$baseUrl/agendamentos/cliente/$clientId'),
+      );
+      if (agendResp.statusCode == 200) {
+        final List agends = jsonDecode(agendResp.body);
+        final activeAgend = agends.firstWhere(
+          (a) {
+            final s = (a['status'] as String? ?? '').toUpperCase();
+            return s == 'PENDENTE' || s == 'CONFIRMADO';
+          },
+          orElse: () => null,
+        );
+        if (activeAgend != null) {
+          return _mapAgendamentoToServiceModel(activeAgend as Map<String, dynamic>);
+        }
+      }
+
       return null;
     } catch (e) {
-      print('Erro ao buscar serviço atual: $e');
       rethrow;
     }
   }
-
   @override
   Future<List<HistoryItem>> fetchServiceHistory() async {
     try {
+      final history = <HistoryItem>[];
+
       final execResp = await http.get(Uri.parse('$baseUrl/execucoes'));
       if (execResp.statusCode == 200) {
         final List execs = jsonDecode(execResp.body);
         final filtered = execs
-            .where((e) => e['cliente_id'] == clientId && e['status'] == 'concluido')
+            .where((e) {
+              final s = (e['status'] as String? ?? '').toLowerCase();
+              return e['cliente_id'] == clientId && (s == 'concluido' || s == 'cancelado');
+            })
             .toList();
             
         filtered.sort((a, b) {
@@ -69,19 +92,41 @@ class ClientFlowApiRepository extends ClientFlowRepository {
           return dateB.compareTo(dateA); // Descending
         });
 
-        return filtered
-            .map<HistoryItem>((e) => HistoryItem(
+        history.addAll(filtered.map<HistoryItem>((e) => HistoryItem(
                   id: e['id'],
-                  title: e['servico_resumo'] ?? 'Manutenção',
+                  title: (e['status'] as String? ?? '').toLowerCase() == 'cancelado'
+                      ? (e['servico_resumo'] ?? 'Atendimento cancelado')
+                      : (e['servico_resumo'] ?? 'Manutenção'),
                   date: _formatDate(e['finalizado_em']),
-                  status: 'concluido',
+                  status: (e['status'] as String? ?? '').toLowerCase(),
                   total: 'R\$ ${(e['valor_total'] / 100).toStringAsFixed(2).replaceAll('.', ',')}',
-                ))
-            .toList();
+                )));
       }
-      return [];
+
+      final agendResp = await http.get(Uri.parse('$baseUrl/agendamentos/cliente/$clientId'));
+      if (agendResp.statusCode == 200) {
+        final List agends = jsonDecode(agendResp.body);
+        final canceled = agends
+            .where((a) => (a['status'] as String? ?? '').toUpperCase() == 'CANCELADO')
+            .toList();
+
+        history.addAll(canceled.map<HistoryItem>((a) {
+          final marca = (a['veiculo_marca'] as String? ?? '').trim();
+          final modelo = (a['veiculo_modelo'] as String? ?? '').trim();
+          final desc = [marca, modelo].where((s) => s.isNotEmpty).join(' ');
+          return HistoryItem(
+            id: a['id'] as String? ?? '',
+            title: desc.isEmpty ? 'Agendamento cancelado' : '$desc (cancelado)',
+            date: _formatDate(a['agendado_para'] as String?),
+            status: 'cancelado',
+            total: '—',
+          );
+        }));
+      }
+
+      history.sort((a, b) => b.date.compareTo(a.date));
+      return history;
     } catch (e) {
-      print('Erro ao buscar histórico: $e');
       return [];
     }
   }
@@ -128,6 +173,47 @@ class ClientFlowApiRepository extends ClientFlowRepository {
     if (resp.statusCode != 200) {
       throw Exception('Falha ao rejeitar orçamento: ${resp.body}');
     }
+    notifyListeners();
+  }
+
+  @override
+  Future<void> rejectBudgetChange(String budgetId) async {
+    final resp = await http.patch(
+      Uri.parse('$baseUrl/orcamentos/$budgetId/rejeitar-addons'),
+    );
+    if (resp.statusCode != 200) {
+      throw Exception('Falha ao rejeitar alteração: ${resp.body}');
+    }
+    notifyListeners();
+  }
+
+  @override
+  Future<void> cancelService({required String budgetId, String? agendamentoId}) async {
+    if (agendamentoId != null && agendamentoId.isNotEmpty) {
+      final cancelAgendamentoResp = await http.patch(
+        Uri.parse('$baseUrl/agendamentos/$agendamentoId/status'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'status': 'CANCELADO'}),
+      );
+      if (cancelAgendamentoResp.statusCode != 200) {
+        throw Exception('Falha ao cancelar agendamento: ${cancelAgendamentoResp.body}');
+      }
+    }
+
+    final execResp = await http.get(Uri.parse('$baseUrl/execucoes/orcamento/$budgetId'));
+    if (execResp.statusCode == 200) {
+      final exec = jsonDecode(execResp.body) as Map<String, dynamic>;
+      final execId = exec['id'] as String?;
+      if (execId != null && execId.isNotEmpty) {
+        await http.patch(
+          Uri.parse('$baseUrl/execucoes/$execId/status'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'status': 'CANCELADO'}),
+        );
+      }
+    }
+
+    await refuseBudget(budgetId);
     notifyListeners();
   }
 
@@ -196,6 +282,7 @@ class ClientFlowApiRepository extends ClientFlowRepository {
 
   ServiceModel _mapOrcToServiceModel(Map<String, dynamic> orc) {
     final double total = (orc['valor_total'] ?? 0) / 100;
+    final status = (orc['status'] as String? ?? 'ORCAMENTO').toLowerCase();
     
     final List<BudgetItem> items = [];
     final rawItems = orc['itens_servico'] as List? ?? [];
@@ -221,10 +308,13 @@ class ClientFlowApiRepository extends ClientFlowRepository {
 
     return ServiceModel(
       id: orc['id'],
+      agendamentoId: orc['agendamento_id'] as String?,
       car: orc['veiculo_modelo'] ?? 'Veículo',
       plate: orc['veiculo_placa'] ?? '—',
-      status: 'orcamento',
-      title: 'Orçamento para aprovação',
+      status: status,
+      title: status == 'enviado'
+          ? 'Alteração de orçamento pendente de aprovação'
+          : 'Orçamento para aprovação',
       mechanic: orc['funcionario_nome'] ?? 'Mecânico',
       mechanicInitials: _getInitials(orc['funcionario_nome']),
       startDate: orc['criado_em'] ?? '—',
@@ -233,6 +323,29 @@ class ClientFlowApiRepository extends ClientFlowRepository {
       timeline: _generateTimeline(orc),
       budgetItems: items,
       budgetTotal: total,
+    );
+  }
+
+  ServiceModel _mapAgendamentoToServiceModel(Map<String, dynamic> agend) {
+    final marca = (agend['veiculo_marca'] as String? ?? '').trim();
+    final modelo = (agend['veiculo_modelo'] as String? ?? '').trim();
+    final car = [marca, modelo].where((s) => s.isNotEmpty).join(' ');
+
+    return ServiceModel(
+      id: agend['id'] as String? ?? '',
+      agendamentoId: agend['id'] as String? ?? '',
+      car: car.isNotEmpty ? car : 'Veículo',
+      plate: agend['veiculo_placa'] as String? ?? '—',
+      status: 'agendado',
+      title: 'Agendamento confirmado',
+      mechanic: 'Aguardando atendimento',
+      mechanicInitials: '??',
+      startDate: _formatDate(agend['agendado_para'] as String?),
+      estimatedEnd: 'Aguardando chegada na oficina',
+      progress: 10,
+      timeline: _generateTimelineAgendamento(agend),
+      budgetItems: const [],
+      budgetTotal: 0,
     );
   }
 
@@ -258,6 +371,8 @@ class ClientFlowApiRepository extends ClientFlowRepository {
   int _calculateProgress(String status) {
     final s = status.toLowerCase();
     switch (s) {
+      case 'agendado':
+        return 10;
       case 'orcamento':
       case 'enviado':
         return 20;
@@ -282,13 +397,81 @@ class ClientFlowApiRepository extends ClientFlowRepository {
   List<TimelineStep> _generateTimeline(Map<String, dynamic> data) {
     // Para o protótipo, vamos gerar uma timeline estática baseada no status
     // O ideal seria ter uma tabela de histórico no banco de dados
-    final status = data['status'];
+    final status = (data['status'] as String? ?? '').toLowerCase();
+    final isOrcamento = status == 'orcamento' || status == 'enviado';
+    final isAguardando = status == 'aguardando' || status == 'pendente';
+    final isExecucao = status == 'em_execucao' || status == 'andamento';
+    final isRevisao = status == 'revisao_tecnica' || status == 'revisao';
+    final isAguardandoRetirada = status == 'aguardando_retirada';
+    final isConcluido = status == 'concluido';
+
     return [
-      TimelineStep(id: '1', time: '08:00', date: 'Hoje', title: 'Veículo recebido', desc: 'Check-in realizado', done: true, active: false),
-      TimelineStep(id: '2', time: '09:30', date: 'Hoje', title: 'Diagnóstico concluído', desc: 'Aguardando orçamento', done: true, active: false),
-      TimelineStep(id: '3', time: '10:15', date: 'Hoje', title: 'Orçamento enviado', desc: 'Aguardando aprovação', done: status != 'orcamento', active: status == 'orcamento'),
-      TimelineStep(id: '4', time: '—', date: '—', title: 'Serviço em execução', desc: 'Mecânico trabalhando...', done: status == 'revisao' || status == 'aguardando_retirada' || status == 'concluido', active: status == 'andamento'),
-      TimelineStep(id: '5', time: '—', date: '—', title: 'Pronto para retirada', desc: 'Aguardando cliente', done: status == 'concluido', active: status == 'aguardando_retirada'),
+      TimelineStep(
+        id: '1',
+        time: '08:00',
+        date: 'Hoje',
+        title: 'Veículo recebido',
+        desc: 'Check-in realizado',
+        done: true,
+        active: false,
+      ),
+      TimelineStep(
+        id: '2',
+        time: '09:30',
+        date: 'Hoje',
+        title: 'Diagnóstico concluído',
+        desc: 'Aguardando orçamento',
+        done: isOrcamento || isAguardando || isExecucao || isRevisao || isAguardandoRetirada || isConcluido,
+        active: false,
+      ),
+      TimelineStep(
+        id: '3',
+        time: '10:15',
+        date: 'Hoje',
+        title: 'Orçamento enviado',
+        desc: 'Aguardando aprovação',
+        done: isAguardando || isExecucao || isRevisao || isAguardandoRetirada || isConcluido,
+        active: isOrcamento,
+      ),
+      TimelineStep(
+        id: '4',
+        time: '—',
+        date: '—',
+        title: 'Serviço em execução',
+        desc: 'Mecânico trabalhando...',
+        done: isRevisao || isAguardandoRetirada || isConcluido,
+        active: isExecucao,
+      ),
+      TimelineStep(
+        id: '5',
+        time: '—',
+        date: '—',
+        title: 'Pronto para retirada',
+        desc: 'Aguardando cliente',
+        done: isConcluido,
+        active: isAguardandoRetirada,
+      ),
+    ];
+  }
+
+  List<TimelineStep> _generateTimelineAgendamento(Map<String, dynamic> agend) {
+    final agendadoPara = agend['agendado_para'] as String?;
+    String dataStr = '—';
+    String horaStr = '—';
+    if (agendadoPara != null) {
+      try {
+        final dt = DateTime.parse(agendadoPara).toLocal();
+        dataStr = '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}';
+        horaStr = '${dt.hour.toString().padLeft(2, '0')}:00';
+      } catch (_) {}
+    }
+
+    return [
+      TimelineStep(id: '1', time: horaStr, date: dataStr, title: 'Agendamento confirmado', desc: 'Aguardando atendimento na oficina', done: true, active: false),
+      TimelineStep(id: '2', time: '—', date: '—', title: 'Veículo recebido', desc: 'Check-in na oficina', done: false, active: true),
+      TimelineStep(id: '3', time: '—', date: '—', title: 'Diagnóstico e orçamento', desc: 'Aguardando análise do mecânico', done: false, active: false),
+      TimelineStep(id: '4', time: '—', date: '—', title: 'Serviço em execução', desc: 'Mecânico trabalhando...', done: false, active: false),
+      TimelineStep(id: '5', time: '—', date: '—', title: 'Pronto para retirada', desc: 'Aguardando cliente', done: false, active: false),
     ];
   }
 }

@@ -70,6 +70,7 @@ class SchedulingApiRepository implements SchedulingRepository {
       duracaoMinutos: (map['duracao_total_minutos'] as num?)?.toInt() ?? 0,
       status: _normalizeStatus(map['status'] as String? ?? 'PENDENTE'),
       possuiOrcamento: map['possui_orcamento'] == true,
+      possuiExecucao: map['possui_execucao'] == true,
       notasCliente: map['notas_cliente'] as String?,
     );
   }
@@ -77,15 +78,31 @@ class SchedulingApiRepository implements SchedulingRepository {
   @override
   Future<List<ScheduledServiceItem>> fetchScheduledServices() async {
     final agendamentosResp = await _client.get(Uri.parse('$baseUrl/agendamentos'));
+    final orcamentosResp = await _client.get(Uri.parse('$baseUrl/orcamentos'));
 
     if (agendamentosResp.statusCode != 200) {
       throw Exception('Falha ao buscar agendamentos: ${agendamentosResp.statusCode}');
+    }
+
+    if (orcamentosResp.statusCode != 200) {
+      throw Exception('Falha ao buscar orçamentos: ${orcamentosResp.statusCode}');
+    }
+
+    final List<dynamic> orcamentos = jsonDecode(orcamentosResp.body) as List<dynamic>;
+    final sentBudgetAgendamentoIds = <String>{};
+    for (final raw in orcamentos.cast<Map<String, dynamic>>()) {
+      final status = (raw['status'] as String? ?? '').toUpperCase();
+      final agendamentoId = raw['agendamento_id'] as String?;
+      if (status == 'ENVIADO' && agendamentoId != null && agendamentoId.isNotEmpty) {
+        sentBudgetAgendamentoIds.add(agendamentoId);
+      }
     }
 
     final List<dynamic> agendamentos =
         jsonDecode(agendamentosResp.body) as List<dynamic>;
     final items = agendamentos
         .cast<Map<String, dynamic>>()
+        .where((map) => !sentBudgetAgendamentoIds.contains(map['id'] as String? ?? ''))
         .map(_mapScheduledItem)
         .toList();
 
@@ -94,27 +111,60 @@ class SchedulingApiRepository implements SchedulingRepository {
   }
 
   @override
-  Future<String> sendScheduleToBudgets({
+  Future<String> confirmScheduleToService({
+    required ScheduledServiceItem schedule,
+  }) async {
+    final response = await _client.patch(
+      Uri.parse('$baseUrl/agendamentos/${schedule.id}/confirmar-recebimento'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'funcionario_id': schedule.funcionarioId,
+      }),
+    );
+
+    if (response.statusCode != 201 && response.statusCode != 200) {
+      throw Exception(_readErrorMessage(response, 'Falha ao confirmar recebimento do agendamento'));
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final serviceId = body['id'] as String?;
+    if (serviceId == null || serviceId.isEmpty) {
+      throw Exception('OS criada sem ID retornado pela API');
+    }
+    return serviceId;
+  }
+
+  @override
+  Future<String> openScheduleBudget({
     required ScheduledServiceItem schedule,
   }) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/orcamentos'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
-        'agendamento_id': schedule.id,
         'cliente_id': schedule.clienteId,
+        'funcionario_id': schedule.funcionarioId,
+        'agendamento_id': schedule.id,
       }),
     );
 
-    if (response.statusCode != 201) {
-      throw Exception(_readErrorMessage(response, 'Falha ao enviar agendamento para orçamentos'));
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      final id = body['id'] as String?;
+      if (id == null || id.isEmpty) {
+        throw Exception('Orçamento retornado sem ID');
+      }
+      return id;
     }
 
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    final budgetId = body['id'] as String?;
-    if (budgetId == null || budgetId.isEmpty) {
-      throw Exception('Orçamento criado sem ID retornado pela API');
+    if (response.statusCode == 409) {
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      final existing = body['orcamento_id'] as String?;
+      if (existing != null && existing.isNotEmpty) {
+        return existing;
+      }
     }
-    return budgetId;
+
+    throw Exception(_readErrorMessage(response, 'Falha ao abrir orçamento para o agendamento'));
   }
 }

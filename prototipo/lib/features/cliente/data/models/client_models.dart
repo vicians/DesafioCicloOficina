@@ -58,6 +58,7 @@ class BudgetItem {
 
 class ServiceModel {
   final String id;
+  final String? agendamentoId;
   final String car;
   final String plate;
   final String status;
@@ -73,6 +74,7 @@ class ServiceModel {
 
   const ServiceModel({
     required this.id,
+    this.agendamentoId,
     required this.car,
     required this.plate,
     required this.status,
@@ -93,6 +95,7 @@ class ServiceModel {
 
     return ServiceModel(
       id: json['id']?.toString() ?? '',
+      agendamentoId: json['agendamentoId']?.toString(),
       car: json['car'] ?? '',
       plate: json['plate'] ?? '',
       status: json['status'] ?? '',

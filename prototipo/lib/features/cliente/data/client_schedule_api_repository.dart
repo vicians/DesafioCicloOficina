@@ -2,6 +2,28 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+class ClientCatalogoItem {
+  final String id;
+  final String nome;
+  final double preco;
+
+  const ClientCatalogoItem({
+    required this.id,
+    required this.nome,
+    required this.preco,
+  });
+}
+
+class ClientScheduleSelected {
+  final String servicoId;
+  final int quantidade;
+
+  const ClientScheduleSelected({
+    required this.servicoId,
+    this.quantidade = 1,
+  });
+}
+
 class ClientVehicleOption {
   final String id;
   final String descricao;
@@ -39,12 +61,9 @@ class ClientScheduleApiRepository {
   }) : _client = client ?? http.Client();
 
   Future<ClientScheduleContext> resolveContext() async {
-    if (_resolvedContext != null) {
-      return _resolvedContext!;
-    }
+    if (_resolvedContext != null) return _resolvedContext!;
 
     final usuarioResponse = await _client.get(Uri.parse('$baseUrl/usuarios/$clientId'));
-
     if (usuarioResponse.statusCode != 200) {
       throw Exception('Falha ao carregar dados do seu perfil.');
     }
@@ -52,7 +71,7 @@ class ClientScheduleApiRepository {
     final usuario = jsonDecode(usuarioResponse.body) as Map<String, dynamic>;
     final clienteNome = usuario['nome'] as String?;
 
-    if (clientId == null || clientId.isEmpty) {
+    if (clientId.isEmpty) {
       throw Exception('Cliente inválido para criar agendamento.');
     }
 
@@ -97,13 +116,26 @@ class ClientScheduleApiRepository {
 
     _resolvedContext = ClientScheduleContext(
       clienteId: clientId,
-      clienteNome: (clienteNome == null || clienteNome.isEmpty)
-          ? 'Cliente'
-          : clienteNome,
+      clienteNome: (clienteNome == null || clienteNome.isEmpty) ? 'Cliente' : clienteNome,
       veiculos: veiculoOptions,
     );
 
     return _resolvedContext!;
+  }
+
+  Future<List<ClientCatalogoItem>> fetchCatalogoServicos() async {
+    final response = await _client.get(Uri.parse('$baseUrl/servicos'));
+    if (response.statusCode != 200) return [];
+
+    final List data = jsonDecode(response.body) as List;
+    return data
+        .cast<Map<String, dynamic>>()
+        .map((e) => ClientCatalogoItem(
+              id: e['id'] as String,
+              nome: e['nome'] as String,
+              preco: ((e['preco'] as num?) ?? 0) / 100.0,
+            ))
+        .toList();
   }
 
   Future<Set<int>> fetchUnavailableHours(DateTime date) async {
@@ -130,9 +162,10 @@ class ClientScheduleApiRepository {
     required DateTime date,
     required int hour,
     String? notes,
+    List<ClientScheduleSelected> servicos = const [],
   }) async {
     final context = await resolveContext();
-    final agendadoPara = DateTime(date.year, date.month, date.day, hour);
+    final agendadoParaUtc = DateTime(date.year, date.month, date.day, hour).toUtc();
 
     final response = await _client.post(
       Uri.parse('$baseUrl/agendamentos'),
@@ -140,15 +173,17 @@ class ClientScheduleApiRepository {
       body: jsonEncode({
         'cliente_id': context.clienteId,
         'veiculo_id': veiculoId,
-        'agendado_para': agendadoPara.toIso8601String(),
+        'agendado_para': agendadoParaUtc.toIso8601String(),
         'duracao_total_minutos': 60,
         'notas_cliente': (notes == null || notes.trim().isEmpty) ? null : notes.trim(),
+        if (servicos.isNotEmpty)
+          'servicos': servicos
+              .map((s) => {'servico_id': s.servicoId, 'quantidade': s.quantidade})
+              .toList(),
       }),
     );
 
-    if (response.statusCode == 201) {
-      return;
-    }
+    if (response.statusCode == 201) return;
 
     try {
       final body = jsonDecode(response.body) as Map<String, dynamic>;

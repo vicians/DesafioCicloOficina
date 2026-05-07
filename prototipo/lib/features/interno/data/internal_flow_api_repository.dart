@@ -11,6 +11,17 @@ class InternalFlowApiRepository extends InternalFlowRepository {
   final String baseUrl;
   final http.Client _client;
 
+  String _readErrorMessage(http.Response response, String fallback) {
+    try {
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      final error = body['error'] as String?;
+      if (error != null && error.trim().isNotEmpty) {
+        return error;
+      }
+    } catch (_) {}
+    return fallback;
+  }
+
   String _mapServiceStatusToApi(String status) {
     switch (status.toLowerCase()) {
       case 'aguardando':
@@ -137,18 +148,6 @@ class InternalFlowApiRepository extends InternalFlowRepository {
       }
     }
 
-    // Atualiza dados básicos (observações)
-    final updateBaseRes = await _client.patch(
-      Uri.parse('$baseUrl/orcamentos/${budget.id}'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'observacoes': budget.observation,
-      }),
-    );
-    if (updateBaseRes.statusCode != 200) {
-      throw Exception('Falha ao atualizar observações do orçamento');
-    }
-
     for (final item in budget.services) {
       final response = await _client.post(
         Uri.parse('$baseUrl/orcamentos/${budget.id}/servicos'),
@@ -159,7 +158,9 @@ class InternalFlowApiRepository extends InternalFlowRepository {
         }),
       );
       if (response.statusCode != 200 && response.statusCode != 201) {
-        throw Exception('Falha ao adicionar serviço no orçamento');
+        throw Exception(
+          _readErrorMessage(response, 'Falha ao adicionar serviço no orçamento'),
+        );
       }
     }
 
@@ -173,8 +174,23 @@ class InternalFlowApiRepository extends InternalFlowRepository {
         }),
       );
       if (response.statusCode != 200 && response.statusCode != 201) {
-        throw Exception('Falha ao adicionar produto no orçamento');
+        throw Exception(
+          _readErrorMessage(response, 'Falha ao adicionar produto no orçamento'),
+        );
       }
+    }
+
+    // Atualiza observações por último para não interromper a persistência de itens/valor.
+    final updateBaseRes = await _client.patch(
+      Uri.parse('$baseUrl/orcamentos/${budget.id}'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'observacoes': budget.observation,
+      }),
+    );
+    if (updateBaseRes.statusCode != 200) {
+      // Não bloqueia o fluxo principal de persistência de itens.
+      // A observação pode ser ajustada em tentativa posterior.
     }
 
     final refreshedResponse = await _client.get(
@@ -187,6 +203,22 @@ class InternalFlowApiRepository extends InternalFlowRepository {
     notifyListeners();
     return InternalBudgetItem.fromJson(
       jsonDecode(refreshedResponse.body) as Map<String, dynamic>,
+    );
+  }
+
+  @override
+  Future<InternalBudgetItem> sendAddons(String budgetId) async {
+    final response = await _client.patch(
+      Uri.parse('$baseUrl/orcamentos/$budgetId/enviar-addons'),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception(_readErrorMessage(response, 'Falha ao enviar alterações para aprovação do cliente'));
+    }
+
+    notifyListeners();
+    return InternalBudgetItem.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
     );
   }
 

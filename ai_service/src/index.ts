@@ -156,7 +156,6 @@ app.post('/ai/create-os', async (req: Request, res: Response) => {
       notas_cliente: `[WhatsApp] ${serviceType ?? ''} — ${description}`.trim(),
     });
 
-    await axios.post(`${BACKEND_URL}/orcamentos`, { agendamento_id: agendRes.data.id, cliente_id: clienteId, funcionario_id: mecanicoId });
     const mlRes = await axios.post(`${BACKEND_URL}/auth/magic-link`, { telefone: number });
 
     console.log(`[OS] ✅ Sucesso! Link: ${mlRes.data.url}`);

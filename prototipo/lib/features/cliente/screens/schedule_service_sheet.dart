@@ -41,6 +41,8 @@ class _ClientScheduleSheetState extends State<_ClientScheduleSheet> {
 
   ClientScheduleContext? _context;
   Set<int> _unavailableHours = <int>{};
+  List<ClientCatalogoItem> _catalogoServicos = [];
+  final Set<String> _selectedServicos = {};
 
   @override
   void initState() {
@@ -62,11 +64,13 @@ class _ClientScheduleSheetState extends State<_ClientScheduleSheet> {
 
     try {
       final context = await widget.repository.resolveContext();
+      final catalogo = await widget.repository.fetchCatalogoServicos();
       if (!mounted) return;
 
       setState(() {
         _context = context;
         _selectedVehicleId = context.veiculos.first.id;
+        _catalogoServicos = catalogo;
         _loadingContext = false;
       });
 
@@ -130,6 +134,96 @@ class _ClientScheduleSheetState extends State<_ClientScheduleSheet> {
     return false;
   }
 
+  Future<void> _openServiceSelector() async {
+    final temp = Set<String>.from(_selectedServicos);
+
+    final result = await showModalBottomSheet<Set<String>>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (modalContext) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Selecionar serviços',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 320,
+                      child: ListView.builder(
+                        itemCount: _catalogoServicos.length,
+                        itemBuilder: (_, i) {
+                          final item = _catalogoServicos[i];
+                          final selected = temp.contains(item.id);
+                          return CheckboxListTile(
+                            value: selected,
+                            activeColor: orange,
+                            controlAffinity: ListTileControlAffinity.leading,
+                            title: Text(
+                              item.nome,
+                              style: GoogleFonts.dmSans(
+                                fontSize: 13,
+                                color: textPrimary,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            subtitle: Text(
+                              'R\$ ${item.preco.toStringAsFixed(2).replaceAll('.', ',')}',
+                              style: GoogleFonts.dmSans(
+                                fontSize: 11,
+                                color: textSecondary,
+                              ),
+                            ),
+                            onChanged: (val) {
+                              setModalState(() {
+                                if (val == true) {
+                                  temp.add(item.id);
+                                } else {
+                                  temp.remove(item.id);
+                                }
+                              });
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    AppButton(
+                      label: 'Aplicar seleção',
+                      fullWidth: true,
+                      onPressed: () => Navigator.of(modalContext).pop(temp),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (!mounted || result == null) return;
+    setState(() {
+      _selectedServicos
+        ..clear()
+        ..addAll(result);
+    });
+  }
+
   Future<void> _confirmSchedule() async {
     final selectedHour = _selectedHour;
     final selectedVehicleId = _selectedVehicleId;
@@ -147,6 +241,9 @@ class _ClientScheduleSheetState extends State<_ClientScheduleSheet> {
         date: _selectedDate,
         hour: selectedHour,
         notes: _notesController.text,
+        servicos: _selectedServicos
+            .map((id) => ClientScheduleSelected(servicoId: id))
+            .toList(),
       );
 
       if (!mounted) return;
@@ -500,6 +597,79 @@ class _ClientScheduleSheetState extends State<_ClientScheduleSheet> {
               ),
             ],
             const SizedBox(height: 16),
+            if (_catalogoServicos.isNotEmpty) ...[
+              Text(
+                'Serviços desejados',
+                style: GoogleFonts.dmSans(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: textPrimary,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Selecione os serviços que precisa (opcional)',
+                style: GoogleFonts.dmSans(fontSize: 12, color: textSecondary),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                decoration: BoxDecoration(
+                  color: bgPage,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: borderColor),
+                ),
+                child: InkWell(
+                  onTap: _openServiceSelector,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.playlist_add_check_rounded, color: navyMid, size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _selectedServicos.isEmpty
+                                ? 'Toque para escolher serviços'
+                                : '${_selectedServicos.length} serviço(s) selecionado(s)',
+                            style: GoogleFonts.dmSans(
+                              fontSize: 13,
+                              color: _selectedServicos.isEmpty ? textSecondary : textPrimary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const Icon(Icons.keyboard_arrow_down_rounded, color: textSecondary),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              if (_selectedServicos.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: _catalogoServicos
+                      .where((item) => _selectedServicos.contains(item.id))
+                      .map(
+                        (item) => Chip(
+                          backgroundColor: orangeLight,
+                          label: Text(
+                            item.nome,
+                            style: GoogleFonts.dmSans(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: textPrimary,
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ],
+              const SizedBox(height: 14),
+            ],
             AppButton(
               label: 'Confirmar agendamento',
               fullWidth: true,
