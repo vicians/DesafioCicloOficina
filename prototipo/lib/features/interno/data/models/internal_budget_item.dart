@@ -21,6 +21,15 @@ class BudgetLineItem {
       qty: qty ?? this.qty,
     );
   }
+
+  factory BudgetLineItem.fromJson(Map<String, dynamic> json) {
+    return BudgetLineItem(
+      id: (json['item_id'] as String?) ?? json['id'] as String,
+      name: json['nome'] as String,
+      unitPrice: (json['preco_unitario'] as num).toDouble() / 100.0, // Conversão de centavos
+      qty: json['quantidade'] as int,
+    );
+  }
 }
 
 class InternalBudgetItem {
@@ -52,7 +61,9 @@ class InternalBudgetItem {
       services.fold(0.0, (s, e) => s + e.total) +
       products.fold(0.0, (s, e) => s + e.total);
 
-  bool get isCanceled => status == 'cancelado';
+  bool get isCanceled => status == 'cancelado' || status == 'rejeitado';
+
+  bool get isPending => status == 'rascunho' || status == 'enviado';
 
   InternalBudgetItem copyWith({
     String? id,
@@ -79,5 +90,50 @@ class InternalBudgetItem {
       status: status ?? this.status,
       canceledAt: clearCanceledAt ? null : (canceledAt ?? this.canceledAt),
     );
+  }
+
+  factory InternalBudgetItem.fromJson(Map<String, dynamic> json) {
+    // A data no backend vem em ISO (criado_em). O frontend espera dd/MM/yyyy.
+    String rawDate = json['criado_em'] as String? ?? '';
+    String formattedDate = '';
+    if (rawDate.length >= 10) {
+      formattedDate = '${rawDate.substring(8, 10)}/${rawDate.substring(5, 7)}/${rawDate.substring(0, 4)}';
+    }
+
+    final servicesJson = _readLineItems(json, ['servicos', 'itens_servico']);
+    final productsJson = _readLineItems(json, ['produtos', 'itens_produto']);
+
+    return InternalBudgetItem(
+      id: json['id'] as String,
+      client: json['cliente_nome'] as String? ?? 'Cliente não informado',
+      car: json['veiculo_modelo'] != null && json['veiculo_marca'] != null
+          ? '${json['veiculo_marca']} ${json['veiculo_modelo']}'
+          : 'Veículo não informado',
+      plate: json['veiculo_placa'] as String? ?? '---',
+      status: (json['status'] as String? ?? 'RASCUNHO').toLowerCase(),
+      createdAt: formattedDate,
+      observation: json['observacoes'] as String? ?? '',
+      services: servicesJson
+              ?.map((e) => BudgetLineItem.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+      products: productsJson
+              ?.map((e) => BudgetLineItem.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          [],
+    );
+  }
+
+  static List<dynamic>? _readLineItems(
+    Map<String, dynamic> json,
+    List<String> keys,
+  ) {
+    for (final key in keys) {
+      final value = json[key];
+      if (value is List<dynamic>) {
+        return value;
+      }
+    }
+    return null;
   }
 }

@@ -3,6 +3,8 @@ import { ExecucaoServicoController } from '../controllers/execucaoServicoControl
 
 const execucaoServicoRouter = Router();
 
+execucaoServicoRouter.get('/', ExecucaoServicoController.index);
+
 /**
  * @openapi
  * /execucoes/{id}:
@@ -43,6 +45,38 @@ execucaoServicoRouter.get('/:id', ExecucaoServicoController.show);
  *         description: Sucesso
  */
 execucaoServicoRouter.get('/orcamento/:orcamentoId', ExecucaoServicoController.showByOrcamento);
+
+/**
+ * @openapi
+ * /execucoes/{id}/status:
+ *   patch:
+ *     tags:
+ *       - Execuções de Serviço
+ *     summary: Atualiza status da execução
+ *     description: Atualiza o status operacional da OS (EM_EXECUCAO, REVISAO_TECNICA, AGUARDANDO_RETIRADA, CONCLUIDO, CANCELADO)
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - status
+ *             properties:
+ *               status:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Status atualizado com sucesso
+ */
+execucaoServicoRouter.patch('/:id/status', ExecucaoServicoController.updateStatus);
 
 /**
  * @openapi

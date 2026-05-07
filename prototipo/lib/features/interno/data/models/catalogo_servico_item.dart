@@ -13,7 +13,7 @@ class CatalogoServicoItem {
     return CatalogoServicoItem(
       id: json['id'] as String,
       nome: json['nome'] as String,
-      preco: (json['preco'] as num).toDouble(),
+      preco: (json['preco'] as num).toDouble() / 100.0,
     );
   }
 }

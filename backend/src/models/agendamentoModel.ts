@@ -1,10 +1,25 @@
 import { getDb } from '../config/database';
 import type { AgendamentoDTO, CreateAgendamentoDTO } from '../../../shared/dtos/agendamentoDto';
+import type { ExecucaoServicoDTO } from '../../../shared/dtos/execucaoServicoDto';
 
 export class AgendamentoModel {
-  static async findAll(): Promise<AgendamentoDTO[]> {
+  static async findAll(): Promise<any[]> {
     const db = getDb();
-    const result = await db.query('SELECT * FROM agendamentos ORDER BY agendado_para ASC');
+    const query = `
+      SELECT 
+        a.*,
+        c.nome AS cliente_nome,
+        EXISTS (SELECT 1 FROM orcamentos o WHERE o.agendamento_id = a.id) AS possui_orcamento,
+        (SELECT nome FROM oficinas ORDER BY criado_em ASC LIMIT 1) AS oficina_nome,
+        v.marca AS veiculo_marca,
+        v.modelo AS veiculo_modelo,
+        v.placa AS veiculo_placa
+      FROM agendamentos a
+      JOIN usuarios c ON a.cliente_id = c.id
+      JOIN veiculos v ON a.veiculo_id = v.id
+      ORDER BY a.agendado_para ASC
+    `;
+    const result = await db.query(query);
     return result.rows;
   }
 
@@ -180,7 +195,7 @@ export class AgendamentoModel {
   static async iniciarExecucao(
     orcamento_id: string,
     funcionario_id: string
-  ): Promise<object> {
+  ): Promise<ExecucaoServicoDTO> {
     const db = getDb();
 
     // Garante idempotência: upsert via ON CONFLICT na constraint UNIQUE de orcamento_id

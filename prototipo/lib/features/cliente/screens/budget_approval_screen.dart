@@ -4,11 +4,13 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/status_badge.dart';
-import '../../../data/mock_data.dart';
+import '../data/client_flow_repository.dart';
+import '../data/models/client_models.dart';
 import 'client_screen_header.dart';
 
 class BudgetApprovalScreen extends StatefulWidget {
-  const BudgetApprovalScreen({super.key});
+  final ClientFlowRepository repository;
+  const BudgetApprovalScreen({super.key, required this.repository});
 
   @override
   State<BudgetApprovalScreen> createState() => _BudgetApprovalScreenState();
@@ -17,8 +19,10 @@ class BudgetApprovalScreen extends StatefulWidget {
 class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
     with SingleTickerProviderStateMixin {
   bool _loading = false;
+  bool _error = false;
   bool _approved = false;
   bool _refused = false;
+  ServiceModel? _service;
 
   late AnimationController _approvedCtrl;
   late Animation<double> _approvedScale;
@@ -33,6 +37,28 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
     _approvedScale = Tween<double>(begin: 0.75, end: 1.0).animate(
       CurvedAnimation(parent: _approvedCtrl, curve: Curves.elasticOut),
     );
+    _loadService();
+  }
+
+  Future<void> _loadService() async {
+    setState(() {
+      _loading = true;
+      _error = false;
+    });
+    try {
+      final svc = await widget.repository.fetchCurrentService();
+      if (!mounted) return;
+      setState(() {
+        _service = svc;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = true;
+      });
+    }
   }
 
   @override
@@ -42,38 +68,124 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
   }
 
   void _handleApprove() async {
+    if (_service == null) return;
     setState(() => _loading = true);
-    await Future.delayed(const Duration(milliseconds: 1400));
-    if (!mounted) return;
-    setState(() {
-      _loading = false;
-      _approved = true;
-    });
-    _approvedCtrl.forward();
+    try {
+      await widget.repository.approveBudget(_service!.id);
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _approved = true;
+      });
+      _approvedCtrl.forward();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao aprovar: $e')),
+      );
+    }
   }
 
-  void _handleRefuse() {
-    HapticFeedback.heavyImpact();
-    setState(() => _refused = true);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Recusa registrada. Entre em contato com a oficina.',
-          style: GoogleFonts.dmSans(fontSize: 13, color: Colors.white),
+  void _handleRefuse() async {
+    if (_service == null) return;
+    setState(() => _loading = true);
+    try {
+      await widget.repository.refuseBudget(_service!.id);
+      if (!mounted) return;
+      HapticFeedback.heavyImpact();
+      setState(() {
+        _loading = false;
+        _refused = true;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Recusa registrada. Entre em contato com a oficina.',
+            style: GoogleFonts.dmSans(fontSize: 13, color: Colors.white),
+          ),
+          backgroundColor: red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          duration: const Duration(seconds: 3),
         ),
-        backgroundColor: red,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        duration: const Duration(seconds: 3),
-      ),
-    );
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao rejeitar: $e'), backgroundColor: red),
+      );
+    }
   }
 
   String _fmt(double v) => 'R\$ ${v.toStringAsFixed(2).replaceAll('.', ',')}';
 
   @override
   Widget build(BuildContext context) {
-    final svc = currentService;
+    final svc = _service;
+    
+    if (_loading) {
+      return Scaffold(
+        backgroundColor: bgPage,
+        body: const Center(child: CircularProgressIndicator(color: orange)),
+      );
+    }
+
+    if (_error) {
+      return Scaffold(
+        backgroundColor: bgPage,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline_rounded, color: red, size: 48),
+              const SizedBox(height: 16),
+              Text(
+                'Erro ao carregar orçamento',
+                style: GoogleFonts.dmSans(color: textPrimary, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              AppButton(
+                label: 'Tentar novamente',
+                onPressed: _loadService,
+                variant: AppButtonVariant.outline,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (svc == null || (svc.status != 'orcamento' && svc.status != 'enviado' && !_approved)) {
+      return Scaffold(
+        backgroundColor: bgPage,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.receipt_long_rounded, color: textMuted.withValues(alpha: 0.5), size: 64),
+              const SizedBox(height: 16),
+              Text(
+                'Nenhum orçamento pendente',
+                style: GoogleFonts.dmSans(
+                  color: textPrimary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Você será notificado quando um novo\norçamento estiver disponível.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.dmSans(color: textMuted, fontSize: 13),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final parts = svc.budgetItems.where((i) => i.type == 'part').toList();
     final labor = svc.budgetItems.where((i) => i.type == 'labor').toList();
     final partsTotal = parts.fold(0.0, (s, i) => s + i.total);
@@ -233,7 +345,7 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
           label: 'Rejeitar',
           fullWidth: true,
           variant: AppButtonVariant.outline,
-          onPressed: _handleRefuse,
+          onPressed: _loading ? null : _handleRefuse,
         ),
       ],
     );

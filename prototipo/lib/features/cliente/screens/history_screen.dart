@@ -4,43 +4,82 @@ import '../../../core/theme/colors.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/app_progress_bar.dart';
 import '../../../core/widgets/status_badge.dart';
-import '../../../data/mock_data.dart';
+import '../data/client_flow_repository.dart';
+import '../data/models/client_models.dart';
 import 'client_screen_header.dart';
 
 class HistoryScreen extends StatelessWidget {
-  const HistoryScreen({super.key});
+  final ClientFlowRepository repository;
+  const HistoryScreen({super.key, required this.repository});
 
   @override
   Widget build(BuildContext context) {
-    final svc = currentService;
-    return Column(
-      children: [
-        ClientScreenHeader(
-          title: 'Histórico',
-          subtitle: '${serviceHistory.length + 1} serviços registrados',
-          trailing: StatusBadge(status: svc.status),
-          contentPadding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
-        ),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              _SectionLabel(label: 'EM ANDAMENTO'),
-              const SizedBox(height: 8),
-              _ActiveHistoryCard(svc: svc),
-              const SizedBox(height: 20),
-              _SectionLabel(label: 'CONCLUÍDOS'),
-              const SizedBox(height: 8),
-              ...serviceHistory.map(
-                (h) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _CompletedCard(item: h),
-                ),
+    return FutureBuilder(
+      future: Future.wait([
+        repository.fetchCurrentService(),
+        repository.fetchServiceHistory(),
+      ]),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator(color: orange));
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Text(
+              'Erro ao carregar os dados. Tente novamente.',
+              style: GoogleFonts.dmSans(color: Colors.red),
+            ),
+          );
+        }
+
+        final results = snapshot.data as List?;
+        final svc = results?[0] as ServiceModel?;
+        final history = results?[1] as List<HistoryItem>? ?? [];
+
+        return Column(
+          children: [
+            ClientScreenHeader(
+              title: 'Histórico',
+              subtitle: '${history.length + (svc != null ? 1 : 0)} serviços registrados',
+              trailing: svc != null ? StatusBadge(status: svc.status) : null,
+              contentPadding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  if (svc != null) ...[
+                    const _SectionLabel(label: 'EM ANDAMENTO'),
+                    const SizedBox(height: 8),
+                    _ActiveHistoryCard(svc: svc),
+                    const SizedBox(height: 20),
+                  ],
+                  const _SectionLabel(label: 'CONCLUÍDOS'),
+                  const SizedBox(height: 8),
+                  if (history.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      child: Center(
+                        child: Text(
+                          'Nenhum histórico disponível.',
+                          style: GoogleFonts.dmSans(color: textMuted),
+                        ),
+                      ),
+                    )
+                  else
+                    ...history.map(
+                      (h) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _CompletedCard(item: h),
+                      ),
+                    ),
+                ],
               ),
-            ],
-          ),
-        ),
-      ],
+            ),
+          ],
+        );
+      },
     );
   }
 }

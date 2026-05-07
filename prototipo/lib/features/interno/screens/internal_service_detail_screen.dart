@@ -4,10 +4,30 @@ import '../../../core/theme/colors.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_progress_bar.dart';
 import '../../../core/widgets/status_badge.dart';
-import '../../../data/mock_data.dart';
+import '../data/models/internal_service.dart';
 import '../data/internal_flow_repository.dart';
 import '../data/models/internal_budget_item.dart';
-import 'internal_messages_screen.dart';
+import 'service_client_chat_screen.dart';
+
+class TimelineStep {
+  final int id;
+  final String time;
+  final String date;
+  final String title;
+  final String desc;
+  final bool done;
+  final bool active;
+
+  const TimelineStep({
+    required this.id,
+    required this.time,
+    required this.date,
+    required this.title,
+    required this.desc,
+    required this.done,
+    required this.active,
+  });
+}
 
 class InternalServiceDetailScreen extends StatefulWidget {
   final InternalService service;
@@ -32,11 +52,12 @@ class _InternalServiceDetailScreenState
   late InternalService _service;
   late String _currentStatus;
   late String _pendingStatus;
+  bool _isUpdating = false;
 
   final _statuses = [
     ('aguardando', 'Aguardando'),
-    ('andamento', 'Em andamento'),
-    ('revisao', 'Em revisão'),
+    ('em_execucao', 'Em execução'),
+    ('revisao_tecnica', 'Em revisão'),
     ('aguardando_retirada', 'Aguardando retirada'),
     ('concluido', 'Concluído'),
     ('cancelado', 'Cancelado'),
@@ -51,6 +72,11 @@ class _InternalServiceDetailScreenState
     _currentStatus = _service.status;
     _pendingStatus = _currentStatus;
     widget.repository.addListener(_reloadService);
+    
+    // Fetch full details immediately to ensure parts/labor are loaded
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _reloadService();
+    });
   }
 
   @override
@@ -71,34 +97,108 @@ class _InternalServiceDetailScreenState
   }
 
   Future<void> _confirmStatusChange() async {
-    final updated = await widget.repository.updateServicoStatus(
-      _service.id,
-      _pendingStatus,
-    );
-    if (!mounted) return;
-    setState(() {
-      _service = updated;
-      _currentStatus = updated.status;
-      _pendingStatus = updated.status;
-      _showStatusSheet = false;
-    });
+    if (_service.sourceType != 'execucao') {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Atualização manual de status está disponível apenas para OS em execução.'),
+        ),
+      );
+      return;
+    }
+
+    if (_pendingStatus == 'cancelado' && _currentStatus != 'cancelado') {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        barrierDismissible: true,
+        builder: (context) {
+          return AlertDialog(
+            title: Text(
+              'Confirmar cancelamento',
+              style: GoogleFonts.dmSans(
+                fontWeight: FontWeight.w700,
+                color: textPrimary,
+              ),
+            ),
+            content: Text(
+              'Deseja cancelar esse serviço?',
+              style: GoogleFonts.dmSans(color: textSecondary),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text(
+                  'Voltar',
+                  style: GoogleFonts.dmSans(
+                    color: textSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: Text(
+                  'Sim, cancelar',
+                  style: GoogleFonts.dmSans(
+                    color: red,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (confirmed != true) {
+        return;
+      }
+    }
+
+    if (_pendingStatus == _currentStatus) {
+      setState(() => _showStatusSheet = false);
+      return;
+    }
+
+    setState(() => _isUpdating = true);
+    try {
+      final updated = await widget.repository.updateServicoStatus(
+        _service.id,
+        _pendingStatus,
+      );
+      if (!mounted) return;
+      setState(() {
+        _service = updated;
+        _currentStatus = updated.status;
+        _pendingStatus = updated.status;
+        _showStatusSheet = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Falha ao atualizar status: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _isUpdating = false);
+    }
   }
 
   void _openClientConversation() {
+    final clientId = _service.clientId;
+    if (clientId == null || clientId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cliente sem identificador para carregar conversa.')),
+      );
+      return;
+    }
+
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => Scaffold(
-          backgroundColor: bgPage,
-          body: SafeArea(
-            bottom: false,
-            child: InternalMessagesScreen(
-              onUnreadCountChanged: (_) {},
-              initialClientName: _service.client,
-              initialPlate: _service.plate,
-              autoOpenMatchingConversation: true,
-            ),
-          ),
+        builder: (_) => ServiceClientChatScreen(
+          repository: widget.repository,
+          clientId: clientId,
+          clientName: _service.client,
         ),
       ),
     );
@@ -108,8 +208,8 @@ class _InternalServiceDetailScreenState
     final openedDate = _shortDate(svc.openedAt);
     final finishedDate = svc.finishedAt != null ? _shortDate(svc.finishedAt!) : '—';
     final isWaiting = svc.status == 'aguardando';
-    final isInProgress = svc.status == 'andamento';
-    final isReview = svc.status == 'revisao';
+    final isInProgress = svc.status == 'em_execucao';
+    final isReview = svc.status == 'revisao_tecnica';
     final isAwaitingPickup = svc.status == 'aguardando_retirada';
     final isDone = svc.status == 'concluido';
     final isCanceled = svc.status == 'cancelado';
@@ -117,7 +217,7 @@ class _InternalServiceDetailScreenState
     return [
       TimelineStep(
         id: 1,
-        time: svc.time == '—' ? '08:00' : svc.time,
+        time: svc.time,
         date: openedDate,
         title: 'OS aberta',
         desc: 'Atendimento registrado para ${svc.client}',
@@ -126,17 +226,17 @@ class _InternalServiceDetailScreenState
       ),
       TimelineStep(
         id: 2,
-        time: isWaiting ? '—' : '09:30',
-        date: isWaiting ? '—' : openedDate,
-        title: 'Triagem inicial',
-        desc: 'Veículo identificado e serviço confirmado',
-        done: !isWaiting,
-        active: false,
+        time: isWaiting ? svc.time : '—',
+        date: openedDate,
+        title: 'Aguardando início',
+        desc: 'OS aguardando início do atendimento',
+        done: !isWaiting && !isCanceled,
+        active: isWaiting,
       ),
       TimelineStep(
         id: 3,
-        time: isInProgress || isReview || isAwaitingPickup || isDone ? '14:00' : '—',
-        date: isInProgress || isReview || isAwaitingPickup || isDone ? openedDate : '—',
+        time: (isInProgress || isReview || isAwaitingPickup || isDone) ? svc.time : '—',
+        date: openedDate,
         title: 'Serviço em execução',
         desc: 'Equipe técnica executando o serviço principal',
         done: isReview || isAwaitingPickup || isDone,
@@ -144,25 +244,32 @@ class _InternalServiceDetailScreenState
       ),
       TimelineStep(
         id: 4,
-        time: isReview || isAwaitingPickup || isDone ? '16:30' : '—',
-        date: isReview || isAwaitingPickup || isDone ? openedDate : '—',
-        title: 'Revisão final',
-        desc: 'Conferência de qualidade e verificação final',
+        time: (isReview || isAwaitingPickup || isDone) ? svc.time : '—',
+        date: openedDate,
+        title: 'Revisão técnica',
+        desc: 'Conferência e validação final do serviço',
         done: isAwaitingPickup || isDone,
         active: isReview,
       ),
       TimelineStep(
         id: 5,
-        time: isAwaitingPickup || isDone || isCanceled ? '17:10' : '—',
-        date: isAwaitingPickup || isDone || isCanceled
-            ? (isAwaitingPickup ? openedDate : finishedDate)
-            : '—',
-        title: isCanceled ? 'OS cancelada' : 'Pronto para retirada',
-        desc: isCanceled
-            ? 'Atendimento encerrado sem execução completa'
-            : 'Cliente notificado para retirada do veículo',
-        done: isDone || isCanceled,
+        time: (isAwaitingPickup || isDone) ? svc.time : '—',
+        date: isDone ? finishedDate : openedDate,
+        title: 'Aguardando retirada',
+        desc: 'Cliente avisado para retirada do veículo',
+        done: isDone,
         active: isAwaitingPickup,
+      ),
+      TimelineStep(
+        id: 6,
+        time: (isDone || isCanceled) ? svc.time : '—',
+        date: (isDone || isCanceled) ? finishedDate : '—',
+        title: isCanceled ? 'OS cancelada' : 'OS concluída',
+        desc: isCanceled
+            ? 'Atendimento encerrado como cancelado'
+            : 'Atendimento concluído e finalizado no sistema',
+        done: isDone || isCanceled,
+        active: false,
       ),
     ];
   }
@@ -200,6 +307,7 @@ class _InternalServiceDetailScreenState
                 service: _service,
                 tabCtrl: _tabCtrl,
                 currentStatus: _currentStatus,
+                canUpdateStatus: _service.sourceType == 'execucao',
                 onOpenChat: _openClientConversation,
                 onStatusTap: () => setState(() {
                   _pendingStatus = _currentStatus;
@@ -234,6 +342,7 @@ class _InternalServiceDetailScreenState
                 }),
                 onConfirm: _confirmStatusChange,
                 onCancel: () => setState(() => _showStatusSheet = false),
+                isLoading: _isUpdating,
               ),
             ),
           ],
@@ -247,6 +356,7 @@ class _DetailHeader extends StatelessWidget {
   final InternalService service;
   final TabController tabCtrl;
   final String currentStatus;
+  final bool canUpdateStatus;
   final VoidCallback onOpenChat;
   final VoidCallback onStatusTap;
 
@@ -254,6 +364,7 @@ class _DetailHeader extends StatelessWidget {
     required this.service,
     required this.tabCtrl,
     required this.currentStatus,
+    required this.canUpdateStatus,
     required this.onOpenChat,
     required this.onStatusTap,
   });
@@ -319,25 +430,37 @@ class _DetailHeader extends StatelessWidget {
                     children: [
                       StatusBadge(status: currentStatus),
                       const SizedBox(height: 6),
-                      GestureDetector(
-                        onTap: onStatusTap,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 7),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            'Atualizar status',
-                            style: GoogleFonts.dmSans(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
+                      if (canUpdateStatus)
+                        GestureDetector(
+                          onTap: onStatusTap,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 7),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              'Atualizar status',
+                              style: GoogleFonts.dmSans(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
+                        )
+                      else
+                        Text(
+                          service.sourceType == 'agendamento'
+                              ? 'Status do agendamento'
+                              : 'Aguardando aprovação',
+                          style: GoogleFonts.dmSans(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white.withValues(alpha: 0.72),
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ],
@@ -512,7 +635,7 @@ class _DataTab extends StatelessWidget {
       ('Ordem de serviço', svc.id),
       ('Veículo', svc.car),
       ('Placa', svc.plate),
-      ('Mecânico', svc.mechanic),
+      ('Oficina', svc.mechanic),
       ('Horário', svc.time),
     ];
 
@@ -792,6 +915,7 @@ class _StatusSheet extends StatelessWidget {
   final ValueChanged<String> onSelect;
   final VoidCallback onConfirm;
   final VoidCallback onCancel;
+  final bool isLoading;
 
   const _StatusSheet({
     required this.statuses,
@@ -799,10 +923,13 @@ class _StatusSheet extends StatelessWidget {
     required this.onSelect,
     required this.onConfirm,
     required this.onCancel,
+    this.isLoading = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final isCancelSelected = current == 'cancelado';
+
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 36),
       decoration: const BoxDecoration(
@@ -835,16 +962,23 @@ class _StatusSheet extends StatelessWidget {
           const SizedBox(height: 12),
           ...statuses.map((s) {
             final isActive = s.$1 == current;
+            final isCancelOption = s.$1 == 'cancelado';
             return GestureDetector(
               onTap: () => onSelect(s.$1),
               child: Container(
                 margin: const EdgeInsets.only(bottom: 8),
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: isActive ? navyDark.withValues(alpha: 0.06) : Colors.transparent,
+                  color: isActive
+                      ? (isCancelOption
+                          ? redBg
+                          : navyDark.withValues(alpha: 0.06))
+                      : Colors.transparent,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: isActive ? navyDark : borderColor,
+                    color: isActive
+                        ? (isCancelOption ? red : navyDark)
+                        : (isCancelOption ? red.withValues(alpha: 0.35) : borderColor),
                   ),
                 ),
                 child: Row(
@@ -857,13 +991,18 @@ class _StatusSheet extends StatelessWidget {
                           fontWeight: isActive
                               ? FontWeight.w600
                               : FontWeight.w400,
-                          color: isActive ? navyDark : textPrimary,
+                          color: isCancelOption
+                              ? red
+                              : (isActive ? navyDark : textPrimary),
                         ),
                       ),
                     ),
                     if (isActive)
-                      const Icon(Icons.check_rounded,
-                          color: navyDark, size: 18),
+                      Icon(
+                        Icons.check_rounded,
+                        color: isCancelOption ? red : navyDark,
+                        size: 18,
+                      ),
                   ],
                 ),
               ),
@@ -871,9 +1010,17 @@ class _StatusSheet extends StatelessWidget {
           }),
           const SizedBox(height: 8),
           AppButton(
-            label: 'Confirmar mudança de status',
+            label: isLoading
+              ? 'Atualizando...'
+              : (isCancelSelected
+                ? 'Cancelar serviço'
+                : 'Confirmar mudança de status'),
             fullWidth: true,
-            onPressed: onConfirm,
+            loading: isLoading,
+            variant: isCancelSelected
+              ? AppButtonVariant.danger
+              : AppButtonVariant.primary,
+            onPressed: isLoading ? null : onConfirm,
           ),
           const SizedBox(height: 8),
           AppButton(

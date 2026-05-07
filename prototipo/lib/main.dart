@@ -100,7 +100,7 @@ class AppSelector extends StatelessWidget {
                 subtitle: 'Acompanhe seu serviço',
                 onTap: () => Navigator.push(
                   context,
-                  _route(const ClienteApp()),
+                  _route(const LoginScreen()),
                 ),
               ),
               const SizedBox(height: 14),

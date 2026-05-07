@@ -22,7 +22,8 @@ void main() {
   });
 
   // Envolve ClienteApp em MaterialApp para ter Scaffold e Navigator
-  Widget buildSubject() => const MaterialApp(home: ClienteApp());
+  Widget buildSubject() =>
+      const MaterialApp(home: ClienteApp(clientId: 'test-id'));
 
   // Avança frames suficientes sem esperar animações infinitas (PulsingDot)
   Future<void> pumpApp(WidgetTester tester) async {
@@ -128,7 +129,9 @@ void main() {
       expect(find.byKey(const Key('fab_support')), findsNothing);
     });
 
-    testWidgets('FAB visível ao navegar por outras abas e voltar', (tester) async {
+    testWidgets('FAB visível ao navegar por outras abas e voltar', (
+      tester,
+    ) async {
       await pumpApp(tester);
       await tester.tap(find.text('Histórico'));
       await tester.pump(const Duration(milliseconds: 500));
@@ -164,7 +167,9 @@ void main() {
       expect(find.byKey(const Key('fab_support')), findsNothing);
     });
 
-    testWidgets('"Agendar serviço" exibe snackbar ao ser tocado', (tester) async {
+    testWidgets('"Agendar serviço" exibe snackbar ao ser tocado', (
+      tester,
+    ) async {
       await pumpApp(tester);
       await tester.tap(find.byKey(const Key('fab_main')));
       await pumpAnimation(tester);
@@ -174,7 +179,9 @@ void main() {
       expect(find.textContaining('Agendamento'), findsOneWidget);
     });
 
-    testWidgets('"Falar com suporte" exibe snackbar ao ser tocado', (tester) async {
+    testWidgets('"Falar com suporte" exibe snackbar ao ser tocado', (
+      tester,
+    ) async {
       await pumpApp(tester);
       await tester.tap(find.byKey(const Key('fab_main')));
       await pumpAnimation(tester);

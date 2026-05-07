@@ -5,7 +5,7 @@ import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/app_avatar.dart';
 import '../../../core/widgets/app_progress_bar.dart';
 import '../../../core/widgets/status_badge.dart';
-import '../../../data/mock_data.dart';
+import '../data/models/internal_service.dart';
 import '../data/internal_flow_repository.dart';
 import 'internal_service_detail_screen.dart';
 
@@ -36,8 +36,8 @@ class _ServiceListScreenState extends State<ServiceListScreen>
   final _statusFilters = const [
     ('todos', 'Todos'),
     ('aguardando', 'Aguardando'),
-    ('andamento', 'Andamento'),
-    ('revisao', 'Em revisão'),
+    ('em_execucao', 'Em execução'),
+    ('revisao_tecnica', 'Em revisão'),
     ('aguardando_retirada', 'Aguardando retirada'),
   ];
 
@@ -52,7 +52,7 @@ class _ServiceListScreenState extends State<ServiceListScreen>
   void initState() {
     super.initState();
     _tabCtrl = TabController(length: 2, vsync: this);
-    _statusFilter = widget.initialFilter ?? 'todos';
+    _statusFilter = _normalizeStatusFilter(widget.initialFilter ?? 'todos');
     _tabCtrl.addListener(() => setState(() {}));
     _servicesFuture = widget.repository.fetchServicos();
     widget.repository.addListener(_reloadServices);
@@ -71,6 +71,22 @@ class _ServiceListScreenState extends State<ServiceListScreen>
     });
   }
 
+  String _normalizeStatusFilter(String filter) {
+    switch (filter) {
+      case 'andamento':
+        return 'em_execucao';
+      case 'revisao':
+        return 'revisao_tecnica';
+      default:
+        return filter;
+    }
+  }
+
+  bool _matchesStatusFilter(String status) {
+    if (_statusFilter == 'todos') return true;
+    return _normalizeStatusFilter(status) == _statusFilter;
+  }
+
   bool _matchesSearch(InternalService s) {
     if (_search.isEmpty) return true;
     final q = _search.toLowerCase();
@@ -81,35 +97,45 @@ class _ServiceListScreenState extends State<ServiceListScreen>
   }
 
   List<InternalService> _ativosFrom(List<InternalService> services) {
-    return services
+    final filtered = services
         .where((s) => s.status != 'concluido' && s.status != 'cancelado')
         .where(_matchesSearch)
-        .where((s) => _statusFilter == 'todos' || s.status == _statusFilter)
+      .where((s) => _matchesStatusFilter(s.status))
         .toList();
+        
+    // Sort active services by newest first
+    filtered.sort((a, b) => (b.openedAtDate ?? DateTime(0))
+        .compareTo(a.openedAtDate ?? DateTime(0)));
+        
+    return filtered;
   }
 
   List<InternalService> _finalizadosFrom(List<InternalService> services) {
-    return services
+    final filtered = services
         .where((s) => s.status == 'concluido' || s.status == 'cancelado')
         .where(_matchesSearch)
         .where((s) {
           if (_periodFilter == 'todos') return true;
-          if (s.finishedAt == null) return false;
-          final parts = s.finishedAt!.split('/');
-          if (parts.length != 3) return false;
-          final dt = DateTime.tryParse(
-              '${parts[2]}-${parts[1].padLeft(2, '0')}-${parts[0].padLeft(2, '0')}');
-          if (dt == null) return false;
+          if (s.finishedAtDate == null) return false;
+          
+          final dt = s.finishedAtDate!;
           final now = DateTime.now();
           final today = DateTime(now.year, now.month, now.day);
           final finDay = DateTime(dt.year, dt.month, dt.day);
           final diff = today.difference(finDay).inDays;
+          
           if (_periodFilter == 'hoje') return diff == 0;
           if (_periodFilter == '7dias') return diff <= 7;
           if (_periodFilter == '30dias') return diff <= 30;
           return true;
         })
         .toList();
+
+    // Sort finalized services by most recently finished
+    filtered.sort((a, b) => (b.finishedAtDate ?? DateTime(0))
+        .compareTo(a.finishedAtDate ?? DateTime(0)));
+        
+    return filtered;
   }
 
   @override
@@ -364,7 +390,7 @@ class _ServiceListView extends StatelessWidget {
     return ListView.separated(
       padding: const EdgeInsets.all(16),
       itemCount: items.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      separatorBuilder: (_, _) => const SizedBox(height: 8),
       itemBuilder: (_, i) => _ServiceCard(
         svc: items[i],
         showProgress: showProgress,

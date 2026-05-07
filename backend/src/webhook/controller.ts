@@ -1,7 +1,10 @@
 import { Request, Response } from 'express';
 import axios from 'axios';
+import { UsuarioModel } from '../models/usuarioModel';
+import { ConversationModel } from '../models/conversationModel';
+import { PasswordUtils } from '../utils/passwordUtils';
 
-// Configurações extraídas do seu .env[cite: 1]
+// Configurações extraídas do seu .env
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:3001';
 const WA_ACCESS_TOKEN = process.env.WA_ACCESS_TOKEN;
 const WA_PHONE_NUMBER_ID = process.env.WA_PHONE_NUMBER_ID;
@@ -9,7 +12,7 @@ const WA_PHONE_NUMBER_ID = process.env.WA_PHONE_NUMBER_ID;
 /**
  * Envia uma mensagem de texto de volta para o usuário via API da Meta
  */
-const sendWhatsAppMessage = async (to: string, text: string) => {
+export const sendWhatsAppMessage = async (to: string, text: string) => {
   try {
     await axios.post(
       `https://graph.facebook.com/v21.0/${WA_PHONE_NUMBER_ID}/messages`,
@@ -54,7 +57,7 @@ export const validateWebhook = (req: Request, res: Response) => {
 export const handleMessage = async (req: Request, res: Response) => {
   const body = req.body;
 
-  // Verifica se o objeto é da conta do WhatsApp[cite: 1]
+  // Verifica se o objeto é da conta do WhatsApp
   if (body.object !== 'whatsapp_business_account') {
     return res.sendStatus(404);
   }
@@ -72,7 +75,35 @@ export const handleMessage = async (req: Request, res: Response) => {
   try {
     console.log(`[Webhook] Recebido de ${customerNumber}: ${customerText}`);
 
-    // 1. Envia a mensagem para o serviço de IA (ai_service)
+    // Híbrido: Verifica se o cliente existe para registrar a conversa
+    let cliente = await UsuarioModel.findByTelefone(customerNumber);
+    
+    if (!cliente) {
+      console.log(`[Webhook] Cliente não encontrado para o número ${customerNumber}. Criando novo cliente on-the-fly...`);
+      const defaultPassword = await PasswordUtils.hash('whatsapp_client_123');
+      cliente = await UsuarioModel.create({
+        tipo_id: 3, // 3 é CLIENTE
+        cpf_cnpj: customerNumber,
+        nome: 'New Client (WhatsApp)',
+        telefone: customerNumber,
+        senha_hash: defaultPassword,
+      });
+      console.log(`[Webhook] Novo cliente criado on-the-fly com ID: ${cliente.id}`);
+    }
+
+    const conversacao = await ConversationModel.findOrCreateByClienteId(cliente.id);
+    const conversacaoId: string = conversacao.id;
+    const iaPausada = conversacao.ia_pausada;
+
+    // Guaranteed Persistence: Salva a mensagem recebida do cliente antes do processamento da IA
+    await ConversationModel.addMessage(conversacaoId, cliente.id, 'client', customerText);
+
+    if (iaPausada) {
+      console.log(`[Webhook] IA pausada para ${customerNumber}. Mensagem registrada. Aguardando atendente.`);
+      return res.sendStatus(200);
+    }
+
+    // 1. Envia a mensagem para o serviço de IA (ai_service) se não estiver pausado
     const aiResponse = await axios.post(`${AI_SERVICE_URL}/ai/analyze`, {
       message: customerText,
       number: customerNumber,
@@ -84,6 +115,10 @@ export const handleMessage = async (req: Request, res: Response) => {
     if (action === 'REPLY') {
       // Resposta direta do Bot (Pistão)
       await sendWhatsAppMessage(customerNumber, result);
+      
+      if (conversacaoId) {
+        await ConversationModel.addMessage(conversacaoId, cliente.id, 'bot', result);
+      }
 
     } else if (action === 'CREATE_OS') {
       console.log(`[Webhook] Solicitando criação de OS para ${customerNumber}...`);
@@ -97,20 +132,34 @@ export const handleMessage = async (req: Request, res: Response) => {
         const finalMsg = `${osMsg}\n\nAcompanhe seu serviço por aqui: ${magic_link_url}`;
 
         await sendWhatsAppMessage(customerNumber, finalMsg);
+        
+        if (conversacaoId) {
+          await ConversationModel.addMessage(conversacaoId, cliente.id, 'bot', finalMsg);
+        }
       } catch (osErr: any) {
         console.error('[Webhook] Erro ao criar OS no ai_service:', osErr.response?.data ?? osErr.message);
-        await sendWhatsAppMessage(customerNumber, "Ops, tive um problema ao gerar sua Ordem de Serviço. Tente novamente em instantes.");
+        const errMsg = "Ops, tive um problema ao gerar sua Ordem de Serviço. Tente novamente em instantes.";
+        await sendWhatsAppMessage(customerNumber, errMsg);
+        if (conversacaoId) {
+          await ConversationModel.addMessage(conversacaoId, cliente.id, 'system', errMsg);
+        }
       }
 
     } else if (action === 'MANUAL_WAIT') {
       console.log(`[Webhook] Atendimento manual para ${customerNumber}`);
-      await sendWhatsAppMessage(customerNumber, "Entendido. Vou passar seu caso para um de nossos mecânicos. Um momento, por favor!");
+      const waitMsg = "Entendido. Vou passar seu caso para um de nossos mecânicos. Um momento, por favor!";
+      await sendWhatsAppMessage(customerNumber, waitMsg);
+      
+      if (conversacaoId) {
+        await ConversationModel.addMessage(conversacaoId, cliente.id, 'bot', waitMsg);
+        await ConversationModel.updateHandoff(conversacaoId, true); // Automatic handoff triggered by bot
+      }
     }
 
   } catch (error: any) {
     console.error('[Webhook] Erro na comunicação com AI_SERVICE:', error.message);
   }
 
-  // Sempre retorna 200 para a Meta não reenviar a mesma mensagem[cite: 1]
+  // Sempre retorna 200 para a Meta não reenviar a mesma mensagem
   return res.sendStatus(200);
 };

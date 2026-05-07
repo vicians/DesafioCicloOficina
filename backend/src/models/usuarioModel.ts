@@ -75,9 +75,18 @@ export class UsuarioModel {
 
   static async findByTelefone(telefone: string): Promise<UsuarioDTO | null> {
     const db = getDb();
+    
+    // Normalize input: remove all non-digits
+    const cleanPhone = telefone.replace(/\D/g, '');
+    
+    // Se começar com 55 (DDI do Brasil), cria uma versão sem o 55 para matching flexível
+    const withoutCountryCode = cleanPhone.startsWith('55') ? cleanPhone.slice(2) : cleanPhone;
+
     const result = await db.query(
-      `SELECT ${SAFE_COLUMNS} FROM usuarios WHERE telefone = $1`,
-      [telefone]
+      `SELECT ${SAFE_COLUMNS} FROM usuarios 
+       WHERE regexp_replace(telefone, '\\D', '', 'g') = $1 
+          OR regexp_replace(telefone, '\\D', '', 'g') = $2`,
+      [cleanPhone, withoutCountryCode]
     );
     return result.rows[0] ?? null;
   }

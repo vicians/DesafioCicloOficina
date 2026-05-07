@@ -14,14 +14,24 @@ class InventoryScreen extends StatefulWidget {
 }
 
 class _InventoryScreenState extends State<InventoryScreen> {
-  late List<PartItem> _parts;
+  List<PartItem> _parts = [];
   String? _activeCategory;
   String? _syncingPartId;
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _parts = List.of(partsInventory);
+    _fetchProducts();
+  }
+
+  Future<void> _fetchProducts() async {
+    final parts = await InventoryService.getProducts();
+    if (!mounted) return;
+    setState(() {
+      _parts = parts;
+      _isLoading = false;
+    });
   }
 
   List<String> get _categories {
@@ -34,7 +44,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
     return _parts.where((p) => p.category == _activeCategory).toList();
   }
 
-  List<PartItem> get _lowStockParts => _parts.where((p) => p.qty < 10).toList();
+  List<PartItem> get _lowStockParts => _parts.where((p) => p.qty < p.min).toList();
 
   void _openEdit(PartItem part) {
     showModalBottomSheet(
@@ -44,6 +54,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
       builder: (_) => _EditPartSheet(
         part: part,
         onSave: _handleSave,
+        onDelete: _handleDelete,
       ),
     );
   }
@@ -60,6 +71,57 @@ class _InventoryScreenState extends State<InventoryScreen> {
     );
   }
 
+  Future<void> _handleDelete(String id) async {
+    setState(() => _syncingPartId = id);
+    final ok = await InventoryService.deleteProduct(id);
+    if (!mounted) return;
+    setState(() {
+      _syncingPartId = null;
+      if (ok) {
+        _parts.removeWhere((p) => p.id == id);
+      }
+    });
+    _showActionSnackbar(ok: ok, msgSuccess: 'Item excluído', msgError: 'Erro ao excluir item');
+  }
+
+  Future<void> _handleAdjustStock(PartItem part, int delta) async {
+    final newQty = part.qty + delta;
+    if (newQty < 0) return;
+
+    final updated = PartItem(
+      id: part.id,
+      name: part.name,
+      category: part.category,
+      qty: newQty,
+      min: part.min,
+      unit: part.unit,
+      price: part.price,
+      status: newQty < part.min ? 'low' : 'ok',
+    );
+
+    setState(() {
+      final idx = _parts.indexWhere((p) => p.id == updated.id);
+      if (idx != -1) _parts[idx] = updated;
+      _syncingPartId = updated.id;
+    });
+
+    final ok = await InventoryService.syncProductWithRag(
+      id: updated.id,
+      nome: updated.name,
+      categoria: updated.category,
+      quantidade: updated.qty,
+      min: updated.min,
+      unit: updated.unit,
+      preco: updated.price,
+    );
+
+    if (!mounted) return;
+    setState(() => _syncingPartId = null);
+    if (!ok) {
+      _showActionSnackbar(ok: false, msgSuccess: '', msgError: 'Erro de conexão com o servidor');
+    }
+  }
+
   Future<void> _handleSave(PartItem updated) async {
     setState(() {
       final idx = _parts.indexWhere((p) => p.id == updated.id);
@@ -72,12 +134,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
       nome: updated.name,
       categoria: updated.category,
       quantidade: updated.qty,
+      min: updated.min,
+      unit: updated.unit,
       preco: updated.price,
     );
 
     if (!mounted) return;
     setState(() => _syncingPartId = null);
-    _showSyncSnackbar(ok: ok, isNew: false);
+    _showActionSnackbar(ok: ok, msgSuccess: 'Salvo e sincronizado', msgError: 'Erro ao salvar no servidor');
   }
 
   Future<void> _handleAdd(PartItem newPart) async {
@@ -91,24 +155,26 @@ class _InventoryScreenState extends State<InventoryScreen> {
       quantidade: newPart.qty,
       preco: newPart.price,
       categoria: newPart.category,
+      min: newPart.min,
+      unit: newPart.unit,
     );
 
     if (!mounted) return;
     setState(() => _syncingPartId = null);
-    _showSyncSnackbar(ok: ok, isNew: true);
+    if (ok) {
+      _fetchProducts(); // refresh to get the actual ID
+    }
+    _showActionSnackbar(ok: ok, msgSuccess: 'Item criado', msgError: 'Erro ao criar no servidor');
   }
 
-  void _showSyncSnackbar({required bool ok, required bool isNew}) {
-    final msg = ok
-        ? (isNew ? 'Item criado e IA sincronizada' : 'Salvo e sincronizado com a IA')
-        : (isNew ? 'Criado localmente (serviço de IA offline)' : 'Salvo localmente (serviço de IA offline)');
-
+  void _showActionSnackbar({required bool ok, required String msgSuccess, required String msgError}) {
+    final msg = ok ? msgSuccess : msgError;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
           children: [
             Icon(
-              ok ? Icons.sync_rounded : Icons.sync_problem_rounded,
+              ok ? Icons.check_circle_outline_rounded : Icons.error_outline_rounded,
               color: Colors.white,
               size: 18,
             ),
@@ -121,8 +187,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
             ),
           ],
         ),
-        backgroundColor: ok ? green : yellow,
-        duration: const Duration(seconds: 2),
+        backgroundColor: ok ? green : red,
+        duration: const Duration(seconds: 3),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
@@ -144,18 +210,21 @@ class _InventoryScreenState extends State<InventoryScreen> {
           ),
         _buildCategoryFilter(),
         Expanded(
-          child: filtered.isEmpty
-              ? _buildEmpty()
-              : ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: filtered.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 8),
-                  itemBuilder: (_, i) => _PartCard(
-                    part: filtered[i],
-                    isSyncing: _syncingPartId == filtered[i].id,
-                    onEdit: () => _openEdit(filtered[i]),
-                  ),
-                ),
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(orange)))
+              : filtered.isEmpty
+                  ? _buildEmpty()
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: filtered.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 8),
+                      itemBuilder: (_, i) => _PartCard(
+                        part: filtered[i],
+                        isSyncing: _syncingPartId == filtered[i].id,
+                        onEdit: () => _openEdit(filtered[i]),
+                        onAdjustStock: (delta) => _handleAdjustStock(filtered[i], delta),
+                      ),
+                    ),
         ),
       ],
     );
@@ -329,7 +398,7 @@ class _LowStockBanner extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              '$count ${count == 1 ? 'item abaixo' : 'itens abaixo'} de 10 unidades — reposição necessária',
+              '$count ${count == 1 ? 'item abaixo' : 'itens abaixo'} do mínimo recomendado — reposição necessária',
               style: GoogleFonts.dmSans(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
@@ -349,16 +418,18 @@ class _PartCard extends StatelessWidget {
   final PartItem part;
   final bool isSyncing;
   final VoidCallback onEdit;
+  final void Function(int)? onAdjustStock;
 
   const _PartCard({
     required this.part,
     required this.isSyncing,
     required this.onEdit,
+    this.onAdjustStock,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isLow = part.qty < 10;
+    final isLow = part.qty < part.min;
     final pct = ((part.qty / (part.min * 2)) * 100).clamp(0.0, 100.0);
     final barColor = isLow ? red : green;
 
@@ -452,19 +523,54 @@ class _PartCard extends StatelessWidget {
                     else
                       const Icon(Icons.edit_rounded,
                           size: 16, color: textMuted),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${part.qty}',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: isLow ? red : textPrimary,
-                      ),
-                    ),
-                    Text(
-                      part.unit,
-                      style: GoogleFonts.dmSans(
-                          fontSize: 11, color: textMuted),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        GestureDetector(
+                          onTap: (isSyncing || onAdjustStock == null) ? null : () => onAdjustStock!(-1),
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: cardWhite,
+                              border: Border.all(color: borderColor),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Icon(Icons.remove_rounded, size: 14, color: textSecondary),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Text(
+                              '${part.qty}',
+                              style: GoogleFonts.dmSans(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                                color: isLow ? red : textPrimary,
+                              ),
+                            ),
+                            Text(
+                              part.unit,
+                              style: GoogleFonts.dmSans(fontSize: 10, color: textMuted),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: (isSyncing || onAdjustStock == null) ? null : () => onAdjustStock!(1),
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: cardWhite,
+                              border: Border.all(color: borderColor),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Icon(Icons.add_rounded, size: 14, color: textSecondary),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -500,8 +606,9 @@ class _PartCard extends StatelessWidget {
 class _EditPartSheet extends StatefulWidget {
   final PartItem? part;
   final void Function(PartItem) onSave;
+  final void Function(String)? onDelete;
 
-  const _EditPartSheet({this.part, required this.onSave});
+  const _EditPartSheet({this.part, required this.onSave, this.onDelete});
 
   @override
   State<_EditPartSheet> createState() => _EditPartSheetState();
@@ -557,7 +664,7 @@ class _EditPartSheetState extends State<_EditPartSheet> {
       min: min,
       unit: _unitCtrl.text.trim().isEmpty ? 'unid.' : _unitCtrl.text.trim(),
       price: price,
-      status: qty < 10 ? 'low' : 'ok',
+      status: qty < min ? 'low' : 'ok',
     );
 
     Navigator.pop(context);
@@ -748,6 +855,41 @@ class _EditPartSheetState extends State<_EditPartSheet> {
                           ),
                         ),
                       ),
+                      if (isEdit && widget.onDelete != null) ...[
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: GestureDetector(
+                            onTap: () {
+                              Navigator.pop(context);
+                              widget.onDelete!(widget.part!.id);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              decoration: BoxDecoration(
+                                color: redBg,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: red.withValues(alpha: 0.3)),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.delete_rounded, color: red, size: 18),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Excluir item',
+                                    style: GoogleFonts.dmSans(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                      color: red,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
