@@ -43,8 +43,9 @@ dist/
 .env.development.local
 .env.test.local
 .env.production.local
-.env-example
-.env.example
+# .env.example NÃO é ignorado — deve ser commitado como template
+!.env.example
+!**/.env.example
 
 # ----------------------------------------------------------------ILH
 # IDEs e Sistema Operativo
@@ -76,3 +77,4 @@ logs/
 # Google Antigravity (IA Agent Artifacts)
 # ----------------------------------------------------------------ILH
 .agent/
+node_modules

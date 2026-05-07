@@ -33,6 +33,16 @@ model catalogo_servicos {
   itens_orcamento_servico itens_orcamento_servico[]
 }
 
+model conversacoes_chat {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cliente_id     String           @unique @db.Uuid
+  ia_pausada     Boolean?         @default(false)
+  atualizado_em  DateTime?        @default(now()) @db.Timestamp(6)
+  criado_em      DateTime?        @default(now()) @db.Timestamp(6)
+  usuarios       usuarios         @relation(fields: [cliente_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  mensagens_chat mensagens_chat[]
+}
+
 model execucoes_servico {
   id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   orcamento_id   String     @unique @db.Uuid
@@ -76,12 +86,15 @@ model magic_links {
 }
 
 model mensagens_chat {
-  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  cliente_id     String    @db.Uuid
-  tipo_remetente String    @db.VarChar
-  conteudo       String
-  criado_em      DateTime? @default(now()) @db.Timestamp(6)
-  usuarios       usuarios  @relation(fields: [cliente_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cliente_id        String             @db.Uuid
+  tipo_remetente    String             @db.VarChar
+  conteudo          String
+  criado_em         DateTime?          @default(now()) @db.Timestamp(6)
+  conversacao_id    String?            @db.Uuid
+  lida              Boolean?           @default(false)
+  usuarios          usuarios           @relation(fields: [cliente_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  conversacoes_chat conversacoes_chat? @relation(fields: [conversacao_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
 model notifications {
@@ -131,6 +144,9 @@ model produtos {
   valor                   Int
   quantidade_estoque      Int                       @default(0)
   ativo                   Boolean?                  @default(true)
+  categoria               String?                   @db.VarChar
+  min_estoque             Int?                      @default(10)
+  unidade                 String?                   @default("unid.") @db.VarChar
   itens_orcamento_produto itens_orcamento_produto[]
 }
 
@@ -161,6 +177,7 @@ model usuarios {
   criado_em                                          DateTime?           @default(now()) @db.Timestamp(6)
   agendamentos_agendamentos_cliente_idTousuarios     agendamentos[]      @relation("agendamentos_cliente_idTousuarios")
   agendamentos_agendamentos_funcionario_idTousuarios agendamentos[]      @relation("agendamentos_funcionario_idTousuarios")
+  conversacoes_chat                                  conversacoes_chat?
   execucoes_servico                                  execucoes_servico[]
   magic_links                                        magic_links[]
   mensagens_chat                                     mensagens_chat[]

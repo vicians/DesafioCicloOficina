@@ -1,37 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/colors.dart';
+import '../../../core/config/api_config.dart';
 import '../../../core/widgets/app_card.dart';
-import '../../../data/mock_data.dart';
+import '../data/internal_chat_api_repository.dart';
+import '../data/internal_chat_repository.dart';
+import '../data/models/internal_chat_models.dart';
 import 'internal_chat_screen.dart';
-
-class ConversationModel {
-  final String id;
-  final String clientName;
-  final String plate;
-  final String lastMessage;
-  final String time;
-  final String date;
-  final String mechanicName;
-  final List<ChatMessage> messages;
-  final String status;
-  final String startTime;
-  bool isTakenByEmployee;
-
-  ConversationModel({
-    required this.id,
-    required this.clientName,
-    required this.plate,
-    required this.lastMessage,
-    required this.time,
-    required this.date,
-    required this.mechanicName,
-    required this.messages,
-    required this.status,
-    required this.startTime,
-    this.isTakenByEmployee = false,
-  });
-}
 
 class InternalMessagesScreen extends StatefulWidget {
   final ValueChanged<int>? onUnreadCountChanged;
@@ -53,95 +29,62 @@ class InternalMessagesScreen extends StatefulWidget {
 
 class _InternalMessagesScreenState extends State<InternalMessagesScreen> {
   String _search = '';
-  static final List<ConversationModel> _sharedConversations = [
-    ConversationModel(
-      id: '1',
-      clientName: 'Carlos Mendes',
-      plate: 'ABC-1234',
-      lastMessage: 'Ótimo! Começando agora. Previsão até 17h.',
-      time: '14:02',
-      date: '30/04',
-      mechanicName: 'José',
-      status: 'Em andamento',
-      startTime: '08:05',
-      isTakenByEmployee: true,
-      messages: [
-        ChatMessage(id: 1, from: 'client', text: 'Boa tarde! Meu carro está fazendo um barulho estranho no freio.', time: '08:05', read: true),
-        ChatMessage(id: 2, from: 'bot', text: 'Olá Carlos! Sou o TiãoBot. Já estou registrando seu problema.', time: '08:06', read: true),
-        ChatMessage(id: 3, from: 'employee', text: 'Boa tarde, Carlos! Pode trazer para avaliarmos. Disponibilidade hoje?', time: '08:08', read: true),
-        ChatMessage(id: 4, from: 'client', text: 'Sim, posso levar agora.', time: '08:12', read: true),
-        ChatMessage(id: 5, from: 'system', text: 'Veículo recebido — Honda Civic ABC-1234', time: '08:30', read: true),
-        ChatMessage(id: 6, from: 'employee', text: 'Carlos, identificamos pastilhas desgastadas e óleo vencido. Orçamento enviado.', time: '09:35', read: true),
-        ChatMessage(id: 7, from: 'client', text: 'Pode fazer tudo. Aprovei o orçamento.', time: '10:18', read: true),
-        ChatMessage(id: 8, from: 'system', text: 'Orçamento aprovado pelo cliente — R\$ 439,90', time: '10:18', read: true),
-        ChatMessage(id: 9, from: 'employee', text: 'Ótimo! Começando agora. Previsão até 17h.', time: '14:02', read: false),
-      ],
-    ),
-    ConversationModel(
-      id: '2',
-      clientName: 'Ana Paula Lima',
-      plate: 'DEF-5678',
-      lastMessage: 'Quando o carro vai ficar pronto?',
-      time: '10:30',
-      date: '30/04',
-      mechanicName: 'Ricardo',
-      status: 'Aprovar orçamento',
-      startTime: '09:00',
-      messages: [
-        ChatMessage(id: 1, from: 'client', text: 'Bom dia, gostaria de saber se o orçamento já saiu.', time: '09:00', read: true),
-        ChatMessage(id: 2, from: 'bot', text: 'Olá Ana! Estou analisando seu veículo. Em breve te envio o orçamento.', time: '09:15', read: true),
-        ChatMessage(id: 3, from: 'client', text: 'Quando o carro vai ficar pronto?', time: '10:30', read: false),
-        ChatMessage(id: 4, from: 'client', text: 'Preciso dele para o final de semana.', time: '10:35', read: false),
-      ],
-    ),
-    ConversationModel(
-      id: '3',
-      clientName: 'Rafael Souza',
-      plate: 'GHI-9012',
-      lastMessage: 'Já terminei o alinhamento.',
-      time: '09:15',
-      date: '29/04',
-      mechanicName: 'José',
-      status: 'Concluído',
-      startTime: '08:00',
-      isTakenByEmployee: true,
-      messages: [
-        ChatMessage(id: 1, from: 'client', text: 'Olá, vou deixar o carro para alinhamento.', time: '08:00', read: true),
-        ChatMessage(id: 2, from: 'employee', text: 'Combinado Rafael. Já estamos com ele aqui.', time: '08:15', read: true),
-        ChatMessage(id: 3, from: 'employee', text: 'Já terminei o alinhamento.', time: '09:15', read: true),
-      ],
-    ),
-  ];
+  
+  // TODO: Move baseUrl configuration to a centralized config or DI
+  late final InternalChatRepository _repository;
+  late final Stream<List<InternalChatConversation>> _conversationsStream;
+  List<InternalChatConversation> _latestConversations = [];
+  StreamSubscription? _subscription;
 
-  List<ConversationModel> get _allConversations => _sharedConversations;
-
-  List<ConversationModel> get _filteredConversations {
-    if (_search.length < 3) return _allConversations;
-    final q = _search.toLowerCase();
-    return _allConversations.where((c) {
-      return c.mechanicName.toLowerCase().contains(q) ||
-          c.plate.toLowerCase().contains(q);
-    }).toList();
+  @override
+  void initState() {
+    super.initState();
+    // Defaulting to Android emulator local address. Use localhost for iOS/Web.
+    _repository = InternalChatApiRepository(baseUrl: ApiConfig.baseUrl);
+    
+    // TODO: Refactor to WebSockets when available
+    _conversationsStream = _repository.streamConversations().asBroadcastStream();
+    
+    _subscription = _conversationsStream.listen((conversations) {
+      if (!mounted) return;
+      setState(() {
+        _latestConversations = conversations;
+      });
+      _notifyUnreadCountChanged(conversations);
+      _handleAutoOpen(conversations);
+    });
   }
 
-  int get _unreadConversationsCount =>
-      _allConversations
-          .where(
-            (conversation) => conversation.messages.any(
-              (message) => message.from == 'client' && !message.read,
-            ),
-          )
-          .length;
-
-  void _notifyUnreadCountChanged() {
-    widget.onUnreadCountChanged?.call(_unreadConversationsCount);
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
   }
 
-  ConversationModel? _findMatchingConversation() {
+  void _notifyUnreadCountChanged(List<InternalChatConversation> conversations) {
+    final unreadCount = conversations.fold<int>(0, (sum, c) => sum + (c.unreadCount > 0 ? 1 : 0));
+    widget.onUnreadCountChanged?.call(unreadCount);
+  }
+
+  bool _hasAutoOpened = false;
+  void _handleAutoOpen(List<InternalChatConversation> conversations) {
+    if (!widget.autoOpenMatchingConversation || _hasAutoOpened) return;
+    
+    final conversation = _findMatchingConversation(conversations);
+    if (conversation != null) {
+      _hasAutoOpened = true;
+      _openChat(
+        conversation,
+        closeScreenAfterChatClosed: true,
+      );
+    }
+  }
+
+  InternalChatConversation? _findMatchingConversation(List<InternalChatConversation> conversations) {
     final plate = widget.initialPlate?.trim().toLowerCase();
     final clientName = widget.initialClientName?.trim().toLowerCase();
 
-    for (final conversation in _allConversations) {
+    for (final conversation in conversations) {
       final conversationPlate = conversation.plate.trim().toLowerCase();
       final conversationClient = conversation.clientName.trim().toLowerCase();
       final matchByPlate = plate != null && plate.isNotEmpty && conversationPlate == plate;
@@ -159,53 +102,40 @@ class _InternalMessagesScreenState extends State<InternalMessagesScreen> {
     return null;
   }
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _notifyUnreadCountChanged();
-
-      if (!widget.autoOpenMatchingConversation) return;
-      final conversation = _findMatchingConversation();
-      if (conversation != null) {
-        _openChat(
-          conversation,
-          closeScreenAfterChatClosed: true,
-        );
-      }
-    });
+  List<InternalChatConversation> get _filteredConversations {
+    if (_search.length < 3) return _latestConversations;
+    final q = _search.toLowerCase();
+    return _latestConversations.where((c) {
+      return c.clientName.toLowerCase().contains(q) ||
+          c.plate.toLowerCase().contains(q);
+    }).toList();
   }
 
-  void _markConversationAsRead(ConversationModel conversation) {
-    for (final message in conversation.messages) {
-      if (message.from == 'client' && !message.read) {
-        message.read = true;
-      }
-    }
-  }
-
-  void _openChat(
-    ConversationModel conversation, {
+  Future<void> _openChat(
+    InternalChatConversation conversation, {
     bool closeScreenAfterChatClosed = false,
-  }) {
-    setState(() => _markConversationAsRead(conversation));
-    _notifyUnreadCountChanged();
-    Navigator.push(
+  }) async {
+    // Optimistically clear unread count
+    if (conversation.unreadCount > 0) {
+      await _repository.markAsRead(conversation.id);
+    }
+
+    if (!mounted) return;
+    
+    await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => InternalChatScreen(conversation: conversation),
+        builder: (_) => InternalChatScreen(
+          conversation: conversation,
+          repository: _repository,
+        ),
       ),
-    ).then((_) {
-      if (!mounted) return;
+    );
 
-      if (closeScreenAfterChatClosed) {
-        Navigator.pop(context);
-        return;
-      }
-
-      setState(() {});
-    });
+    if (!mounted) return;
+    if (closeScreenAfterChatClosed) {
+      Navigator.pop(context);
+    }
   }
 
   @override
@@ -239,7 +169,7 @@ class _InternalMessagesScreenState extends State<InternalMessagesScreen> {
                 onChanged: (v) => setState(() => _search = v),
                 style: GoogleFonts.dmSans(fontSize: 14, color: Colors.white),
                 decoration: InputDecoration(
-                  hintText: 'Buscar por funcionário ou placa...',
+                  hintText: 'Buscar por cliente ou placa...',
                   hintStyle: GoogleFonts.dmSans(
                     fontSize: 14,
                     color: Colors.white.withValues(alpha: 0.5),
@@ -273,8 +203,24 @@ class _InternalMessagesScreenState extends State<InternalMessagesScreen> {
         ),
         // Conversation List
         Expanded(
-          child: _filteredConversations.isEmpty
-              ? Center(
+          child: StreamBuilder<List<InternalChatConversation>>(
+            stream: _conversationsStream,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting && _latestConversations.isEmpty) {
+                return const Center(child: CircularProgressIndicator(color: navyDark));
+              }
+
+              if (snapshot.hasError && _latestConversations.isEmpty) {
+                return Center(
+                  child: Text(
+                    'Erro ao carregar mensagens.',
+                    style: GoogleFonts.dmSans(color: textSecondary),
+                  ),
+                );
+              }
+
+              if (_filteredConversations.isEmpty) {
+                return Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -286,19 +232,23 @@ class _InternalMessagesScreenState extends State<InternalMessagesScreen> {
                       ),
                     ],
                   ),
-                )
-              : ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _filteredConversations.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (context, index) {
-                    final conv = _filteredConversations[index];
-                    return _ConversationCard(
-                      conversation: conv,
-                      onTap: () => _openChat(conv),
-                    );
-                  },
-                ),
+                );
+              }
+
+              return ListView.separated(
+                padding: const EdgeInsets.all(16),
+                itemCount: _filteredConversations.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  final conv = _filteredConversations[index];
+                  return _ConversationCard(
+                    conversation: conv,
+                    onTap: () => _openChat(conv),
+                  );
+                },
+              );
+            },
+          ),
         ),
       ],
     );
@@ -306,7 +256,7 @@ class _InternalMessagesScreenState extends State<InternalMessagesScreen> {
 }
 
 class _ConversationCard extends StatelessWidget {
-  final ConversationModel conversation;
+  final InternalChatConversation conversation;
   final VoidCallback onTap;
 
   const _ConversationCard({
@@ -316,8 +266,7 @@ class _ConversationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final unreadMessages = conversation.messages.where((m) => !m.read && m.from == 'client').toList();
-    final unreadCount = unreadMessages.length;
+    final unreadCount = conversation.unreadCount;
 
     return AppCard(
       onTap: onTap,
@@ -336,7 +285,7 @@ class _ConversationCard extends StatelessWidget {
             ),
             child: Center(
               child: Text(
-                conversation.clientName.substring(0, 1).toUpperCase(),
+                conversation.clientName.isNotEmpty ? conversation.clientName.substring(0, 1).toUpperCase() : '?',
                 style: GoogleFonts.dmSans(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
@@ -354,14 +303,19 @@ class _ConversationCard extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      conversation.clientName,
-                      style: GoogleFonts.dmSans(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: textPrimary,
+                    Expanded(
+                      child: Text(
+                        conversation.clientName,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: textPrimary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
+                    const SizedBox(width: 8),
                     Text(
                       '${conversation.time} (${conversation.date})',
                       style: GoogleFonts.dmSans(
@@ -381,7 +335,7 @@ class _ConversationCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${conversation.messages.last.from == 'client' ? 'Cliente' : conversation.messages.last.from == 'employee' ? 'Funcionário' : conversation.messages.last.from == 'bot' ? 'TiãoBot' : 'Sistema'}: ${conversation.messages.last.text}',
+                  conversation.lastMessage,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.dmSans(
@@ -404,7 +358,7 @@ class _ConversationCard extends StatelessWidget {
               ),
               child: Center(
                 child: Text(
-                  unreadCount.toString(),
+                  unreadCount > 99 ? '99+' : unreadCount.toString(),
                   style: GoogleFonts.dmSans(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,

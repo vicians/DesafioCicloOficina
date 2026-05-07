@@ -7,7 +7,6 @@ import aiRoutes from './routes/ai_routes';
 dotenv.config();
 
 const app = express();
-
 app.use(cors());
 app.use(express.json());
 
@@ -18,10 +17,8 @@ app.use(aiRoutes);
 
 // Error handler global
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('AI_SERVICE_ERROR:', err.message);
-  res.status(500).json({ error: 'Erro interno no processamento de IA.' });
+  console.error('SERVER_ERROR:', err.message);
+  res.status(500).json({ error: 'Erro interno.' });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 AI Service da CicloOficina online na porta ${PORT}`);
-});
+app.listen(PORT, () => console.log(`🚀 AI Service online na porta ${PORT}`));

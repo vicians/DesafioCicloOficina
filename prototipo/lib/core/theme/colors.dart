@@ -70,6 +70,12 @@ const statusMap = {
     backgroundColor: Color(0xFFF3F4F6),
     dotColor: Color(0xFF9CA3AF),
   ),
+  'pendente': ServiceStatus(
+    label: 'Pendente',
+    textColor: textMuted,
+    backgroundColor: Color(0xFFF3F4F6),
+    dotColor: Color(0xFF9CA3AF),
+  ),
   'orcamento': ServiceStatus(
     label: 'Aprovar orçamento',
     textColor: yellow,
@@ -95,6 +101,12 @@ const statusMap = {
     backgroundColor: purpleBg,
     dotColor: purple,
   ),
+  'revisao_tecnica': ServiceStatus(
+    label: 'Em revisão',
+    textColor: purple,
+    backgroundColor: purpleBg,
+    dotColor: purple,
+  ),
   'aguardando_retirada': ServiceStatus(
     label: 'Aguardando retirada',
     textColor: orange,
@@ -103,6 +115,12 @@ const statusMap = {
   ),
   'concluido': ServiceStatus(
     label: 'Concluído',
+    textColor: green,
+    backgroundColor: greenBg,
+    dotColor: green,
+  ),
+  'confirmado': ServiceStatus(
+    label: 'Confirmado',
     textColor: green,
     backgroundColor: greenBg,
     dotColor: green,

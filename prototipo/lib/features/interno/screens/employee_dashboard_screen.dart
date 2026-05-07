@@ -5,9 +5,12 @@ import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_progress_bar.dart';
 import '../../../core/widgets/status_badge.dart';
-import '../../../data/mock_data.dart';
+import '../data/models/internal_service.dart';
+import '../data/models/internal_budget_item.dart';
+import '../data/internal_flow_repository.dart';
 
 class EmployeeDashboardScreen extends StatefulWidget {
+  final InternalFlowRepository repository;
   final bool isManager;
   final VoidCallback onLogout;
   final VoidCallback? onOpenServices;
@@ -15,6 +18,7 @@ class EmployeeDashboardScreen extends StatefulWidget {
 
   const EmployeeDashboardScreen({
     super.key,
+    required this.repository,
     required this.isManager,
     required this.onLogout,
     this.onOpenServices,
@@ -28,114 +32,183 @@ class EmployeeDashboardScreen extends StatefulWidget {
 
 class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
   bool _showLogoutSheet = false;
+  late Future<_DashboardData> _dashboardFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _dashboardFuture = _loadDashboardData();
+    widget.repository.addListener(_reload);
+  }
+
+  @override
+  void dispose() {
+    widget.repository.removeListener(_reload);
+    super.dispose();
+  }
+
+  void _reload() {
+    if (!mounted) return;
+    setState(() {
+      _dashboardFuture = _loadDashboardData();
+    });
+  }
+
+  Future<_DashboardData> _loadDashboardData() async {
+    final results = await Future.wait([
+      widget.repository.fetchServicos(),
+      widget.repository.fetchOrcamentos(),
+    ]);
+
+    return _DashboardData(
+      services: results[0] as List<InternalService>,
+      budgets: results[1] as List<InternalBudgetItem>,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
-    
-    // Filtros baseados no status do banco de dados (schema)
-    final activeExecutions = internalServices
-        .where((s) =>
-            s.status == 'andamento' ||
-            s.status == 'revisao' ||
-            s.status == 'aguardando_retirada')
-        .toList();
-    
-    final openAppointments =
-        internalServices.where((s) => s.status == 'aguardando').toList();
-        
-    final pendingBudgets =
-        internalServices.where((s) => s.status == 'orcamento').toList();
+    return FutureBuilder<_DashboardData>(
+      future: _dashboardFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation(orange),
+            ),
+          );
+        }
 
-    // Faturamento previsto: soma de serviços ativos + orçamentos pendentes
-    final predictedRevenue = internalServices
-        .where((s) => s.status != 'concluido' && s.status != 'cancelado')
-        .fold<double>(0, (sum, item) => sum + item.value);
+        if (snapshot.hasError) {
+          return Center(
+            child: Text(
+              'Erro ao carregar dados do painel.',
+              style: GoogleFonts.dmSans(color: textSecondary),
+            ),
+          );
+        }
 
-    // Lógica simples de atraso: aberto há mais de 2 dias e não concluído
-    final delayedServices = internalServices.where((s) {
-      if (s.status == 'concluido' || s.status == 'cancelado') return false;
-      try {
-        final parts = s.openedAt.split('/');
-        final openedDate = DateTime(
-          int.parse(parts[2]),
-          int.parse(parts[1]),
-          int.parse(parts[0]),
+        final data = snapshot.data;
+        final internalServices = data?.services ?? const <InternalService>[];
+        final budgets = data?.budgets ?? const <InternalBudgetItem>[];
+        final now = DateTime.now();
+
+        // Filtros baseados no status do banco de dados (schema)
+        final activeExecutions = internalServices
+            .where(
+              (s) =>
+                  s.status == 'em_execucao' ||
+                  s.status == 'revisao_tecnica' ||
+                  s.status == 'aguardando_retirada',
+            )
+            .toList();
+
+        final openAppointments = 0;
+
+        final pendingBudgets = budgets
+          .where((b) => b.isPending)
+            .toList();
+
+        // Faturamento previsto: soma de serviços ativos + orçamentos pendentes
+        final servicesRevenue = internalServices
+          .where((s) => s.status != 'concluido' && s.status != 'cancelado')
+          .fold<double>(0, (sum, item) => sum + item.value);
+        final budgetsRevenue = pendingBudgets.fold<double>(
+          0,
+          (sum, item) => sum + item.value,
         );
-        return now.difference(openedDate).inDays > 2;
-      } catch (_) {
-        return false;
-      }
-    }).toList();
+        final predictedRevenue = servicesRevenue + budgetsRevenue;
 
-    return Stack(
-      children: [
-        SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _DashboardHeader(
-                isManager: widget.isManager,
-                activeExecutions: activeExecutions.length,
-                openAppointments: openAppointments.length,
-                pendingBudgets: pendingBudgets.length,
-                predictedRevenue: predictedRevenue,
-                onLogoutTap: () => setState(() => _showLogoutSheet = true),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _AlertBanner(
-                      delayedCount: delayedServices.length,
-                      pendingBudgets: pendingBudgets,
-                      onOpenBudgets: widget.onOpenBudgets,
-                      onOpenServices: widget.onOpenServices,
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      'Atendimentos ativos',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    ...internalServices
-                        .where((s) =>
-                            s.status != 'concluido' &&
-                            s.status != 'cancelado')
-                        .map((svc) => Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: _ServiceCard(
-                                svc: svc,
-                                onTap: widget.onOpenServices,
+        // Lógica simples de atraso: aberto há mais de 2 dias e não concluído
+        final delayedServices = internalServices.where((s) {
+          if (s.status == 'concluido' || s.status == 'cancelado') return false;
+          try {
+            final parts = s.openedAt.split('/');
+            final openedDate = DateTime(
+              int.parse(parts[2]),
+              int.parse(parts[1]),
+              int.parse(parts[0]),
+            );
+            return now.difference(openedDate).inDays > 2;
+          } catch (_) {
+            return false;
+          }
+        }).toList();
+
+        return Stack(
+          children: [
+            SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _DashboardHeader(
+                    isManager: widget.isManager,
+                    activeExecutions: activeExecutions.length,
+                    openAppointments: openAppointments,
+                    pendingBudgets: pendingBudgets.length,
+                    predictedRevenue: predictedRevenue,
+                    onLogoutTap: () => setState(() => _showLogoutSheet = true),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _AlertBanner(
+                          delayedCount: delayedServices.length,
+                          pendingBudgets: pendingBudgets,
+                          onOpenBudgets: widget.onOpenBudgets,
+                          onOpenServices: widget.onOpenServices,
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          'Atendimentos ativos',
+                          style: GoogleFonts.dmSans(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        ...internalServices
+                            .where(
+                              (s) =>
+                                  s.status != 'concluido' &&
+                                  s.status != 'cancelado',
+                            )
+                            .map(
+                              (svc) => Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: _ServiceCard(
+                                  svc: svc,
+                                  onTap: widget.onOpenServices,
+                                ),
                               ),
-                            )),
-                  ],
+                            ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (_showLogoutSheet) ...[
+              GestureDetector(
+                onTap: () => setState(() => _showLogoutSheet = false),
+                child: Container(color: Colors.black.withValues(alpha: 0.5)),
+              ),
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: _LogoutSheet(
+                  onConfirm: widget.onLogout,
+                  onCancel: () => setState(() => _showLogoutSheet = false),
                 ),
               ),
             ],
-          ),
-        ),
-        if (_showLogoutSheet) ...[
-          GestureDetector(
-            onTap: () => setState(() => _showLogoutSheet = false),
-            child: Container(color: Colors.black.withValues(alpha: 0.5)),
-          ),
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: _LogoutSheet(
-              onConfirm: widget.onLogout,
-              onCancel: () => setState(() => _showLogoutSheet = false),
-            ),
-          ),
-        ],
-      ],
+          ],
+        );
+      },
     );
   }
 }
@@ -256,7 +329,10 @@ class _DashboardHeader extends StatelessWidget {
                   ],
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: orange.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(20),
@@ -319,7 +395,7 @@ class _KpiBox extends StatelessWidget {
 
 class _AlertBanner extends StatelessWidget {
   final int delayedCount;
-  final List<InternalService> pendingBudgets;
+  final List<InternalBudgetItem> pendingBudgets;
   final VoidCallback? onOpenBudgets;
   final VoidCallback? onOpenServices;
 
@@ -376,7 +452,7 @@ class _AlertBanner extends StatelessWidget {
     }
 
     if (pendingBudgets.isNotEmpty) {
-      final service = pendingBudgets.first;
+      final budget = pendingBudgets.first;
       return GestureDetector(
         onTap: onOpenBudgets,
         child: Container(
@@ -403,7 +479,7 @@ class _AlertBanner extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      '${service.client} · ${service.id}',
+                      '${budget.client} · ${budget.id}',
                       style: GoogleFonts.dmSans(
                         fontSize: 12,
                         color: textPrimary,
@@ -421,6 +497,16 @@ class _AlertBanner extends StatelessWidget {
 
     return const SizedBox.shrink();
   }
+}
+
+class _DashboardData {
+  final List<InternalService> services;
+  final List<InternalBudgetItem> budgets;
+
+  const _DashboardData({
+    required this.services,
+    required this.budgets,
+  });
 }
 
 class _ServiceCard extends StatelessWidget {
@@ -454,7 +540,9 @@ class _ServiceCard extends StatelessWidget {
                     Text(
                       '${svc.car} · ${svc.plate}',
                       style: GoogleFonts.dmSans(
-                          fontSize: 12, color: textSecondary),
+                        fontSize: 12,
+                        color: textSecondary,
+                      ),
                     ),
                   ],
                 ),

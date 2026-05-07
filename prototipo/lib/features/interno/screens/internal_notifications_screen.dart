@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/colors.dart';
-import '../../../data/mock_data.dart';
+import '../../shared/models/notification_item.dart';
 
 class InternalNotificationsScreen extends StatelessWidget {
   final List<NotificationItem> items;
   final ValueChanged<String> onMarkRead;
+  final VoidCallback? onMarkAllRead;
 
   const InternalNotificationsScreen({
     super.key,
     required this.items,
     required this.onMarkRead,
+    this.onMarkAllRead,
   });
 
   @override
@@ -27,25 +29,63 @@ class InternalNotificationsScreen extends StatelessWidget {
               colors: [navyDark, navyMid],
             ),
           ),
-          child: Text(
-            'Alertas',
-            style: GoogleFonts.dmSans(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Alertas',
+                style: GoogleFonts.dmSans(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+              if (onMarkAllRead != null && items.any((n) => n.unread))
+                GestureDetector(
+                  onTap: onMarkAllRead,
+                  child: Text(
+                    'Marcar todas como lidas',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white.withValues(alpha: 0.75),
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
         Expanded(
-          child: ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: items.length,
-            separatorBuilder: (_, index) => const SizedBox(height: 8),
-            itemBuilder: (_, i) => _NotifCard(
-              item: items[i],
-              onTap: () => onMarkRead(items[i].id),
-            ),
-          ),
+          child: items.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.notifications_off_outlined,
+                        size: 48,
+                        color: textMuted,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Nenhuma notificação nova',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 14,
+                          color: textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: items.length,
+                  separatorBuilder: (_, index) => const SizedBox(height: 8),
+                  itemBuilder: (_, i) => _NotifCard(
+                    item: items[i],
+                    onTap: () => onMarkRead(items[i].id),
+                  ),
+                ),
         ),
       ],
     );
@@ -149,6 +189,8 @@ class _NotifCard extends StatelessWidget {
         return Icons.receipt_long_rounded;
       case 'low_stock':
         return Icons.inventory_2_rounded;
+      case 'rejected_budget':
+        return Icons.cancel_rounded;
       default:
         return Icons.notifications_rounded;
     }
@@ -162,6 +204,8 @@ class _NotifCard extends StatelessWidget {
         return greenBg;
       case 'low_stock':
         return yellowBg;
+      case 'rejected_budget':
+        return redBg;
       default:
         return dividerColor;
     }
@@ -175,6 +219,8 @@ class _NotifCard extends StatelessWidget {
         return green;
       case 'low_stock':
         return yellow;
+      case 'rejected_budget':
+        return red;
       default:
         return textMuted;
     }

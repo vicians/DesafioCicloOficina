@@ -4,11 +4,13 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/status_badge.dart';
-import '../../../data/mock_data.dart';
+import '../data/client_flow_repository.dart';
+import '../data/models/client_models.dart';
 import 'client_screen_header.dart';
 
 class BudgetApprovalScreen extends StatefulWidget {
-  const BudgetApprovalScreen({super.key});
+  final ClientFlowRepository repository;
+  const BudgetApprovalScreen({super.key, required this.repository});
 
   @override
   State<BudgetApprovalScreen> createState() => _BudgetApprovalScreenState();
@@ -17,8 +19,11 @@ class BudgetApprovalScreen extends StatefulWidget {
 class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
     with SingleTickerProviderStateMixin {
   bool _loading = false;
+  bool _error = false;
   bool _approved = false;
   bool _refused = false;
+  bool _canceled = false;
+  ServiceModel? _service;
 
   late AnimationController _approvedCtrl;
   late Animation<double> _approvedScale;
@@ -33,6 +38,28 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
     _approvedScale = Tween<double>(begin: 0.75, end: 1.0).animate(
       CurvedAnimation(parent: _approvedCtrl, curve: Curves.elasticOut),
     );
+    _loadService();
+  }
+
+  Future<void> _loadService() async {
+    setState(() {
+      _loading = true;
+      _error = false;
+    });
+    try {
+      final svc = await widget.repository.fetchCurrentService();
+      if (!mounted) return;
+      setState(() {
+        _service = svc;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = true;
+      });
+    }
   }
 
   @override
@@ -42,38 +69,163 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
   }
 
   void _handleApprove() async {
+    if (_service == null) return;
     setState(() => _loading = true);
-    await Future.delayed(const Duration(milliseconds: 1400));
-    if (!mounted) return;
-    setState(() {
-      _loading = false;
-      _approved = true;
-    });
-    _approvedCtrl.forward();
+    try {
+      await widget.repository.approveBudget(_service!.id);
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _approved = true;
+      });
+      _approvedCtrl.forward();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao aprovar: $e')),
+      );
+    }
   }
 
-  void _handleRefuse() {
-    HapticFeedback.heavyImpact();
-    setState(() => _refused = true);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Recusa registrada. Entre em contato com a oficina.',
-          style: GoogleFonts.dmSans(fontSize: 13, color: Colors.white),
+  void _handleRefuse() async {
+    if (_service == null) return;
+    setState(() => _loading = true);
+    try {
+      await widget.repository.rejectBudgetChange(_service!.id);
+      if (!mounted) return;
+      HapticFeedback.heavyImpact();
+      setState(() {
+        _loading = false;
+        _refused = true;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Alteração recusada. O orçamento anterior foi mantido.',
+            style: GoogleFonts.dmSans(fontSize: 13, color: Colors.white),
+          ),
+          backgroundColor: navyDark,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          duration: const Duration(seconds: 3),
         ),
-        backgroundColor: red,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        duration: const Duration(seconds: 3),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao rejeitar: $e'), backgroundColor: red),
+      );
+    }
+  }
+
+  void _handleCancel() async {
+    if (_service == null) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancelar atendimento'),
+        content: const Text('Deseja cancelar o agendamento e o atendimento? Esta ação não pode ser desfeita.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Voltar')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Cancelar atendimento')),
+        ],
       ),
     );
+
+    if (confirm != true) return;
+
+    setState(() => _loading = true);
+    try {
+      await widget.repository.cancelService(
+        budgetId: _service!.id,
+        agendamentoId: _service!.agendamentoId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _canceled = true;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Atendimento cancelado com sucesso.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao cancelar atendimento: $e'), backgroundColor: red),
+      );
+    }
   }
 
   String _fmt(double v) => 'R\$ ${v.toStringAsFixed(2).replaceAll('.', ',')}';
 
   @override
   Widget build(BuildContext context) {
-    final svc = currentService;
+    final svc = _service;
+    
+    if (_loading) {
+      return Scaffold(
+        backgroundColor: bgPage,
+        body: const Center(child: CircularProgressIndicator(color: orange)),
+      );
+    }
+
+    if (_error) {
+      return Scaffold(
+        backgroundColor: bgPage,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline_rounded, color: red, size: 48),
+              const SizedBox(height: 16),
+              Text(
+                'Erro ao carregar orçamento',
+                style: GoogleFonts.dmSans(color: textPrimary, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              AppButton(
+                label: 'Tentar novamente',
+                onPressed: _loadService,
+                variant: AppButtonVariant.outline,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (svc == null || (svc.status != 'orcamento' && svc.status != 'enviado' && !_approved && !_canceled)) {
+      return Scaffold(
+        backgroundColor: bgPage,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.receipt_long_rounded, color: textMuted.withValues(alpha: 0.5), size: 64),
+              const SizedBox(height: 16),
+              Text(
+                'Nenhum orçamento pendente',
+                style: GoogleFonts.dmSans(
+                  color: textPrimary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Você será notificado quando um novo\norçamento estiver disponível.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.dmSans(color: textMuted, fontSize: 13),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final parts = svc.budgetItems.where((i) => i.type == 'part').toList();
     final labor = svc.budgetItems.where((i) => i.type == 'labor').toList();
     final partsTotal = parts.fold(0.0, (s, i) => s + i.total);
@@ -158,6 +310,25 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
       );
     }
 
+    if (_canceled) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: redBg,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: red.withValues(alpha: 0.3)),
+        ),
+        child: Text(
+          'Atendimento cancelado. O item foi movido para seu histórico.',
+          style: GoogleFonts.dmSans(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: red,
+          ),
+        ),
+      );
+    }
+
     if (_refused) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -165,9 +336,9 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: redBg,
+              color: blueBg,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: red.withValues(alpha: 0.3)),
+              border: Border.all(color: blue.withValues(alpha: 0.3)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -178,20 +349,20 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: red.withValues(alpha: 0.12),
+                        color: blue.withValues(alpha: 0.12),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.phone_rounded,
-                          color: red, size: 20),
+                      child: const Icon(Icons.undo_rounded,
+                          color: blue, size: 20),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'Entre em contato com a oficina',
+                        'Alteração recusada',
                         style: GoogleFonts.dmSans(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
-                          color: red,
+                          color: blue,
                         ),
                       ),
                     ),
@@ -199,18 +370,9 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Recusa registrada. Ligue para discutir o orçamento com o responsável.',
+                  'Seguimos com o orçamento anterior. Você pode acompanhar a execução normalmente.',
                   style: GoogleFonts.dmSans(
                       fontSize: 13, color: textPrimary),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  '(11) 99999-8888',
-                  style: GoogleFonts.dmSans(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: red,
-                  ),
                 ),
               ],
             ),
@@ -230,18 +392,26 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
         ),
         const SizedBox(height: 10),
         AppButton(
-          label: 'Rejeitar',
+          label: 'Rejeitar alteração',
           fullWidth: true,
           variant: AppButtonVariant.outline,
-          onPressed: _handleRefuse,
+          onPressed: _loading ? null : _handleRefuse,
+        ),
+        const SizedBox(height: 10),
+        AppButton(
+          label: 'Cancelar atendimento',
+          fullWidth: true,
+          variant: AppButtonVariant.danger,
+          onPressed: _loading ? null : _handleCancel,
         ),
       ],
     );
   }
 
   Widget _buildHeader(ServiceModel svc) {
-    final badgeStatus =
-        _approved ? 'aprovado' : (_refused ? 'cancelado' : 'orcamento');
+    final badgeStatus = _approved
+      ? 'aprovado'
+      : (_canceled ? 'cancelado' : (_refused ? 'confirmado' : 'orcamento'));
     return ClientScreenHeader(
       title: 'Orçamento',
       subtitle: '${svc.id} · ${svc.car} · ${svc.plate}',
@@ -270,7 +440,7 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Orçamento aguardando sua aprovação. O serviço só será iniciado após a confirmação.',
+              'Orçamento aguardando sua resposta. Você pode aprovar, rejeitar a alteração ou cancelar o atendimento.',
               style: GoogleFonts.dmSans(
                 fontSize: 13,
                 color: yellow,

@@ -14,7 +14,7 @@ void main() {
   });
 
   testWidgets('ClienteApp smoke test — renderiza sem crash', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: ClienteApp()));
+    await tester.pumpWidget(const MaterialApp(home: ClienteApp(clientId: 'test-id')));
     await tester.pump();
     expect(find.byType(ClienteApp), findsOneWidget);
   });

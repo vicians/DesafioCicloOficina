@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../../../data/mock_data.dart';
+import '../../shared/models/notification_item.dart';
 import 'notification_repository.dart';
 
 class NotificationApiRepository implements NotificationRepository {
@@ -47,17 +47,22 @@ class NotificationApiRepository implements NotificationRepository {
     if (response.statusCode != 200) return [];
 
     final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
-    return data.map((json) {
+    final items = data.map((json) {
       final map = json as Map<String, dynamic>;
+      final rawIso = map['criado_em'] as String?;
       return NotificationItem(
         id: map['id'] as String,
         type: map['tipo'] as String,
         title: map['titulo'] as String,
         body: map['mensagem'] as String,
-        time: _formatTime(map['criado_em'] as String?),
+        time: _formatTime(rawIso),
+        timestamp: rawIso != null ? DateTime.tryParse(rawIso) : null,
         unread: !(map['lida'] as bool? ?? false),
       );
     }).toList();
+    
+    items.sort((a, b) => (b.timestamp ?? DateTime(0)).compareTo(a.timestamp ?? DateTime(0)));
+    return items;
   }
 
   @override

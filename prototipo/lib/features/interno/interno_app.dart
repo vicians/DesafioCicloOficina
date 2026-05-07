@@ -1,32 +1,39 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'dart:io' show Platform;
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/colors.dart';
-import 'data/internal_flow_mock_repository.dart';
+import 'data/internal_flow_api_repository.dart';
 import 'data/internal_flow_repository.dart';
 import 'data/notification_repository.dart';
-import 'data/notification_mock_repository.dart';
 import 'data/notification_api_repository.dart';
-import 'data/notification_fallback_repository.dart';
+import 'data/scheduling_repository.dart';
+import 'data/scheduling_api_repository.dart';
+import 'data/report_repository.dart';
+import 'data/report_api_repository.dart';
 import 'screens/budget_list_screen.dart';
 import 'screens/employee_dashboard_screen.dart';
 import 'screens/service_list_screen.dart';
+import 'screens/scheduled_services_screen.dart';
 import 'screens/inventory_screen.dart';
 import 'screens/reports_screen.dart';
 import 'screens/internal_notifications_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/internal_messages_screen.dart';
 import '../../data/mock_data.dart';
+import '../../core/config/api_config.dart';
+import '../shared/models/notification_item.dart';
 import '../../services/firebase_messaging_service.dart';
 
 // TODO(prod): substituir pela URL real de produção e autenticação adequada.
-const _kApiBaseUrl = 'http://10.0.2.2:3000'; // Android emulator → localhost
+final _kApiBaseUrl = ApiConfig.baseUrl;
 // TODO(prod): desativar seed DEV automático antes de publicar.
 const _kEnableDevLowStockSeedOnStartup = true;
 
 class InternoApp extends StatefulWidget {
   final bool isManager;
-
-  const InternoApp({super.key, required this.isManager});
+  final String userId;
+  const InternoApp({super.key, required this.isManager, required this.userId});
 
   @override
   State<InternoApp> createState() => _InternoAppState();
@@ -36,20 +43,21 @@ class _InternoAppState extends State<InternoApp> {
   int _currentIndex = 0;
   late final InternalFlowRepository _flowRepository;
   late final NotificationRepository _notificationRepository;
+  late final SchedulingRepository _schedulingRepository;
+  late final ReportRepository _reportRepository;
   List<NotificationItem> _internalNotifications = [];
   int _unreadInternalChatsCount = 0;
 
   @override
   void initState() {
     super.initState();
-    _flowRepository = InternalFlowMockRepository();
-    _notificationRepository = NotificationFallbackRepository(
-      primary: NotificationApiRepository(
-        baseUrl: _kApiBaseUrl,
-        internalUserTypeId: widget.isManager ? 1 : 3,
-      ),
-      fallback: NotificationMockRepository(),
+    _flowRepository = InternalFlowApiRepository(baseUrl: _kApiBaseUrl);
+    _notificationRepository = NotificationApiRepository(
+      baseUrl: _kApiBaseUrl,
+      internalUserTypeId: widget.isManager ? 1 : 3,
     );
+    _schedulingRepository = SchedulingApiRepository(baseUrl: _kApiBaseUrl);
+    _reportRepository = ReportApiRepository(baseUrl: _kApiBaseUrl);
     _loadNotifications();
     _configurePushAndDevSeed();
   }
@@ -91,6 +99,12 @@ class _InternoAppState extends State<InternoApp> {
     if (mounted) setState(() => _internalNotifications = List.of(items));
   }
 
+  Future<void> _markAllNotificationsAsRead() async {
+    await _notificationRepository.markAllAsRead();
+    final items = await _notificationRepository.fetchNotifications();
+    if (mounted) setState(() => _internalNotifications = List.of(items));
+  }
+
   void _updateUnreadChatsCount(int count) {
     if (!mounted || _unreadInternalChatsCount == count) return;
     setState(() => _unreadInternalChatsCount = count);
@@ -100,27 +114,42 @@ class _InternoAppState extends State<InternoApp> {
     if (widget.isManager) {
       return [
         EmployeeDashboardScreen(
+          repository: _flowRepository,
           isManager: true,
           onLogout: _logout,
-          onOpenServices: () => setState(() => _currentIndex = 2),
-          onOpenBudgets: () => setState(() => _currentIndex = 1),
+          onOpenServices: () => setState(() => _currentIndex = 3),
+          onOpenBudgets: () => setState(() => _currentIndex = 2),
+        ),
+        ScheduledServicesScreen(
+          repository: _schedulingRepository,
+          budgetRepository: _flowRepository,
+          onOpenServices: () => setState(() => _currentIndex = 3),
+          onOpenBudgets: () => setState(() => _currentIndex = 2),
         ),
         BudgetListScreen(repository: _flowRepository),
         ServiceListScreen(repository: _flowRepository, initialFilter: null),
         const InventoryScreen(),
-        const ReportsScreen(),
+        ReportsScreen(repository: _reportRepository),
         InternalNotificationsScreen(
           items: _internalNotifications,
           onMarkRead: _markNotificationAsRead,
+          onMarkAllRead: _markAllNotificationsAsRead,
         ),
       ];
     }
     return [
       EmployeeDashboardScreen(
+        repository: _flowRepository,
         isManager: false,
         onLogout: _logout,
-        onOpenServices: () => setState(() => _currentIndex = 2),
-        onOpenBudgets: () => setState(() => _currentIndex = 1),
+        onOpenServices: () => setState(() => _currentIndex = 3),
+        onOpenBudgets: () => setState(() => _currentIndex = 2),
+      ),
+      ScheduledServicesScreen(
+        repository: _schedulingRepository,
+        budgetRepository: _flowRepository,
+        onOpenServices: () => setState(() => _currentIndex = 3),
+        onOpenBudgets: () => setState(() => _currentIndex = 2),
       ),
       BudgetListScreen(repository: _flowRepository),
       ServiceListScreen(repository: _flowRepository, initialFilter: null),
@@ -128,6 +157,7 @@ class _InternoAppState extends State<InternoApp> {
       InternalNotificationsScreen(
         items: _internalNotifications,
         onMarkRead: _markNotificationAsRead,
+        onMarkAllRead: _markAllNotificationsAsRead,
       ),
     ];
   }
@@ -136,6 +166,7 @@ class _InternoAppState extends State<InternoApp> {
     if (widget.isManager) {
       return [
         _NavItem(label: 'Dashboard', icon: Icons.dashboard_rounded),
+        _NavItem(label: 'Agendamentos', icon: Icons.event_note_rounded),
         _NavItem(label: 'Orçamentos', icon: Icons.receipt_long_rounded),
         _NavItem(label: 'Serviços', icon: Icons.build_rounded),
         _NavItem(label: 'Estoque', icon: Icons.inventory_2_rounded),
@@ -149,6 +180,7 @@ class _InternoAppState extends State<InternoApp> {
     }
     return [
       _NavItem(label: 'Dashboard', icon: Icons.dashboard_rounded),
+      _NavItem(label: 'Agendamentos', icon: Icons.event_note_rounded),
       _NavItem(label: 'Orçamentos', icon: Icons.receipt_long_rounded),
       _NavItem(label: 'Serviços', icon: Icons.build_rounded),
       _NavItem(
@@ -170,10 +202,7 @@ class _InternoAppState extends State<InternoApp> {
       backgroundColor: bgPage,
       body: SafeArea(
         bottom: false,
-        child: IndexedStack(
-          index: _currentIndex,
-          children: _screens,
-        ),
+        child: IndexedStack(index: _currentIndex, children: _screens),
       ),
       bottomNavigationBar: _InternoNavBar(
         items: _navItems,
@@ -215,9 +244,10 @@ class _InternoNavBar extends StatelessWidget {
         border: const Border(top: BorderSide(color: borderColor, width: 1)),
         boxShadow: const [
           BoxShadow(
-              color: Color(0x0A000000),
-              blurRadius: 16,
-              offset: Offset(0, -4))
+            color: Color(0x0A000000),
+            blurRadius: 16,
+            offset: Offset(0, -4),
+          ),
         ],
       ),
       child: SafeArea(
@@ -276,7 +306,9 @@ class _InternoNavBar extends StatelessWidget {
                                         ),
                                         decoration: BoxDecoration(
                                           color: red,
-                                          borderRadius: BorderRadius.circular(10),
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
                                         ),
                                         constraints: const BoxConstraints(
                                           minWidth: 16,
@@ -323,4 +355,3 @@ class _InternoNavBar extends StatelessWidget {
     );
   }
 }
-

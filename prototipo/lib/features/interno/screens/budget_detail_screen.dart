@@ -71,7 +71,18 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
       );
       await widget.repository.updateOrcamento(updated);
       if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Orçamento salvo com sucesso!')),
+      );
       Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro ao salvar: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -82,7 +93,18 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
     try {
       await widget.repository.cancelOrcamento(widget.budget.id);
       if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Orçamento cancelado.')),
+      );
       Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro ao cancelar: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -93,14 +115,21 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
     try {
       final service = await widget.repository.approveOrcamento(widget.budget.id);
       if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Orçamento aprovado! OS gerada.')),
+      );
       Navigator.pop(context, service.id);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro ao aprovar: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
-  }
-
-  void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _addService() async {

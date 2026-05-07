@@ -1,4 +1,4 @@
-import '../../../data/mock_data.dart';
+import '../../shared/models/notification_item.dart';
 
 abstract class ClientNotificationRepository {
   Future<List<NotificationItem>> fetchNotifications();

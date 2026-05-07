@@ -55,6 +55,28 @@ agendamentoRouter.post('/', AgendamentoController.store);
 
 /**
  * @openapi
+ * /agendamentos/disponibilidade:
+ *   get:
+ *     tags:
+ *       - Agendamentos
+ *     summary: Consulta horários indisponíveis por data
+ *     description: Retorna os horários ocupados no dia para o fluxo de agendamento do cliente.
+ *     parameters:
+ *       - in: query
+ *         name: data
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Data no formato YYYY-MM-DD
+ *     responses:
+ *       200:
+ *         description: Sucesso
+ */
+agendamentoRouter.get('/disponibilidade', AgendamentoController.disponibilidade);
+
+/**
+ * @openapi
  * /agendamentos/cliente/{clienteId}:
  *   get:
  *     tags:
@@ -81,7 +103,7 @@ agendamentoRouter.get('/cliente/:clienteId', AgendamentoController.listByCliente
  *     tags:
  *       - Agendamentos
  *     summary: Atualiza o status do agendamento
- *     description: "Altera o estado de um agendamento (Ex: PENDENTE, CONFIRMADO, CANCELADO)"
+ *     description: "Altera o estado de um agendamento (Ex: PENDENTE, CONFIRMADO, CONCLUIDO, CANCELADO)"
  *     parameters:
  *       - in: path
  *         name: id
@@ -100,12 +122,33 @@ agendamentoRouter.get('/cliente/:clienteId', AgendamentoController.listByCliente
  *             properties:
  *               status:
  *                 type: string
- *                 enum: [PENDENTE, CONFIRMADO, CANCELADO]
+ *                 enum: [PENDENTE, CONFIRMADO, CONCLUIDO, CANCELADO]
  *     responses:
  *       200:
  *         description: Atualizado com sucesso
  */
 agendamentoRouter.patch('/:id/status', AgendamentoController.updateStatus);
+
+/**
+ * @openapi
+ * /agendamentos/{id}/confirmar-recebimento:
+ *   patch:
+ *     tags:
+ *       - Agendamentos
+ *     summary: Confirma recebimento na oficina e abre a OS
+ *     description: Converte o agendamento recebido em execução de serviço (OS), sem exigir nova aprovação do orçamento inicial.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       201:
+ *         description: OS aberta com sucesso
+ */
+agendamentoRouter.patch('/:id/confirmar-recebimento', AgendamentoController.confirmarRecebimento);
 
 /**
  * @openapi

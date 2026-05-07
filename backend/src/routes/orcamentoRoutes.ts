@@ -204,6 +204,27 @@ orcamentoRouter.delete('/:id/produtos/:item_id', OrcamentoController.removeProdu
 
 /**
  * @openapi
+ * /orcamentos/{id}/rejeitar:
+ *   patch:
+ *     tags:
+ *       - Orçamentos
+ *     summary: Rejeita o orçamento
+ *     description: Marca o orçamento como rejeitado pelo cliente
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Rejeitado com sucesso
+ */
+orcamentoRouter.patch('/:id/rejeitar', OrcamentoController.rejeitar);
+
+/**
+ * @openapi
  * /orcamentos/{id}/aprovar:
  *   patch:
  *     tags:
@@ -222,5 +243,61 @@ orcamentoRouter.delete('/:id/produtos/:item_id', OrcamentoController.removeProdu
  *         description: Aprovado com sucesso
  */
 orcamentoRouter.patch('/:id/aprovar', OrcamentoController.aprovar);
+
+/**
+ * @openapi
+ * /orcamentos/{id}/enviar-addons:
+ *   patch:
+ *     tags:
+ *       - Orçamentos
+ *     summary: Envia itens extras para aprovação do cliente
+ *     description: Move um orçamento aprovado para ENVIADO quando houver add-ons.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Add-ons enviados com sucesso
+ */
+orcamentoRouter.patch('/:id/enviar-addons', OrcamentoController.enviarAddons);
+orcamentoRouter.patch('/:id/rejeitar-addons', OrcamentoController.rejeitarAddons);
+
+/**
+ * @openapi
+ * /orcamentos/{id}:
+ *   patch:
+ *     tags:
+ *       - Orçamentos
+ *     summary: Atualiza dados básicos do orçamento
+ *     description: Permite atualizar observações, status ou validade (RN173)
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               observacoes:
+ *                 type: string
+ *               status:
+ *                 type: string
+ *               valido_ate:
+ *                 type: string
+ *                 format: date-time
+ *     responses:
+ *       200:
+ *         description: Atualizado com sucesso
+ */
+orcamentoRouter.patch('/:id', OrcamentoController.update);
 
 export { orcamentoRouter };

@@ -1,9 +1,11 @@
 import { Request, Response } from 'express';
 import { AgendamentoModel } from '../models/agendamentoModel';
+import { OrcamentoModel } from '../models/orcamentoModel';
+import { ExecucaoServicoModel } from '../models/execucaoServicoModel';
 import { NotificationModel } from '../models/notificationModel';
 import { sendPushToUsers } from '../services/pushService';
 
-const STATUS_PERMITIDOS = ['CONFIRMADO', 'CANCELADO'] as const;
+const STATUS_PERMITIDOS = ['PENDENTE', 'CONFIRMADO', 'CONCLUIDO', 'CANCELADO'] as const;
 type StatusPermitido = typeof STATUS_PERMITIDOS[number];
 
 export class AgendamentoController {
@@ -18,6 +20,18 @@ export class AgendamentoController {
     return res.json(agendamentos);
   }
 
+  static async disponibilidade(req: Request, res: Response) {
+    const data = String(req.query.data ?? '');
+    const formatoValido = /^\d{4}-\d{2}-\d{2}$/.test(data);
+
+    if (!formatoValido) {
+      return res.status(400).json({ error: 'Query param data é obrigatório no formato YYYY-MM-DD' });
+    }
+
+    const horasIndisponiveis = await AgendamentoModel.findUnavailableHoursByDate(data);
+    return res.json({ data, horas_indisponiveis: horasIndisponiveis });
+  }
+
   static async store(req: Request, res: Response) {
     const { cliente_id, veiculo_id, funcionario_id, agendado_para, duracao_total_minutos, notas_cliente } = req.body;
 
@@ -25,8 +39,33 @@ export class AgendamentoController {
       return res.status(400).json({ error: 'cliente_id, veiculo_id, agendado_para e duracao_total_minutos são obrigatórios' });
     }
 
+    const duracao = Number(duracao_total_minutos);
+    if (!Number.isFinite(duracao) || duracao <= 0) {
+      return res.status(400).json({ error: 'duracao_total_minutos deve ser maior que zero' });
+    }
+
     const inicio = new Date(agendado_para);
-    const fim = new Date(inicio.getTime() + Number(duracao_total_minutos) * 60000);
+    if (Number.isNaN(inicio.getTime())) {
+      return res.status(400).json({ error: 'agendado_para inválido' });
+    }
+
+    const hora = inicio.getHours();
+    const horaUtc = inicio.getUTCHours();
+    if (inicio.getUTCMinutes() !== 0 || inicio.getUTCSeconds() !== 0 || horaUtc < 7 || horaUtc > 18) {
+      return res.status(400).json({ error: 'agendado_para deve ser em hora cheia entre 07:00 e 18:00' });
+    }
+
+    const clienteVeiculoOk = await AgendamentoModel.clienteVeiculoRelacionados(cliente_id, veiculo_id);
+    if (!clienteVeiculoOk) {
+      return res.status(400).json({ error: 'veiculo_id não pertence ao cliente informado' });
+    }
+
+    const fim = new Date(inicio.getTime() + duracao * 60000);
+
+    const conflitoOficina = await AgendamentoModel.checkWorkshopConflict(inicio, fim);
+    if (conflitoOficina) {
+      return res.status(409).json({ error: 'Horário já indisponível para agendamento' });
+    }
 
     const conflito = await AgendamentoModel.checkConflict(veiculo_id, funcionario_id ?? null, inicio, fim);
 
@@ -37,9 +76,38 @@ export class AgendamentoController {
       return res.status(409).json({ error: 'Funcionário já possui agendamento nesse horário' });
     }
 
-    const agendamento = await AgendamentoModel.create({
-      cliente_id, veiculo_id, funcionario_id, agendado_para, duracao_total_minutos, notas_cliente,
-    });
+    let agendamento;
+    try {
+      const created = await AgendamentoModel.createWithApprovedInitialBudget({
+        cliente_id,
+        veiculo_id,
+        funcionario_id,
+        agendado_para,
+        duracao_total_minutos: duracao,
+        notas_cliente,
+      });
+      agendamento = created.agendamento;
+
+      // Adicionar serviços ao orçamento inicial se fornecidos
+      const servicos = req.body.servicos as Array<{ servico_id: string; quantidade?: number }> | undefined;
+      if (servicos && servicos.length > 0) {
+        const { OrcamentoModel } = await import('../models/orcamentoModel');
+        const { CatalogoServicoModel } = await import('../models/catalogoServicoModel');
+        for (const item of servicos) {
+          if (!item.servico_id) continue;
+          const catalogo = await CatalogoServicoModel.findById(item.servico_id);
+          if (!catalogo) continue;
+          await OrcamentoModel.addServico(created.orcamento.id, item.servico_id, item.quantidade ?? 1, catalogo.preco);
+        }
+        await OrcamentoModel.recalcularTotal(created.orcamento.id);
+      }
+    } catch (error: unknown) {
+      const dbError = error as { code?: string; constraint?: string };
+      if (dbError.code === '23505' && dbError.constraint === 'ux_agendamentos_slot_ativo') {
+        return res.status(409).json({ error: 'Horário já indisponível para agendamento' });
+      }
+      throw error;
+    }
 
     try {
       const internalUserIds = await NotificationModel.findInternalUserIds();
@@ -59,6 +127,58 @@ export class AgendamentoController {
     }
 
     return res.status(201).json(agendamento);
+  }
+
+  static async confirmarRecebimento(req: Request, res: Response) {
+    const { id } = req.params;
+    const { funcionario_id } = req.body ?? {};
+
+    const agendamento = await AgendamentoModel.findById(id);
+    if (!agendamento) {
+      return res.status(404).json({ error: 'Agendamento não encontrado' });
+    }
+
+    let orcamento = await OrcamentoModel.findByAgendamentoId(id);
+    if (!orcamento) {
+      orcamento = await OrcamentoModel.create({
+        agendamento_id: id,
+        cliente_id: agendamento.cliente_id,
+        funcionario_id: funcionario_id ?? agendamento.funcionario_id,
+      });
+    }
+
+    if (orcamento.status === 'ENVIADO') {
+      return res.status(409).json({
+        error: 'Este agendamento possui add-ons pendentes de aprovação do cliente',
+      });
+    }
+
+    if (orcamento.status === 'REJEITADO') {
+      return res.status(409).json({
+        error: 'Não é possível iniciar OS com orçamento rejeitado',
+      });
+    }
+
+    if (orcamento.status !== 'APROVADO') {
+      const aprovado = await OrcamentoModel.aprovar(
+        orcamento.id,
+        new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      );
+      if (!aprovado) {
+        return res.status(409).json({ error: 'Não foi possível aprovar o orçamento automaticamente' });
+      }
+      orcamento = aprovado;
+    }
+
+    await ExecucaoServicoModel.ensureByOrcamentoId(
+      orcamento.id,
+      funcionario_id ?? orcamento.funcionario_id ?? agendamento.funcionario_id ?? null,
+    );
+
+    await AgendamentoModel.updateStatus(id, 'CONCLUIDO');
+
+    const execucao = await ExecucaoServicoModel.findByOrcamentoId(orcamento.id);
+    return res.status(201).json(execucao);
   }
 
   static async updateStatus(req: Request, res: Response) {

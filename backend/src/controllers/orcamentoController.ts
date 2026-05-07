@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { OrcamentoModel } from '../models/orcamentoModel';
+import { ExecucaoServicoModel } from '../models/execucaoServicoModel';
 import { CatalogoServicoModel } from '../models/catalogoServicoModel';
 import { ProdutoModel } from '../models/produtoModel';
 import { NotificationModel } from '../models/notificationModel';
@@ -22,6 +23,16 @@ export class OrcamentoController {
 
     if (!cliente_id) {
       return res.status(400).json({ error: 'cliente_id é obrigatório' });
+    }
+
+    if (agendamento_id) {
+      const existing = await OrcamentoModel.findByAgendamentoId(agendamento_id);
+      if (existing) {
+        return res.status(409).json({
+          error: 'Este agendamento já foi enviado para orçamentos',
+          orcamento_id: existing.id,
+        });
+      }
     }
 
     const orcamento = await OrcamentoModel.create({ cliente_id, funcionario_id, agendamento_id });
@@ -96,6 +107,35 @@ export class OrcamentoController {
 
   // ── Aprovação ─────────────────────────────────────────────────────────────
 
+  static async rejeitar(req: Request, res: Response) {
+    const orcamento = await OrcamentoModel.rejeitar(req.params.id);
+
+    if (!orcamento) {
+      return res.status(409).json({
+        error: 'Orçamento não encontrado ou já está em status final (APROVADO, REJEITADO ou PAGO)',
+      });
+    }
+
+    try {
+      const internalUserIds = await NotificationModel.findInternalUserIds();
+      const titulo = 'Orçamento recusado pelo cliente';
+      const mensagem = `Orçamento ${orcamento.id} foi recusado e precisa de revisão ou contato com o cliente.`;
+      const notifIds = await NotificationModel.createForUsers(internalUserIds, {
+        tipo: 'rejected_budget',
+        titulo,
+        mensagem,
+        referencia_id: orcamento.id,
+        referencia_tipo: 'orcamento',
+      });
+      await sendPushToUsers(internalUserIds, notifIds, titulo, mensagem);
+    } catch (error) {
+      // Não interrompe o fluxo principal por falha de notificação.
+      console.error('Falha ao criar notificações internas de orçamento recusado:', error);
+    }
+
+    return res.json(orcamento);
+  }
+
   static async aprovar(req: Request, res: Response) {
     const { valido_ate } = req.body;
 
@@ -128,7 +168,67 @@ export class OrcamentoController {
       console.error('Falha ao criar notificações internas de orçamento aprovado:', error);
     }
 
+    // Cria (ou garante) a execução de serviço vinculada ao orçamento aprovado.
+    // Retorna os dados detalhados da execução para que o app já exiba a OS gerada.
+    const execucao = await ExecucaoServicoModel.iniciarDeAprovacao(
+      orcamento.id,
+      orcamento.funcionario_id ?? null
+    );
+
+    return res.json(execucao ?? orcamento);
+  }
+
+  static async enviarAddons(req: Request, res: Response) {
+    const orcamento = await OrcamentoModel.enviarAddons(req.params.id);
+
+    if (!orcamento) {
+      return res.status(409).json({
+        error: 'Somente orçamentos aprovados podem ser reenviados como add-ons para o cliente',
+      });
+    }
+
+    try {
+      const internalUserIds = await NotificationModel.findInternalUserIds();
+      const titulo = 'Add-ons enviados para aprovação';
+      const mensagem = `Orçamento ${orcamento.id} possui itens extras pendentes de aprovação do cliente.`;
+      const notifIds = await NotificationModel.createForUsers(internalUserIds, {
+        tipo: 'addons_sent',
+        titulo,
+        mensagem,
+        referencia_id: orcamento.id,
+        referencia_tipo: 'orcamento',
+      });
+      await sendPushToUsers(internalUserIds, notifIds, titulo, mensagem);
+    } catch (error) {
+      console.error('Falha ao criar notificações de add-ons enviados:', error);
+    }
+
     return res.json(orcamento);
   }
+
+  static async rejeitarAddons(req: Request, res: Response) {
+    const orcamento = await OrcamentoModel.rejeitarAddons(req.params.id);
+
+    if (!orcamento) {
+      return res.status(409).json({
+        error: 'Somente orçamentos em ENVIADO podem ter add-ons rejeitados',
+      });
+    }
+
+    return res.json(orcamento);
+  }
+
+  static async update(req: Request, res: Response) {
+    const { id } = req.params;
+    const data = req.body;
+
+    const orcamento = await OrcamentoModel.update(id, data);
+    if (!orcamento) {
+      return res.status(404).json({ error: 'Orçamento não encontrado' });
+    }
+
+    return res.json(orcamento);
+  }
+
 }
 
