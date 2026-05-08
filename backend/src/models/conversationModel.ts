@@ -28,30 +28,31 @@ export class ConversationModel {
   static async findAll(): Promise<any[]> {
     const db = getDb();
     
-    // Join with usuarios (and veiculos if needed) to get client details
+    // Join with usuarios; use subquery for plate to avoid duplicate rows per vehicle
     const res = await db.query(`
       SELECT 
         c.id, 
         c.cliente_id, 
         c.ia_pausada, 
         c.atualizado_em as updated_at,
-        u.nome as clientName,
-        v.placa as plate,
+        u.nome as "clientName",
+        (SELECT v.placa FROM veiculos v WHERE v.cliente_id = u.id ORDER BY v.criado_em DESC LIMIT 1) as plate,
         (
           SELECT conteudo 
           FROM mensagens_chat m2 
-          WHERE m2.conversacao_id = c.id 
-          ORDER BY criado_em DESC 
+          WHERE m2.conversacao_id = c.id
+             OR (m2.conversacao_id IS NULL AND m2.cliente_id = c.cliente_id)
+          ORDER BY m2.criado_em DESC 
           LIMIT 1
-        ) as lastMessage,
+        ) as "lastMessage",
         (
           SELECT COUNT(*)
           FROM mensagens_chat m3
-          WHERE m3.conversacao_id = c.id AND m3.lida = false AND m3.tipo_remetente = 'client'
-        )::int as unreadCount
+          WHERE (m3.conversacao_id = c.id OR (m3.conversacao_id IS NULL AND m3.cliente_id = c.cliente_id))
+            AND m3.lida = false AND m3.tipo_remetente = 'client'
+        )::int as "unreadCount"
       FROM conversacoes_chat c
       JOIN usuarios u ON c.cliente_id = u.id
-      LEFT JOIN veiculos v ON v.cliente_id = u.id
       ORDER BY c.atualizado_em DESC
     `);
     
@@ -60,10 +61,14 @@ export class ConversationModel {
 
   static async getMessages(conversacaoId: string): Promise<any[]> {
     const db = getDb();
+    // Include messages linked by conversacao_id AND orphan messages stored by cliente_id only
     const res = await db.query(
       `SELECT id, conversacao_id, cliente_id, tipo_remetente, conteudo, criado_em, lida
        FROM mensagens_chat
        WHERE conversacao_id = $1
+          OR (conversacao_id IS NULL AND cliente_id = (
+                SELECT cliente_id FROM conversacoes_chat WHERE id = $1
+             ))
        ORDER BY criado_em ASC`,
       [conversacaoId]
     );

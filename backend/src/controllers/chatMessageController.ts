@@ -1,12 +1,14 @@
 import { Request, Response } from 'express';
-import { ChatMessageModel } from '../models/chatMessageModel';
+import { ConversationModel } from '../models/conversationModel';
 
 const TIPOS_PERMITIDOS = ['client', 'employee', 'system', 'bot'];
 
 export class ChatMessageController {
   static async listByCliente(req: Request, res: Response) {
     const { clienteId } = req.params;
-    const mensagens = await ChatMessageModel.findByClienteId(clienteId);
+    // Use the unified conversation as single source of truth for all messages
+    const conversacao = await ConversationModel.findOrCreateByClienteId(clienteId);
+    const mensagens = await ConversationModel.getMessages(conversacao.id);
     return res.json(mensagens);
   }
 
@@ -25,7 +27,14 @@ export class ChatMessageController {
       });
     }
 
-    const mensagem = await ChatMessageModel.createByClienteId(clienteId, tipo, conteudo.trim());
+    // Get or create conversation and link the message to it
+    const conversacao = await ConversationModel.findOrCreateByClienteId(clienteId);
+    const mensagem = await ConversationModel.addMessage(
+      conversacao.id,
+      clienteId,
+      tipo,
+      conteudo.trim()
+    );
     return res.status(201).json(mensagem);
   }
 }
