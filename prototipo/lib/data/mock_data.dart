@@ -1,28 +1,11 @@
 import '../features/cliente/data/models/client_models.dart';
 import '../features/interno/data/models/internal_service.dart';
 import '../features/interno/data/models/internal_budget_item.dart';
+import '../features/shared/models/notification_item.dart';
 
 // Mock data shared by both apps
 
-class NotificationItem {
-  final String id;
-  final String type;
-  final String title;
-  final String body;
-  final String time;
-  final DateTime? timestamp;
-  bool unread;
-
-  NotificationItem({
-    required this.id,
-    required this.type,
-    required this.title,
-    required this.body,
-    required this.time,
-    this.timestamp,
-    required this.unread,
-  });
-}
+export '../features/shared/models/notification_item.dart';
 
 class ChatMessage {
   final int id;
