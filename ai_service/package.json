@@ -4,24 +4,21 @@
   "description": "Serviço de IA para o sistema OmniConnect",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "prisma generate && tsc",
     "start": "node dist/index.js",
-    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
-    "db:migrate": "ts-node src/database/migrations/migrations.ts",
-    "db:seed": "ts-node src/database/seeds/seeds.ts"
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts"
   },
   "dependencies": {
     "@langchain/openai": "^1.4.4",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "axios": "^1.15.2",
-    "chromadb": "^1.9.2",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
     "express": "^4.19.2",
     "express-async-errors": "^3.1.1",
-    "langchain": "^1.3.4",
     "pg": "^8.20.0",
+    "pgvector": "^0.2.1",
     "zod": "^3.22.4"
   },
   "devDependencies": {

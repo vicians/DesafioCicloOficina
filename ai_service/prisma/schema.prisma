@@ -6,33 +6,6 @@ datasource db {
   provider = "postgresql"
 }
 
-model Customer {
-  id             String    @id @default(uuid())
-  whatsappNumber String    @unique
-  name           String?
-  status         String    @default("BOT")
-  createdAt      DateTime  @default(now())
-  chatLogs       ChatLog[]
-}
-
-model ChatLog {
-  id         String    @id @default(uuid())
-  message    String
-  role       String
-  customerId String?
-  timestamp  DateTime  @default(now())
-  customer   Customer? @relation(fields: [customerId], references: [id])
-}
-
-model ServiceOrder {
-  id           String   @id @default(uuid())
-  customerName String
-  vehiclePlate String
-  description  String
-  status       String   @default("OPEN")
-  createdAt    DateTime @default(now())
-}
-
 model agendamentos {
   id                                             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   cliente_id                                     String       @db.Uuid
@@ -227,4 +200,18 @@ model veiculos {
   criado_em           DateTime?      @default(now()) @db.Timestamp(6)
   agendamentos        agendamentos[]
   usuarios            usuarios       @relation(fields: [cliente_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model produto_embeddings {
+  id        String                       @id @db.Uuid
+  content   String
+  embedding Unsupported("vector(1024)")?
+  metadata  Json
+}
+
+model servico_embeddings {
+  id        String                       @id @db.Uuid
+  content   String
+  embedding Unsupported("vector(1024)")?
+  metadata  Json
 }
