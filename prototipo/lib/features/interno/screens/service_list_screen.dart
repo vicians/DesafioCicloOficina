@@ -14,11 +14,13 @@ import 'internal_service_detail_screen.dart';
 class ServiceListScreen extends StatefulWidget {
   final String? initialFilter;
   final InternalFlowRepository repository;
+  final VoidCallback? onOpenDrawer;
 
   const ServiceListScreen({
     super.key,
     required this.repository,
     this.initialFilter,
+    this.onOpenDrawer,
   });
 
   @override
@@ -164,6 +166,7 @@ class _ServiceListScreenState extends State<ServiceListScreen>
               search: _search,
               onSearch: (v) => setState(() => _search = v),
               tabCtrl: _tabCtrl,
+              onOpenDrawer: widget.onOpenDrawer,
             ),
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
@@ -213,11 +216,13 @@ class _ScreenHeader extends StatelessWidget {
   final String search;
   final ValueChanged<String> onSearch;
   final TabController tabCtrl;
+  final VoidCallback? onOpenDrawer;
 
   const _ScreenHeader({
     required this.search,
     required this.onSearch,
     required this.tabCtrl,
+    this.onOpenDrawer,
   });
 
   @override
@@ -237,13 +242,36 @@ class _ScreenHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Serviços da Oficina',
-                  style: GoogleFonts.dmSans(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
+                Row(
+                  children: [
+                    if (onOpenDrawer != null) ...[
+                      Semantics(
+                        label: 'Abrir menu',
+                        button: true,
+                        child: GestureDetector(
+                          onTap: onOpenDrawer,
+                          child: Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.10),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(Icons.menu_rounded, size: 19, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                    ],
+                    Text(
+                      'Serviços da Oficina',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 10),
                 TextField(
@@ -317,39 +345,34 @@ class _FilterBar extends StatelessWidget {
     return Container(
       color: bgPage,
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: filters.map((f) {
-            final isActive = f.$1 == active;
-            return Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: GestureDetector(
-                onTap: () => onSelect(f.$1),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: isActive ? navyDark : cardWhite,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: isActive ? navyDark : borderColor,
-                    ),
-                  ),
-                  child: Text(
-                    f.$2,
-                    style: GoogleFonts.dmSans(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: isActive ? Colors.white : textSecondary,
-                    ),
-                  ),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: filters.map((f) {
+          final isActive = f.$1 == active;
+          return GestureDetector(
+            onTap: () => onSelect(f.$1),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              decoration: BoxDecoration(
+                color: isActive ? navyDark : cardWhite,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isActive ? navyDark : borderColor,
                 ),
               ),
-            );
-          }).toList(),
-        ),
+              child: Text(
+                f.$2,
+                style: GoogleFonts.dmSans(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: isActive ? Colors.white : textSecondary,
+                ),
+              ),
+            ),
+          );
+        }).toList(),
       ),
     );
   }

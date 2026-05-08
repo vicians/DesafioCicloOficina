@@ -110,4 +110,12 @@ export class NotificationModel {
       [usuario_id]
     );
   }
+
+  static async deleteAll(usuario_id: string): Promise<void> {
+    const db = getDb();
+    await db.query(
+      `DELETE FROM notifications WHERE usuario_id = $1`,
+      [usuario_id]
+    );
+  }
 }

@@ -13,6 +13,9 @@ class EmployeeDashboardScreen extends StatefulWidget {
   final InternalFlowRepository repository;
   final bool isManager;
   final VoidCallback onLogout;
+  final VoidCallback? onOpenDrawer;
+  final VoidCallback? onOpenAlerts;
+  final int unreadAlertsCount;
   final VoidCallback? onOpenServices;
   final VoidCallback? onOpenBudgets;
 
@@ -21,6 +24,9 @@ class EmployeeDashboardScreen extends StatefulWidget {
     required this.repository,
     required this.isManager,
     required this.onLogout,
+    this.onOpenDrawer,
+    this.onOpenAlerts,
+    this.unreadAlertsCount = 0,
     this.onOpenServices,
     this.onOpenBudgets,
   });
@@ -148,6 +154,9 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
                     pendingBudgets: pendingBudgets.length,
                     predictedRevenue: predictedRevenue,
                     onLogoutTap: () => setState(() => _showLogoutSheet = true),
+                    onOpenDrawer: widget.onOpenDrawer,
+                    onOpenAlerts: widget.onOpenAlerts,
+                    unreadAlertsCount: widget.unreadAlertsCount,
                   ),
                   Padding(
                     padding: const EdgeInsets.all(16),
@@ -220,6 +229,9 @@ class _DashboardHeader extends StatelessWidget {
   final int pendingBudgets;
   final double predictedRevenue;
   final VoidCallback onLogoutTap;
+  final VoidCallback? onOpenDrawer;
+  final VoidCallback? onOpenAlerts;
+  final int unreadAlertsCount;
 
   const _DashboardHeader({
     required this.isManager,
@@ -228,6 +240,9 @@ class _DashboardHeader extends StatelessWidget {
     required this.pendingBudgets,
     required this.predictedRevenue,
     required this.onLogoutTap,
+    this.onOpenDrawer,
+    this.onOpenAlerts,
+    this.unreadAlertsCount = 0,
   });
 
   @override
@@ -246,44 +261,178 @@ class _DashboardHeader extends StatelessWidget {
         children: [
           Row(
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Dashboard',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
+              // Hamburger (manager only)
+              if (isManager && onOpenDrawer != null) ...[
+                Semantics(
+                  label: 'Abrir menu',
+                  button: true,
+                  child: GestureDetector(
+                    onTap: onOpenDrawer,
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(10),
                       ),
+                      child: const Icon(Icons.menu_rounded,
+                          size: 19, color: Colors.white),
                     ),
-                    Text(
-                      isManager ? 'Gerente' : 'Mecânico',
-                      style: GoogleFonts.dmSans(
-                        fontSize: 12,
-                        color: Colors.white.withValues(alpha: 0.5),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-              GestureDetector(
-                onTap: onLogoutTap,
-                child: Container(
-                  width: 32,
-                  height: 32,
+                const SizedBox(width: 12),
+              ],
+              // Avatar + name/role
+              if (isManager) ...[
+                Container(
+                  width: 42,
+                  height: 42,
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(10),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.20),
+                      width: 1.5,
+                    ),
+                    color: const Color(0xFF1E3A8A),
                   ),
-                  child: const Icon(
-                    Icons.logout_rounded,
-                    color: Colors.white,
-                    size: 18,
+                  child: ClipOval(
+                    child: Transform.scale(
+                      scale: 1.55,
+                      child: Image.asset(
+                        'assets/images/tiao_avatar.png',
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, e, stack) => Center(
+                          child: Text(
+                            'T',
+                            style: GoogleFonts.dmSans(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-              ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Gerente',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white.withValues(alpha: 0.55),
+                        ),
+                      ),
+                      Text(
+                        'Tião (Gerente)',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                // Bell with badge (manager)
+                Semantics(
+                  label: 'Notificações, $unreadAlertsCount não lidas',
+                  button: true,
+                  child: GestureDetector(
+                    onTap: onOpenAlerts,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.notifications_outlined,
+                              size: 19, color: Colors.white),
+                        ),
+                        if (unreadAlertsCount > 0)
+                          Positioned(
+                            top: 5,
+                            right: 5,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: red,
+                                borderRadius: BorderRadius.circular(99),
+                                border: Border.all(
+                                    color: navyDark, width: 1.5),
+                              ),
+                              constraints: const BoxConstraints(
+                                  minWidth: 14, minHeight: 14),
+                              child: Text(
+                                unreadAlertsCount > 9
+                                    ? '9+'
+                                    : '$unreadAlertsCount',
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.dmSans(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ] else ...[
+                // Employee: title + logout button
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Dashboard',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                      Text(
+                        'Mecânico',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 12,
+                          color: Colors.white.withValues(alpha: 0.5),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Semantics(
+                  label: 'Sair',
+                  button: true,
+                  child: GestureDetector(
+                    onTap: onLogoutTap,
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.logout_rounded,
+                          color: Colors.white, size: 18),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 16),
@@ -479,7 +628,7 @@ class _AlertBanner extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      '${budget.client} · ${budget.id}',
+                      '${budget.client} · ${budget.car}',
                       style: GoogleFonts.dmSans(
                         fontSize: 12,
                         color: textPrimary,

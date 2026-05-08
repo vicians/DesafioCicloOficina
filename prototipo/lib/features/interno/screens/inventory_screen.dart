@@ -7,7 +7,8 @@ import '../../../data/mock_data.dart';
 import '../../../services/inventory_service.dart';
 
 class InventoryScreen extends StatefulWidget {
-  const InventoryScreen({super.key});
+  final VoidCallback? onOpenDrawer;
+  const InventoryScreen({super.key, this.onOpenDrawer});
 
   @override
   State<InventoryScreen> createState() => _InventoryScreenState();
@@ -242,6 +243,25 @@ class _InventoryScreenState extends State<InventoryScreen> {
       ),
       child: Row(
         children: [
+          if (widget.onOpenDrawer != null) ...[
+            Semantics(
+              label: 'Abrir menu',
+              button: true,
+              child: GestureDetector(
+                onTap: widget.onOpenDrawer,
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.menu_rounded, size: 19, color: Colors.white),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+          ],
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -430,8 +450,9 @@ class _PartCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isLow = part.qty < part.min;
+    final isWarning = !isLow && part.qty < (part.min * 1.5).ceil();
     final pct = ((part.qty / (part.min * 2)) * 100).clamp(0.0, 100.0);
-    final barColor = isLow ? red : green;
+    final barColor = isLow ? red : (isWarning ? yellow : green);
 
     return GestureDetector(
       onTap: onEdit,

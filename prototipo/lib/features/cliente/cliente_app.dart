@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/colors.dart';
 import '../../core/widgets/quick_action_fab.dart';
-import '../../data/mock_data.dart';
+import '../../data/mock_data.dart' hide NotificationItem;
 import '../../core/config/api_config.dart';
 import '../shared/models/notification_item.dart';
 import '../../services/firebase_messaging_service.dart';
