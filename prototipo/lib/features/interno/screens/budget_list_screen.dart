@@ -8,8 +8,9 @@ import 'budget_detail_screen.dart';
 
 class BudgetListScreen extends StatefulWidget {
   final InternalFlowRepository repository;
+  final VoidCallback? onOpenDrawer;
 
-  const BudgetListScreen({super.key, required this.repository});
+  const BudgetListScreen({super.key, required this.repository, this.onOpenDrawer});
 
   @override
   State<BudgetListScreen> createState() => _BudgetListScreenState();
@@ -139,13 +140,36 @@ class _BudgetListScreenState extends State<BudgetListScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Orçamentos',
-                style: GoogleFonts.dmSans(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
+              Row(
+                children: [
+                  if (widget.onOpenDrawer != null) ...[
+                    Semantics(
+                      label: 'Abrir menu',
+                      button: true,
+                      child: GestureDetector(
+                        onTap: widget.onOpenDrawer,
+                        child: Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.menu_rounded, size: 19, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
+                  Text(
+                    'Orçamentos',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 10),
               TextField(

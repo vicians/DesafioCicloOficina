@@ -7,12 +7,16 @@ class InternalNotificationsScreen extends StatelessWidget {
   final List<NotificationItem> items;
   final ValueChanged<String> onMarkRead;
   final VoidCallback? onMarkAllRead;
+  final VoidCallback? onClearAll;
+  final VoidCallback? onOpenDrawer;
 
   const InternalNotificationsScreen({
     super.key,
     required this.items,
     required this.onMarkRead,
     this.onMarkAllRead,
+    this.onClearAll,
+    this.onOpenDrawer,
   });
 
   @override
@@ -32,26 +36,74 @@ class InternalNotificationsScreen extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Alertas',
-                style: GoogleFonts.dmSans(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-              ),
-              if (onMarkAllRead != null && items.any((n) => n.unread))
-                GestureDetector(
-                  onTap: onMarkAllRead,
-                  child: Text(
-                    'Marcar todas como lidas',
+              Row(
+                children: [
+                  if (onOpenDrawer != null) ...[
+                    Semantics(
+                      label: 'Abrir menu',
+                      button: true,
+                      child: GestureDetector(
+                        onTap: onOpenDrawer,
+                        child: Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.menu_rounded, size: 19, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
+                  Text(
+                    'Alertas',
                     style: GoogleFonts.dmSans(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white.withValues(alpha: 0.75),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
                     ),
                   ),
-                ),
+                ],
+              ),
+              Row(
+                children: [
+                  if (onMarkAllRead != null && items.any((n) => n.unread)) ...[
+                    GestureDetector(
+                      onTap: onMarkAllRead,
+                      child: Text(
+                        'Marcar todas como lidas',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white.withValues(alpha: 0.75),
+                        ),
+                      ),
+                    ),
+                    if (onClearAll != null) const SizedBox(width: 12),
+                  ],
+                  if (onClearAll != null && items.isNotEmpty)
+                    GestureDetector(
+                      onTap: onClearAll,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'Limpar tudo',
+                          style: GoogleFonts.dmSans(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white.withValues(alpha: 0.9),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ],
           ),
         ),

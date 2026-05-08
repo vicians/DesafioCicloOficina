@@ -53,6 +53,17 @@ export class NotificationController {
     return res.status(204).send();
   }
 
+  static async deleteAll(req: Request, res: Response) {
+    const { usuario_id } = req.query;
+
+    if (!usuario_id || typeof usuario_id !== 'string') {
+      return res.status(400).json({ error: 'usuario_id é obrigatório' });
+    }
+
+    await NotificationModel.deleteAll(usuario_id);
+    return res.status(204).send();
+  }
+
   static async devSeedLowStock(req: Request, res: Response) {
     if (process.env.NODE_ENV === 'production') {
       return res.status(403).json({ error: 'Endpoint disponível apenas fora de produção' });

@@ -105,6 +105,25 @@ class NotificationApiRepository implements NotificationRepository {
     }
   }
 
+  @override
+  Future<void> clearAll() async {
+    final usuarioId = await _resolveUsuarioId();
+    if (usuarioId == null) {
+      throw Exception('usuario_id interno não resolvido para clearAll');
+    }
+
+    final response = await _client.delete(
+      Uri.parse('$baseUrl/notifications').replace(
+        queryParameters: {'usuario_id': usuarioId},
+      ),
+      headers: {'Content-Type': 'application/json'},
+    );
+
+    if (response.statusCode != 204 && response.statusCode != 200) {
+      throw Exception('Falha ao limpar notificações: ${response.statusCode}');
+    }
+  }
+
   String _formatTime(String? isoString) {
     if (isoString == null) return '';
     try {

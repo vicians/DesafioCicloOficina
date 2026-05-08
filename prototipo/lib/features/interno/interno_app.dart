@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/colors.dart';
+import '../../core/widgets/side_drawer.dart';
 import 'data/internal_flow_api_repository.dart';
 import 'data/internal_flow_repository.dart';
 import 'data/notification_repository.dart';
@@ -15,10 +16,10 @@ import 'screens/service_list_screen.dart';
 import 'screens/scheduled_services_screen.dart';
 import 'screens/inventory_screen.dart';
 import 'screens/reports_screen.dart';
+import 'screens/settings_screen.dart';
 import 'screens/internal_notifications_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/internal_messages_screen.dart';
-import '../../data/mock_data.dart';
 import '../../core/config/api_config.dart';
 import '../shared/models/notification_item.dart';
 import '../../services/firebase_messaging_service.dart';
@@ -40,12 +41,22 @@ class InternoApp extends StatefulWidget {
 class _InternoAppState extends State<InternoApp> {
   int _currentIndex = 0;
   final _schedulingRefresh = ValueNotifier<int>(0);
+  bool _drawerOpen = false;
+  bool _showLogoutConfirm = false;
+
   late final InternalFlowRepository _flowRepository;
   late final NotificationRepository _notificationRepository;
   late final SchedulingRepository _schedulingRepository;
   late final ReportRepository _reportRepository;
   List<NotificationItem> _internalNotifications = [];
   int _unreadInternalChatsCount = 0;
+
+  // Manager nav indices for 4-tab layout:
+  // 0=Dashboard 1=Agendamentos 2=Orçamentos 3=Serviços
+  // Drawer: Estoque → _drawerNavTo('stock'), Relatórios → _drawerNavTo('reports')
+
+  // For manager, we keep a secondary "virtual" screen index for drawer destinations
+  String? _drawerScreen; // 'stock' | 'reports' | 'settings' | null
 
   @override
   void initState() {
@@ -90,6 +101,13 @@ class _InternoAppState extends State<InternoApp> {
     );
   }
 
+  void _requestLogout() {
+    setState(() {
+      _drawerOpen = false;
+      _showLogoutConfirm = true;
+    });
+  }
+
   int get _unreadInternalNotificationsCount =>
       _internalNotifications.where((n) => n.unread).length;
 
@@ -105,18 +123,86 @@ class _InternoAppState extends State<InternoApp> {
     if (mounted) setState(() => _internalNotifications = List.of(items));
   }
 
+  Future<void> _clearAllNotifications() async {
+    await _notificationRepository.clearAll();
+    if (mounted) setState(() => _internalNotifications = []);
+  }
+
   void _updateUnreadChatsCount(int count) {
     if (!mounted || _unreadInternalChatsCount == count) return;
     setState(() => _unreadInternalChatsCount = count);
   }
 
-  List<Widget> get _screens {
-    if (widget.isManager) {
-      return [
+  // Navigates to a drawer destination (manager only secondary screens)
+  void _navigateDrawer(String screen) {
+    setState(() {
+      _drawerScreen = screen;
+      _drawerOpen = false;
+    });
+  }
+
+  Widget _buildManagerDrawerScreen() {
+    switch (_drawerScreen) {
+      case 'stock':
+        return InventoryScreen(
+          onOpenDrawer: () => setState(() => _drawerOpen = true),
+        );
+      case 'reports':
+        return ReportsScreen(
+          repository: _reportRepository,
+          onOpenDrawer: () => setState(() => _drawerOpen = true),
+        );
+      case 'settings':
+        return SettingsScreen(
+          onOpenDrawer: () => setState(() => _drawerOpen = true),
+        );
+      case 'alerts':
+        return InternalNotificationsScreen(
+          items: _internalNotifications,
+          onMarkRead: _markNotificationAsRead,
+          onMarkAllRead: _markAllNotificationsAsRead,
+          onClearAll: _clearAllNotifications,
+          onOpenDrawer: () => setState(() => _drawerOpen = true),
+        );
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  List<Widget> get _managerScreens => [
         EmployeeDashboardScreen(
           repository: _flowRepository,
           isManager: true,
-          onLogout: _logout,
+          onLogout: _requestLogout,
+          onOpenDrawer: () => setState(() => _drawerOpen = true),
+          onOpenServices: () => setState(() => _currentIndex = 3),
+          onOpenBudgets: () => setState(() => _currentIndex = 2),
+          onOpenAlerts: () => setState(() => _drawerScreen = 'alerts'),
+          unreadAlertsCount: _unreadInternalNotificationsCount,
+        ),
+        ScheduledServicesScreen(
+          repository: _schedulingRepository,
+          budgetRepository: _flowRepository,
+          onOpenDrawer: () => setState(() => _drawerOpen = true),
+          onOpenServices: () => setState(() => _currentIndex = 3),
+          onOpenBudgets: () => setState(() => _currentIndex = 2),
+        ),
+        BudgetListScreen(
+          repository: _flowRepository,
+          onOpenDrawer: () => setState(() => _drawerOpen = true),
+        ),
+        ServiceListScreen(
+          repository: _flowRepository,
+          initialFilter: null,
+          onOpenDrawer: () => setState(() => _drawerOpen = true),
+        ),
+      ];
+
+  List<Widget> get _employeeScreens => [
+        EmployeeDashboardScreen(
+          repository: _flowRepository,
+          isManager: false,
+          onLogout: _requestLogout,
           onOpenServices: () => setState(() => _currentIndex = 3),
           onOpenBudgets: () => setState(() => _currentIndex = 2),
         ),
@@ -129,95 +215,117 @@ class _InternoAppState extends State<InternoApp> {
         ),
         BudgetListScreen(repository: _flowRepository),
         ServiceListScreen(repository: _flowRepository, initialFilter: null),
-        const InventoryScreen(),
-        ReportsScreen(repository: _reportRepository),
+        InternalMessagesScreen(onUnreadCountChanged: _updateUnreadChatsCount),
         InternalNotificationsScreen(
           items: _internalNotifications,
           onMarkRead: _markNotificationAsRead,
           onMarkAllRead: _markAllNotificationsAsRead,
+          onClearAll: _clearAllNotifications,
         ),
       ];
-    }
-    return [
-      EmployeeDashboardScreen(
-        repository: _flowRepository,
-        isManager: false,
-        onLogout: _logout,
-        onOpenServices: () => setState(() => _currentIndex = 3),
-        onOpenBudgets: () => setState(() => _currentIndex = 2),
-      ),
-      ScheduledServicesScreen(
-        repository: _schedulingRepository,
-        budgetRepository: _flowRepository,
-        refreshSignal: _schedulingRefresh,
-        onOpenServices: () => setState(() => _currentIndex = 3),
-        onOpenBudgets: () => setState(() => _currentIndex = 2),
-      ),
-      BudgetListScreen(repository: _flowRepository),
-      ServiceListScreen(repository: _flowRepository, initialFilter: null),
-      InternalMessagesScreen(onUnreadCountChanged: _updateUnreadChatsCount),
-      InternalNotificationsScreen(
-        items: _internalNotifications,
-        onMarkRead: _markNotificationAsRead,
-        onMarkAllRead: _markAllNotificationsAsRead,
-      ),
-    ];
-  }
 
-  List<_NavItem> get _navItems {
-    if (widget.isManager) {
-      return [
+  List<_NavItem> get _managerNavItems => [
+        _NavItem(label: 'Dashboard', icon: Icons.home_outlined),
+        _NavItem(label: 'Agendamentos', icon: Icons.calendar_today_outlined),
+        _NavItem(label: 'Orçamentos', icon: Icons.description_outlined),
+        _NavItem(label: 'Serviços', icon: Icons.build_outlined),
+      ];
+
+  List<_NavItem> get _employeeNavItems => [
         _NavItem(label: 'Dashboard', icon: Icons.dashboard_rounded),
         _NavItem(label: 'Agendamentos', icon: Icons.event_note_rounded),
         _NavItem(label: 'Orçamentos', icon: Icons.receipt_long_rounded),
         _NavItem(label: 'Serviços', icon: Icons.build_rounded),
-        _NavItem(label: 'Estoque', icon: Icons.inventory_2_rounded),
-        _NavItem(label: 'Relatórios', icon: Icons.bar_chart_rounded),
+        _NavItem(
+          label: 'Mensagens',
+          icon: Icons.chat_bubble_rounded,
+          badgeCount: _unreadInternalChatsCount,
+        ),
         _NavItem(
           label: 'Alertas',
           icon: Icons.notifications_rounded,
           badgeCount: _unreadInternalNotificationsCount,
         ),
       ];
-    }
-    return [
-      _NavItem(label: 'Dashboard', icon: Icons.dashboard_rounded),
-      _NavItem(label: 'Agendamentos', icon: Icons.event_note_rounded),
-      _NavItem(label: 'Orçamentos', icon: Icons.receipt_long_rounded),
-      _NavItem(label: 'Serviços', icon: Icons.build_rounded),
-      _NavItem(
-        label: 'Mensagens',
-        icon: Icons.chat_bubble_rounded,
-        badgeCount: _unreadInternalChatsCount,
-      ),
-      _NavItem(
-        label: 'Alertas',
-        icon: Icons.notifications_rounded,
-        badgeCount: _unreadInternalNotificationsCount,
-      ),
-    ];
-  }
 
   @override
   Widget build(BuildContext context) {
+    final isManager = widget.isManager;
+    final screens = isManager ? _managerScreens : _employeeScreens;
+    final navItems = isManager ? _managerNavItems : _employeeNavItems;
+    final showDrawerScreen = isManager && _drawerScreen != null;
+
     return Scaffold(
       backgroundColor: bgPage,
       body: SafeArea(
         bottom: false,
-        child: IndexedStack(index: _currentIndex, children: _screens),
+        child: Stack(
+          children: [
+            // Main content: bottom nav tabs or drawer-destination screens
+            showDrawerScreen
+                ? _buildManagerDrawerScreen()
+                : IndexedStack(index: _currentIndex, children: screens),
+
+            // Side drawer overlay (manager only)
+            if (isManager && _drawerOpen)
+              SideDrawer(
+                onClose: () => setState(() => _drawerOpen = false),
+                onOpenInventory: () => _navigateDrawer('stock'),
+                onOpenReports: () => _navigateDrawer('reports'),
+                onOpenSettings: () => _navigateDrawer('settings'),
+                onLogoutRequest: _requestLogout,
+              ),
+
+            // Logout confirmation sheet overlay
+            if (_showLogoutConfirm) ...[
+              GestureDetector(
+                onTap: () => setState(() => _showLogoutConfirm = false),
+                child: Container(color: Colors.black.withValues(alpha: 0.5)),
+              ),
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: LogoutConfirmSheet(
+                  onConfirm: () {
+                    setState(() => _showLogoutConfirm = false);
+                    _logout();
+                  },
+                  onCancel: () =>
+                      setState(() => _showLogoutConfirm = false),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
-      bottomNavigationBar: _InternoNavBar(
-        items: _navItems,
-        currentIndex: _currentIndex,
-        onTap: (i) {
-          setState(() => _currentIndex = i);
-          // índice 1 = agendamentos; sinaliza reload ao voltar para a aba
-          if (i == 1) _schedulingRefresh.value++;
-        },
+      bottomNavigationBar: AbsorbPointer(
+        absorbing: _drawerOpen,
+        child: showDrawerScreen
+            ? _InternoNavBar(
+                items: navItems,
+                currentIndex: -1,
+                onTap: (i) => setState(() {
+                  _drawerScreen = null;
+                  _currentIndex = i;
+                }),
+              )
+            : _InternoNavBar(
+                items: navItems,
+                currentIndex: _currentIndex,
+                onTap: (i) {
+                  setState(() => _currentIndex = i);
+                  if (i == 1) _schedulingRefresh.value++;
+                },
+              ),
       ),
     );
   }
 }
+
+// ── Placeholder screen for unimplemented manager screens ─────────────────────
+
+// ── Nav item model ─────────────────────────────────────────────────────────────
 
 class _NavItem {
   final String label;
@@ -230,6 +338,8 @@ class _NavItem {
     this.badgeCount = 0,
   });
 }
+
+// ── Bottom navigation bar ─────────────────────────────────────────────────────
 
 class _InternoNavBar extends StatelessWidget {
   final List<_NavItem> items;
@@ -312,9 +422,8 @@ class _InternoNavBar extends StatelessWidget {
                                         ),
                                         decoration: BoxDecoration(
                                           color: red,
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
+                                          borderRadius:
+                                              BorderRadius.circular(10),
                                         ),
                                         constraints: const BoxConstraints(
                                           minWidth: 16,

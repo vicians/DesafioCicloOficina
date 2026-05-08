@@ -25,26 +25,30 @@ class FirebaseMessagingService {
       );
 
   static Future<void> init() async {
-    final messaging = FirebaseMessaging.instance;
+    try {
+      final messaging = FirebaseMessaging.instance;
 
-    await messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
+      await messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
 
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-    await _initLocalNotifications();
+      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+      await _initLocalNotifications();
 
-    await messaging.setForegroundNotificationPresentationOptions(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
+      await messaging.setForegroundNotificationPresentationOptions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
 
-    final token = await messaging.getToken();
-    if (token != null) {
-      debugPrint('[FCM] Token obtido com sucesso');
+      final token = await messaging.getToken();
+      if (token != null) {
+        debugPrint('[FCM] Token obtido com sucesso');
+      }
+    } catch (e) {
+      debugPrint('[FCM] init falhou (emulador/sem Firebase): $e');
     }
   }
 
@@ -176,9 +180,13 @@ class FirebaseMessagingService {
     required String baseUrl,
     required String usuarioId,
   }) async {
-    final token = await FirebaseMessaging.instance.getToken();
-    if (token == null || token.isEmpty) return;
-    await _upsertPushToken(baseUrl: baseUrl, usuarioId: usuarioId, token: token);
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token == null || token.isEmpty) return;
+      await _upsertPushToken(baseUrl: baseUrl, usuarioId: usuarioId, token: token);
+    } catch (e) {
+      debugPrint('[FCM] getToken falhou (emulador/sem Firebase): $e');
+    }
   }
 
   static Future<void> _upsertPushToken({
