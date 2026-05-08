@@ -13,6 +13,10 @@ export class OrcamentoModel {
         v.marca AS veiculo_marca,
         v.modelo AS veiculo_modelo,
         v.placa AS veiculo_placa,
+        a.notas_cliente,
+        (o.status = 'RASCUNHO' AND NOT EXISTS (
+          SELECT 1 FROM itens_orcamento_servico ios WHERE ios.orcamento_id = o.id
+        )) AS is_avaliacao,
         COALESCE(
           (SELECT json_agg(json_build_object('id', ios.id, 'item_id', ios.servico_id, 'nome', cs.nome, 'quantidade', ios.quantidade, 'preco_unitario', ios.preco_unitario, 'preco_total', ios.quantidade * ios.preco_unitario))
            FROM itens_orcamento_servico ios JOIN catalogo_servicos cs ON ios.servico_id = cs.id WHERE ios.orcamento_id = o.id),
@@ -44,6 +48,10 @@ export class OrcamentoModel {
         v.marca AS veiculo_marca,
         v.modelo AS veiculo_modelo,
         v.placa AS veiculo_placa,
+        a.notas_cliente,
+        (o.status = 'RASCUNHO' AND NOT EXISTS (
+          SELECT 1 FROM itens_orcamento_servico ios WHERE ios.orcamento_id = o.id
+        )) AS is_avaliacao,
         COALESCE(
           (SELECT json_agg(json_build_object('id', ios.id, 'item_id', ios.servico_id, 'nome', cs.nome, 'quantidade', ios.quantidade, 'preco_unitario', ios.preco_unitario))
            FROM itens_orcamento_servico ios JOIN catalogo_servicos cs ON ios.servico_id = cs.id WHERE ios.orcamento_id = o.id),

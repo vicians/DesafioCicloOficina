@@ -64,8 +64,8 @@ export class AgendamentoModel {
   /**
    * Verifica sobreposição de horário para o mesmo veículo ou funcionário.
    * Um conflito existe quando o novo intervalo [inicio, fim) se sobrepõe a qualquer
-   * agendamento ativo (PENDENTE ou CONFIRMADO) no mesmo recurso.
-   * Condição de sobreposição: inicio < fim_existente AND fim > inicio_existente
+   * agendamento ativo no mesmo recurso.
+   * Status terminais (CONCLUIDO, CANCELADO) liberam o recurso — todos os outros bloqueiam.
    */
   static async checkConflict(
     veiculo_id: string,
@@ -75,15 +75,15 @@ export class AgendamentoModel {
     excludeId?: string
   ): Promise<{ veiculo: boolean; funcionario: boolean }> {
     const db = getDb();
+    const excludeParam = excludeId ?? '00000000-0000-0000-0000-000000000000';
 
+    // Colunas TIMESTAMPTZ vs parâmetros TIMESTAMPTZ: comparação direta é correta.
     const baseCondition = `
-      status IN ('PENDENTE', 'CONFIRMADO')
+      status NOT IN ('CONCLUIDO', 'CANCELADO')
       AND $1 < fim_estimado_em
       AND $2 > agendado_para
       AND id != $3
     `;
-
-    const excludeParam = excludeId ?? '00000000-0000-0000-0000-000000000000';
 
     const veiculoResult = await db.query(
       `SELECT 1 FROM agendamentos WHERE veiculo_id = $4 AND ${baseCondition} LIMIT 1`,
@@ -118,17 +118,16 @@ export class AgendamentoModel {
     const db = getDb();
     const excludeParam = excludeId ?? '00000000-0000-0000-0000-000000000000';
 
-    const oficinaResult = await db.query(
-      `SELECT quantidade_boxes FROM oficinas LIMIT 1`
-    );
+    const oficinaResult = await db.query(`SELECT quantidade_boxes FROM oficinas LIMIT 1`);
     const quantidadeBoxes: number = (oficinaResult.rowCount ?? 0) > 0
       ? (oficinaResult.rows[0].quantidade_boxes as number)
       : 1;
 
+    // Colunas TIMESTAMPTZ vs parâmetros TIMESTAMPTZ: comparação direta correta.
     const countResult = await db.query(
       `SELECT COUNT(*) AS total
        FROM agendamentos
-       WHERE status IN ('PENDENTE', 'CONFIRMADO')
+       WHERE status NOT IN ('CONCLUIDO', 'CANCELADO')
          AND $1 < fim_estimado_em
          AND $2 > agendado_para
          AND id != $3`,
@@ -139,81 +138,110 @@ export class AgendamentoModel {
     return total >= quantidadeBoxes;
   }
 
+  /**
+   * Constrói os timestamps de início e fim de um slot no fuso da oficina.
+   * Recebe data (YYYY-MM-DD) + hora (int) como intenção local — sem depender
+   * do timezone do dispositivo do cliente.
+   */
+  static async buildSlotTimestamps(
+    dataIso: string,
+    hora: number,
+    duracaoMinutos: number
+  ): Promise<{ inicio: Date; fim: Date }> {
+    const db = getDb();
+    const tzResult = await db.query(`SHOW timezone`);
+    const tz: string = tzResult.rows[0]?.TimeZone ?? 'America/Sao_Paulo';
+
+    const result = await db.query(
+      `SELECT
+         ($1::date + ($2::int || ':00:00')::time) AT TIME ZONE $3 AS inicio,
+         ($1::date + ($2::int || ':00:00')::time) AT TIME ZONE $3
+           + ($4::int * interval '1 minute') AS fim`,
+      [dataIso, hora, tz, duracaoMinutos]
+    );
+
+    return {
+      inicio: result.rows[0].inicio as Date,
+      fim: result.rows[0].fim as Date,
+    };
+  }
+
   static async findUnavailableHoursByDate(dataIso: string): Promise<number[]> {
     const db = getDb();
 
-    const [ano, mes, dia] = dataIso.split('-').map(Number);
-    const inicioDia = new Date(ano, mes - 1, dia, 0, 0, 0, 0);
-    const fimDia = new Date(ano, mes - 1, dia + 1, 0, 0, 0, 0);
+    const tzResult = await db.query(`SHOW timezone`);
+    const tz: string = tzResult.rows[0]?.TimeZone ?? 'America/Sao_Paulo';
 
-    const [agendamentosResult, oficinaResult] = await Promise.all([
-      db.query(
-        `SELECT agendado_para, fim_estimado_em
-         FROM agendamentos
-         WHERE status IN ('PENDENTE', 'CONFIRMADO')
-           AND agendado_para < $2
-           AND fim_estimado_em > $1`,
-        [inicioDia, fimDia]
-      ),
+    const [quantidadeBoxesResult, slotsResult] = await Promise.all([
       db.query(`SELECT quantidade_boxes FROM oficinas LIMIT 1`),
+      db.query(
+        `SELECT EXTRACT(HOUR FROM slot_inicio AT TIME ZONE $2)::int AS hora,
+                COUNT(a.id) AS ocupados
+         FROM generate_series(
+               ($1::date + time '07:00') AT TIME ZONE $2,
+               ($1::date + time '18:00') AT TIME ZONE $2,
+               interval '1 hour'
+             ) AS slot_inicio
+         LEFT JOIN agendamentos a
+           ON a.status NOT IN ('CONCLUIDO', 'CANCELADO')
+          AND a.agendado_para  < slot_inicio + interval '1 hour'
+          AND a.fim_estimado_em > slot_inicio
+         GROUP BY slot_inicio
+         ORDER BY slot_inicio`,
+        [dataIso, tz]
+      ),
     ]);
 
-    const quantidadeBoxes: number = (oficinaResult.rowCount ?? 0) > 0
-      ? (oficinaResult.rows[0].quantidade_boxes as number)
+    const quantidadeBoxes: number = (quantidadeBoxesResult.rowCount ?? 0) > 0
+      ? (quantidadeBoxesResult.rows[0].quantidade_boxes as number)
       : 1;
 
-    const indisponiveis = new Set<number>();
-
-    for (let hora = 7; hora <= 18; hora++) {
-      const slotInicio = new Date(ano, mes - 1, dia, hora, 0, 0, 0);
-      const slotFim = new Date(ano, mes - 1, dia, hora + 1, 0, 0, 0);
-
-      const ocupados = agendamentosResult.rows.filter((row) => {
-        const inicio = new Date(row.agendado_para as string | Date);
-        const fim = new Date(row.fim_estimado_em as string | Date);
-        return inicio < slotFim && fim > slotInicio;
-      }).length;
-
+    const indisponiveis: number[] = [];
+    for (const row of slotsResult.rows) {
+      const hora = row.hora as number;
+      const ocupados = parseInt(row.ocupados as string, 10);
       if (ocupados >= quantidadeBoxes) {
-        indisponiveis.add(hora);
+        indisponiveis.push(hora);
       }
     }
 
-    return Array.from(indisponiveis).sort((a, b) => a - b);
+    return indisponiveis;
   }
 
-  static async create(data: CreateAgendamentoDTO): Promise<AgendamentoDTO> {
+  static async create(data: {
+    cliente_id: string;
+    veiculo_id: string;
+    funcionario_id?: string;
+    inicio: Date;
+    fim: Date;
+    duracao_total_minutos: number;
+    notas_cliente?: string;
+  }): Promise<AgendamentoDTO> {
     const db = getDb();
-    const { cliente_id, veiculo_id, funcionario_id, agendado_para, duracao_total_minutos, notas_cliente } = data;
-
-    // Cálculo do fim estimado (RN023)
-    const agendadoParaDate = new Date(agendado_para);
-    const fimEstimado = new Date(agendadoParaDate.getTime() + duracao_total_minutos * 60000);
+    const { cliente_id, veiculo_id, funcionario_id, inicio, fim, duracao_total_minutos, notas_cliente } = data;
 
     const result = await db.query(
       `INSERT INTO agendamentos (cliente_id, veiculo_id, funcionario_id, agendado_para, duracao_total_minutos, fim_estimado_em, status, notas_cliente)
        VALUES ($1, $2, $3, $4, $5, $6, 'PENDENTE', $7) RETURNING *`,
-      [cliente_id, veiculo_id, funcionario_id, agendado_para, duracao_total_minutos, fimEstimado, notas_cliente]
+      [cliente_id, veiculo_id, funcionario_id, inicio, duracao_total_minutos, fim, notas_cliente]
     );
     return result.rows[0];
   }
 
   static async createWithApprovedInitialBudget(
-    data: CreateAgendamentoDTO
+    data: {
+      cliente_id: string;
+      veiculo_id: string;
+      funcionario_id?: string;
+      inicio: Date;
+      fim: Date;
+      duracao_total_minutos: number;
+      notas_cliente?: string;
+    }
   ): Promise<{ agendamento: AgendamentoDTO; orcamento: OrcamentoDTO }> {
     const db = getDb();
     const client = await db.connect();
-    const {
-      cliente_id,
-      veiculo_id,
-      funcionario_id,
-      agendado_para,
-      duracao_total_minutos,
-      notas_cliente,
-    } = data;
-
-    const agendadoParaDate = new Date(agendado_para);
-    const fimEstimado = new Date(agendadoParaDate.getTime() + duracao_total_minutos * 60000);
+    const { cliente_id, veiculo_id, funcionario_id, inicio, fim, duracao_total_minutos, notas_cliente } = data;
 
     try {
       await client.query('BEGIN');
@@ -222,15 +250,7 @@ export class AgendamentoModel {
         `INSERT INTO agendamentos (cliente_id, veiculo_id, funcionario_id, agendado_para, duracao_total_minutos, fim_estimado_em, status, notas_cliente)
          VALUES ($1, $2, $3, $4, $5, $6, 'PENDENTE', $7)
          RETURNING *`,
-        [
-          cliente_id,
-          veiculo_id,
-          funcionario_id,
-          agendado_para,
-          duracao_total_minutos,
-          fimEstimado,
-          notas_cliente,
-        ]
+        [cliente_id, veiculo_id, funcionario_id, inicio, duracao_total_minutos, fim, notas_cliente]
       );
 
       const agendamento = agendamentoResult.rows[0] as AgendamentoDTO;
