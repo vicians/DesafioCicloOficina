@@ -82,7 +82,7 @@ export const handleMessage = async (req: Request, res: Response) => {
       console.log(`[Webhook] Cliente não encontrado para o número ${customerNumber}. Criando novo cliente on-the-fly...`);
       const defaultPassword = await PasswordUtils.hash('whatsapp_client_123');
       cliente = await UsuarioModel.create({
-        tipo_id: 3, // 3 é CLIENTE
+        tipo_id: 2,
         cpf_cnpj: customerNumber,
         nome: 'New Client (WhatsApp)',
         telefone: customerNumber,
