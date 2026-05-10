@@ -215,3 +215,12 @@ model servico_embeddings {
   embedding Unsupported("vector(1024)")?
   metadata  Json
 }
+
+model document_embeddings {
+  id        String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  content   String
+  embedding Unsupported("vector(1024)")?
+  metadata  Json
+  source    String                       @db.VarChar
+  category  String                       @db.VarChar // 'policy' | 'manual'
+}
