@@ -20,6 +20,8 @@ import 'screens/settings_screen.dart';
 import 'screens/internal_notifications_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/internal_messages_screen.dart';
+import 'screens/catalog_services_screen.dart';
+import 'screens/users_screen.dart';
 import '../../core/config/api_config.dart';
 import '../shared/models/notification_item.dart';
 import '../../services/firebase_messaging_service.dart';
@@ -147,6 +149,14 @@ class _InternoAppState extends State<InternoApp> {
         return InventoryScreen(
           onOpenDrawer: () => setState(() => _drawerOpen = true),
         );
+      case 'catalog':
+        return CatalogServicesScreen(
+          onOpenDrawer: () => setState(() => _drawerOpen = true),
+        );
+      case 'users':
+        return UsersScreen(
+          onOpenDrawer: () => setState(() => _drawerOpen = true),
+        );
       case 'reports':
         return ReportsScreen(
           repository: _reportRepository,
@@ -271,6 +281,8 @@ class _InternoAppState extends State<InternoApp> {
               SideDrawer(
                 onClose: () => setState(() => _drawerOpen = false),
                 onOpenInventory: () => _navigateDrawer('stock'),
+                onOpenCatalog: () => _navigateDrawer('catalog'),
+                onOpenUsers: () => _navigateDrawer('users'),
                 onOpenReports: () => _navigateDrawer('reports'),
                 onOpenSettings: () => _navigateDrawer('settings'),
                 onLogoutRequest: _requestLogout,
