@@ -40,7 +40,6 @@ export class AgendamentoController {
     // O backend constrói o TIMESTAMPTZ no fuso da oficina — sem depender do timezone do dispositivo.
     const data: string = req.body.data;
     const hora: number = Number(req.body.hora);
-    const duracao = Number(req.body.duracao_total_minutos);
 
     if (!cliente_id || !veiculo_id || !data || !Number.isFinite(hora)) {
       return res.status(400).json({ error: 'cliente_id, veiculo_id, data e hora são obrigatórios' });
@@ -62,10 +61,6 @@ export class AgendamentoController {
       return res.status(400).json({ error: 'hora deve ser um inteiro entre 7 e 18' });
     }
 
-    if (!Number.isFinite(duracao) || duracao <= 0) {
-      return res.status(400).json({ error: 'duracao_total_minutos deve ser maior que zero' });
-    }
-
     // Regra de negócio: pelo menos um serviço ou flag de avaliação é obrigatório
     const temServicos = Array.isArray(servicos) && servicos.length > 0;
     const ehAvaliacao = para_avaliacao === true;
@@ -73,6 +68,24 @@ export class AgendamentoController {
       return res.status(400).json({
         error: 'Selecione pelo menos um serviço ou solicite avaliação do veículo.',
       });
+    }
+
+    // Calcula duração real somando duracao_minutos de cada serviço selecionado.
+    // Ignora o valor enviado pelo frontend (duracao_total_minutos) por segurança (RN de Duração).
+    let duracao = 60; // Duração padrão para avaliação
+    if (temServicos) {
+      const { CatalogoServicoModel } = await import('../models/catalogoServicoModel');
+      let soma = 0;
+      for (const item of servicos!) {
+        if (!item.servico_id) continue;
+        const catalogo = await CatalogoServicoModel.findById(item.servico_id);
+        if (catalogo) {
+          // A quantidade não multiplica a duração se assumirmos que a duração é por item, mas vamos deixar como 1 se não enviado.
+          // Aqui a regra de negócio dita soma das durações dos serviços no catálogo
+          soma += (catalogo.duracao_minutos ?? 60);
+        }
+      }
+      if (soma > 0) duracao = soma;
     }
 
     const clienteVeiculoOk = await AgendamentoModel.clienteVeiculoRelacionados(cliente_id, veiculo_id);
