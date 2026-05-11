@@ -19,9 +19,8 @@ void main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
     await FirebaseMessagingService.init();
-  } catch (_) {
-    // Firebase indisponível neste ambiente (ex.: web sem projeto configurado).
-    // O app roda normalmente com dados mock.
+  } catch (e) {
+    debugPrint('Erro Firebase: $e');
   }
 
   runApp(const TiaoApp());
