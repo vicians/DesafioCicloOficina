@@ -535,7 +535,8 @@ class _ScheduledCard extends StatelessWidget {
         '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
     final hour = '${dt.hour.toString().padLeft(2, '0')}h';
 
-    final canAct = item.status.toLowerCase() == 'confirmado';
+    final canAct = item.status.toLowerCase() == 'confirmado' || 
+                   item.status.toLowerCase() == 'pendente';
 
     return AppCard(
       child: Column(
