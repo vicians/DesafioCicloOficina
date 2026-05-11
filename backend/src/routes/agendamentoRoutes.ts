@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { AgendamentoController } from '../controllers/agendamentoController';
+import { authMiddleware } from '../middlewares/AuthMiddleware';
 
 const agendamentoRouter = Router();
 
@@ -25,6 +26,8 @@ agendamentoRouter.get('/', AgendamentoController.index);
  *       - Agendamentos
  *     summary: Cria um novo agendamento
  *     description: Registra uma nova solicitação de serviço (RN011, RN012, RN022)
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -51,7 +54,7 @@ agendamentoRouter.get('/', AgendamentoController.index);
  *       201:
  *         description: Criado
  */
-agendamentoRouter.post('/', AgendamentoController.store);
+agendamentoRouter.post('/', authMiddleware, AgendamentoController.store);
 
 /**
  * @openapi

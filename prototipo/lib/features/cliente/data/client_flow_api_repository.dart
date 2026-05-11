@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../../../core/config/auth_manager.dart';
 import 'client_flow_repository.dart';
 import 'models/client_models.dart';
 
@@ -219,7 +220,15 @@ class ClientFlowApiRepository extends ClientFlowRepository {
 
   @override
   Future<String> fetchProfileName() async {
-    final response = await http.get(Uri.parse('$baseUrl/usuarios/$clientId'));
+    final headers = <String, String>{};
+    if (AuthManager.token != null) {
+      headers['Authorization'] = 'Bearer ${AuthManager.token}';
+    }
+
+    final response = await http.get(
+      Uri.parse('$baseUrl/usuarios/$clientId'),
+      headers: headers.isNotEmpty ? headers : null,
+    );
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       return data['nome'] ?? 'Cliente';

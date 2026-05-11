@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { UsuarioController } from '../controllers/usuarioController';
+import { authMiddleware } from '../middlewares/AuthMiddleware';
 
 const usuarioRouter = Router();
 
@@ -64,6 +65,8 @@ usuarioRouter.post('/', UsuarioController.store);
  *     tags:
  *       - Usuários
  *     summary: Busca um usuário por ID
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -75,7 +78,7 @@ usuarioRouter.post('/', UsuarioController.store);
  *       200:
  *         description: Sucesso
  */
-usuarioRouter.get('/:id', UsuarioController.show);
+usuarioRouter.get('/:id', authMiddleware, UsuarioController.show);
 
 /**
  * @openapi

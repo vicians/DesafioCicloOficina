@@ -46,6 +46,14 @@ export class AgendamentoController {
       return res.status(400).json({ error: 'cliente_id, veiculo_id, data e hora são obrigatórios' });
     }
 
+    if (!req.user) {
+      return res.status(401).json({ error: 'Não autorizado' });
+    }
+
+    if (req.user.role === '2' && req.user.id !== cliente_id) {
+      return res.status(403).json({ error: 'Você não tem permissão para agendar para este cliente' });
+    }
+
     if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) {
       return res.status(400).json({ error: 'data deve estar no formato YYYY-MM-DD' });
     }
