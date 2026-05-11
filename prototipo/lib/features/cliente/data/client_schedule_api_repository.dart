@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import '../../../core/config/auth_manager.dart';
 
 class ClientCatalogoItem {
   final String id;
@@ -62,10 +63,24 @@ class ClientScheduleApiRepository {
     http.Client? client,
   }) : _client = client ?? http.Client();
 
+  Map<String, String> get _headers {
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+    };
+    if (AuthManager.token != null) {
+      headers['Authorization'] = 'Bearer ${AuthManager.token}';
+    }
+    return headers;
+  }
+
   Future<ClientScheduleContext> resolveContext() async {
     if (_resolvedContext != null) return _resolvedContext!;
 
-    final usuarioResponse = await _client.get(Uri.parse('$baseUrl/usuarios/$clientId'));
+    final usuarioResponse = await _client.get(
+      Uri.parse('$baseUrl/usuarios/$clientId'),
+      headers: _headers,
+    );
+    
     if (usuarioResponse.statusCode != 200) {
       throw Exception('Falha ao carregar dados do seu perfil.');
     }
@@ -79,6 +94,7 @@ class ClientScheduleApiRepository {
 
     final veiculoResponse = await _client.get(
       Uri.parse('$baseUrl/veiculos/cliente/$clientId'),
+      headers: _headers,
     );
 
     if (veiculoResponse.statusCode != 200) {
@@ -126,8 +142,13 @@ class ClientScheduleApiRepository {
   }
 
   Future<List<ClientCatalogoItem>> fetchCatalogoServicos() async {
-    final response = await _client.get(Uri.parse('$baseUrl/servicos'));
-    if (response.statusCode != 200) return [];
+    final response = await _client.get(
+      Uri.parse('$baseUrl/servicos'),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Falha ao carregar serviços disponíveis.');
+    }
 
     final List data = jsonDecode(response.body) as List;
     return data
@@ -147,7 +168,7 @@ class ClientScheduleApiRepository {
       queryParameters: {'data': data},
     );
 
-    final response = await _client.get(uri);
+    final response = await _client.get(uri, headers: _headers);
     if (response.statusCode != 200) {
       throw Exception('Falha ao consultar horários disponíveis.');
     }
@@ -185,7 +206,7 @@ class ClientScheduleApiRepository {
 
     final response = await _client.post(
       Uri.parse('$baseUrl/agendamentos'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers,
       body: jsonEncode({
         'cliente_id': context.clienteId,
         'veiculo_id': veiculoId,
@@ -220,3 +241,4 @@ class ClientScheduleApiRepository {
     return '$year-$month-$day';
   }
 }
+

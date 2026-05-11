@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../../../core/config/auth_manager.dart';
 import 'client_flow_repository.dart';
 import 'models/client_models.dart';
 
@@ -127,7 +128,7 @@ class ClientFlowApiRepository extends ClientFlowRepository {
       history.sort((a, b) => b.date.compareTo(a.date));
       return history;
     } catch (e) {
-      return [];
+      throw Exception('Falha ao carregar histórico de serviços.');
     }
   }
 
@@ -219,7 +220,15 @@ class ClientFlowApiRepository extends ClientFlowRepository {
 
   @override
   Future<String> fetchProfileName() async {
-    final response = await http.get(Uri.parse('$baseUrl/usuarios/$clientId'));
+    final headers = <String, String>{};
+    if (AuthManager.token != null) {
+      headers['Authorization'] = 'Bearer ${AuthManager.token}';
+    }
+
+    final response = await http.get(
+      Uri.parse('$baseUrl/usuarios/$clientId'),
+      headers: headers.isNotEmpty ? headers : null,
+    );
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       return data['nome'] ?? 'Cliente';
@@ -230,11 +239,11 @@ class ClientFlowApiRepository extends ClientFlowRepository {
   @override
   Future<List<Map<String, dynamic>>> fetchVehicles() async {
     final response = await http.get(Uri.parse('$baseUrl/veiculos/cliente/$clientId'));
-    if (response.statusCode == 200) {
-      final List data = jsonDecode(response.body);
-      return data.cast<Map<String, dynamic>>();
+    if (response.statusCode != 200) {
+      throw Exception('Falha ao carregar veículos.');
     }
-    return [];
+    final List data = jsonDecode(response.body);
+    return data.cast<Map<String, dynamic>>();
   }
 
   ServiceModel _mapExecToServiceModel(Map<String, dynamic> exec) {
