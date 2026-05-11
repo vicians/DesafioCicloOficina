@@ -146,7 +146,9 @@ class ClientScheduleApiRepository {
       Uri.parse('$baseUrl/servicos'),
       headers: _headers,
     );
-    if (response.statusCode != 200) return [];
+    if (response.statusCode != 200) {
+      throw Exception('Falha ao carregar serviços disponíveis.');
+    }
 
     final List data = jsonDecode(response.body) as List;
     return data
