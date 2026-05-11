@@ -7,6 +7,8 @@ import '../theme/colors.dart';
 class SideDrawer extends StatefulWidget {
   final VoidCallback onClose;
   final VoidCallback onOpenInventory;
+  final VoidCallback onOpenCatalog;
+  final VoidCallback onOpenUsers;
   final VoidCallback onOpenReports;
   final VoidCallback onOpenSettings;
   final VoidCallback onLogoutRequest;
@@ -15,6 +17,8 @@ class SideDrawer extends StatefulWidget {
     super.key,
     required this.onClose,
     required this.onOpenInventory,
+    required this.onOpenCatalog,
+    required this.onOpenUsers,
     required this.onOpenReports,
     required this.onOpenSettings,
     required this.onLogoutRequest,
@@ -82,6 +86,14 @@ class _SideDrawerState extends State<SideDrawer>
                   await _ctrl.reverse();
                   widget.onOpenInventory();
                 },
+                onOpenCatalog: () async {
+                  await _ctrl.reverse();
+                  widget.onOpenCatalog();
+                },
+                onOpenUsers: () async {
+                  await _ctrl.reverse();
+                  widget.onOpenUsers();
+                },
                 onOpenReports: () async {
                   await _ctrl.reverse();
                   widget.onOpenReports();
@@ -108,6 +120,8 @@ class _SideDrawerState extends State<SideDrawer>
 class _DrawerPanel extends StatelessWidget {
   final Future<void> Function() onClose;
   final Future<void> Function() onOpenInventory;
+  final Future<void> Function() onOpenCatalog;
+  final Future<void> Function() onOpenUsers;
   final Future<void> Function() onOpenReports;
   final Future<void> Function() onOpenSettings;
   final Future<void> Function() onLogoutRequest;
@@ -115,6 +129,8 @@ class _DrawerPanel extends StatelessWidget {
   const _DrawerPanel({
     required this.onClose,
     required this.onOpenInventory,
+    required this.onOpenCatalog,
+    required this.onOpenUsers,
     required this.onOpenReports,
     required this.onOpenSettings,
     required this.onLogoutRequest,
@@ -265,6 +281,18 @@ class _DrawerPanel extends StatelessWidget {
                     label: 'Estoque',
                     description: 'Peças e suprimentos',
                     onTap: onOpenInventory,
+                  ),
+                  _DrawerItem(
+                    icon: Icons.handyman_outlined,
+                    label: 'Catálogo de Serviços',
+                    description: 'Mão de obra e preços',
+                    onTap: onOpenCatalog,
+                  ),
+                  _DrawerItem(
+                    icon: Icons.people_outline_rounded,
+                    label: 'Usuários',
+                    description: 'Equipe e clientes',
+                    onTap: onOpenUsers,
                   ),
                   _DrawerItem(
                     icon: Icons.bar_chart_rounded,
