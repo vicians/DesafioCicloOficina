@@ -43,6 +43,8 @@ class InternalBudgetItem {
   final String createdAt; // dd/MM/yyyy
   final String status; // pendente | cancelado
   final String? canceledAt;
+  final bool isAvaliacao;
+  final String? notasCliente;
 
   const InternalBudgetItem({
     required this.id,
@@ -55,6 +57,8 @@ class InternalBudgetItem {
     required this.createdAt,
     this.status = 'pendente',
     this.canceledAt,
+    this.isAvaliacao = false,
+    this.notasCliente,
   });
 
   double get value =>
@@ -77,6 +81,8 @@ class InternalBudgetItem {
     String? status,
     String? canceledAt,
     bool clearCanceledAt = false,
+    bool? isAvaliacao,
+    String? notasCliente,
   }) {
     return InternalBudgetItem(
       id: id ?? this.id,
@@ -89,11 +95,12 @@ class InternalBudgetItem {
       createdAt: createdAt ?? this.createdAt,
       status: status ?? this.status,
       canceledAt: clearCanceledAt ? null : (canceledAt ?? this.canceledAt),
+      isAvaliacao: isAvaliacao ?? this.isAvaliacao,
+      notasCliente: notasCliente ?? this.notasCliente,
     );
   }
 
   factory InternalBudgetItem.fromJson(Map<String, dynamic> json) {
-    // A data no backend vem em ISO (criado_em). O frontend espera dd/MM/yyyy.
     String rawDate = json['criado_em'] as String? ?? '';
     String formattedDate = '';
     if (rawDate.length >= 10) {
@@ -113,6 +120,8 @@ class InternalBudgetItem {
       status: (json['status'] as String? ?? 'RASCUNHO').toLowerCase(),
       createdAt: formattedDate,
       observation: json['observacoes'] as String? ?? '',
+      isAvaliacao: json['is_avaliacao'] == true,
+      notasCliente: json['notas_cliente'] as String?,
       services: servicesJson
               ?.map((e) => BudgetLineItem.fromJson(e as Map<String, dynamic>))
               .toList() ??

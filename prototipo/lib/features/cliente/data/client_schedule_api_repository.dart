@@ -6,11 +6,13 @@ class ClientCatalogoItem {
   final String id;
   final String nome;
   final double preco;
+  final int duracaoMinutos;
 
   const ClientCatalogoItem({
     required this.id,
     required this.nome,
     required this.preco,
+    this.duracaoMinutos = 60,
   });
 }
 
@@ -134,6 +136,7 @@ class ClientScheduleApiRepository {
               id: e['id'] as String,
               nome: e['nome'] as String,
               preco: ((e['preco'] as num?) ?? 0) / 100.0,
+              duracaoMinutos: ((e['duracao_minutos'] as num?) ?? 60).toInt(),
             ))
         .toList();
   }
@@ -163,9 +166,22 @@ class ClientScheduleApiRepository {
     required int hour,
     String? notes,
     List<ClientScheduleSelected> servicos = const [],
+    List<ClientCatalogoItem> catalogoCompleto = const [],
+    bool paraAvaliacao = false,
   }) async {
     final context = await resolveContext();
-    final agendadoParaUtc = DateTime(date.year, date.month, date.day, hour).toUtc();
+
+    // Calcula duração real somando duracao_minutos de cada serviço selecionado.
+    // Para avaliação usa mínimo de 60 min (slot padrão).
+    int duracaoMinutos = 60;
+    if (servicos.isNotEmpty && catalogoCompleto.isNotEmpty) {
+      final catalogoMap = {for (final c in catalogoCompleto) c.id: c};
+      final soma = servicos.fold<int>(
+        0,
+        (acc, s) => acc + (catalogoMap[s.servicoId]?.duracaoMinutos ?? 60),
+      );
+      if (soma > 0) duracaoMinutos = soma;
+    }
 
     final response = await _client.post(
       Uri.parse('$baseUrl/agendamentos'),
@@ -173,9 +189,13 @@ class ClientScheduleApiRepository {
       body: jsonEncode({
         'cliente_id': context.clienteId,
         'veiculo_id': veiculoId,
-        'agendado_para': agendadoParaUtc.toIso8601String(),
-        'duracao_total_minutos': 60,
+        'data': '${date.year.toString().padLeft(4, '0')}-'
+            '${date.month.toString().padLeft(2, '0')}-'
+            '${date.day.toString().padLeft(2, '0')}',
+        'hora': hour,
+        'duracao_total_minutos': duracaoMinutos,
         'notas_cliente': (notes == null || notes.trim().isEmpty) ? null : notes.trim(),
+        if (paraAvaliacao) 'para_avaliacao': true,
         if (servicos.isNotEmpty)
           'servicos': servicos
               .map((s) => {'servico_id': s.servicoId, 'quantidade': s.quantidade})
@@ -185,13 +205,12 @@ class ClientScheduleApiRepository {
 
     if (response.statusCode == 201) return;
 
+    String errorMessage = 'Falha ao confirmar agendamento.';
     try {
       final body = jsonDecode(response.body) as Map<String, dynamic>;
-      final message = body['error'] as String?;
-      throw Exception(message ?? 'Falha ao confirmar agendamento.');
-    } catch (_) {
-      throw Exception('Falha ao confirmar agendamento.');
-    }
+      errorMessage = (body['error'] as String?) ?? errorMessage;
+    } catch (_) {}
+    throw Exception(errorMessage);
   }
 
   String _formatDate(DateTime date) {
