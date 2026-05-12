@@ -52,7 +52,7 @@ class AuthRepository {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final token = data['token'];
-        AuthManager.token = token;
+        await AuthManager.saveToken(token);
         return AuthUser.fromJson(data['usuario'], token);
       } else {
         final data = jsonDecode(response.body);

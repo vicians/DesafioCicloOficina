@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../../../core/api/api_helper.dart';
 import '../../../core/config/auth_manager.dart';
 import 'client_flow_repository.dart';
 import 'models/client_models.dart';
@@ -17,7 +18,7 @@ class ClientFlowApiRepository extends ClientFlowRepository {
   Future<ServiceModel?> fetchCurrentService() async {
     try {
       // 1. Priorizar orçamento pendente (add-ons ENVIADO)
-      final orcResp = await http.get(Uri.parse('$baseUrl/orcamentos'));
+      final orcResp = await ApiHelper.get('$baseUrl/orcamentos');
       if (orcResp.statusCode == 200) {
         final List orcs = jsonDecode(orcResp.body);
         final pendingOrc = orcs.firstWhere(
@@ -33,7 +34,7 @@ class ClientFlowApiRepository extends ClientFlowRepository {
       }
 
       // 2. Sem orçamento pendente, buscar execução ativa
-      final execResp = await http.get(Uri.parse('$baseUrl/execucoes'));
+      final execResp = await ApiHelper.get('$baseUrl/execucoes');
       if (execResp.statusCode == 200) {
         final List execs = jsonDecode(execResp.body);
         final activeExec = execs.firstWhere(
@@ -50,9 +51,7 @@ class ClientFlowApiRepository extends ClientFlowRepository {
       }
 
       // 3. Sem execução e sem orçamento pendente, buscar agendamento ativo
-      final agendResp = await http.get(
-        Uri.parse('$baseUrl/agendamentos/cliente/$clientId'),
-      );
+      final agendResp = await ApiHelper.get('$baseUrl/agendamentos/cliente/$clientId');
       if (agendResp.statusCode == 200) {
         final List agends = jsonDecode(agendResp.body);
         final activeAgend = agends.firstWhere(
@@ -77,7 +76,7 @@ class ClientFlowApiRepository extends ClientFlowRepository {
     try {
       final history = <HistoryItem>[];
 
-      final execResp = await http.get(Uri.parse('$baseUrl/execucoes'));
+      final execResp = await ApiHelper.get('$baseUrl/execucoes');
       if (execResp.statusCode == 200) {
         final List execs = jsonDecode(execResp.body);
         final filtered = execs
@@ -104,7 +103,7 @@ class ClientFlowApiRepository extends ClientFlowRepository {
                 )));
       }
 
-      final agendResp = await http.get(Uri.parse('$baseUrl/agendamentos/cliente/$clientId'));
+      final agendResp = await ApiHelper.get('$baseUrl/agendamentos/cliente/$clientId');
       if (agendResp.statusCode == 200) {
         final List agends = jsonDecode(agendResp.body);
         final canceled = agends
@@ -134,17 +133,16 @@ class ClientFlowApiRepository extends ClientFlowRepository {
 
   @override
   Future<void> createVeiculo(String marca, String modelo, String placa, int ano) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/veiculos'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
+    final response = await ApiHelper.post(
+      '$baseUrl/veiculos',
+      {
         'cliente_id': clientId,
         'marca': marca,
         'modelo': modelo,
         'placa': placa,
         'ano': ano,
         'quilometragem_atual': 0,
-      }),
+      },
     );
     if (response.statusCode != 201) {
       throw Exception('Falha ao cadastrar veículo: ${response.body}');
@@ -155,10 +153,9 @@ class ClientFlowApiRepository extends ClientFlowRepository {
   @override
   Future<void> approveBudget(String budgetId) async {
     final validUntil = DateTime.now().add(const Duration(days: 7)).toIso8601String();
-    final resp = await http.patch(
-      Uri.parse('$baseUrl/orcamentos/$budgetId/aprovar'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'valido_ate': validUntil}),
+    final resp = await ApiHelper.patch(
+      '$baseUrl/orcamentos/$budgetId/aprovar',
+      {'valido_ate': validUntil},
     );
     if (resp.statusCode != 200) {
       throw Exception('Falha ao aprovar orçamento: ${resp.body}');
@@ -168,9 +165,7 @@ class ClientFlowApiRepository extends ClientFlowRepository {
 
   @override
   Future<void> refuseBudget(String budgetId) async {
-    final resp = await http.patch(
-      Uri.parse('$baseUrl/orcamentos/$budgetId/rejeitar'),
-    );
+    final resp = await ApiHelper.patch('$baseUrl/orcamentos/$budgetId/rejeitar');
     if (resp.statusCode != 200) {
       throw Exception('Falha ao rejeitar orçamento: ${resp.body}');
     }
@@ -179,9 +174,7 @@ class ClientFlowApiRepository extends ClientFlowRepository {
 
   @override
   Future<void> rejectBudgetChange(String budgetId) async {
-    final resp = await http.patch(
-      Uri.parse('$baseUrl/orcamentos/$budgetId/rejeitar-addons'),
-    );
+    final resp = await ApiHelper.patch('$baseUrl/orcamentos/$budgetId/rejeitar-addons');
     if (resp.statusCode != 200) {
       throw Exception('Falha ao rejeitar alteração: ${resp.body}');
     }
@@ -191,25 +184,23 @@ class ClientFlowApiRepository extends ClientFlowRepository {
   @override
   Future<void> cancelService({required String budgetId, String? agendamentoId}) async {
     if (agendamentoId != null && agendamentoId.isNotEmpty) {
-      final cancelAgendamentoResp = await http.patch(
-        Uri.parse('$baseUrl/agendamentos/$agendamentoId/status'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'status': 'CANCELADO'}),
+      final cancelAgendamentoResp = await ApiHelper.patch(
+        '$baseUrl/agendamentos/$agendamentoId/status',
+        {'status': 'CANCELADO'},
       );
       if (cancelAgendamentoResp.statusCode != 200) {
         throw Exception('Falha ao cancelar agendamento: ${cancelAgendamentoResp.body}');
       }
     }
 
-    final execResp = await http.get(Uri.parse('$baseUrl/execucoes/orcamento/$budgetId'));
+    final execResp = await ApiHelper.get('$baseUrl/execucoes/orcamento/$budgetId');
     if (execResp.statusCode == 200) {
       final exec = jsonDecode(execResp.body) as Map<String, dynamic>;
       final execId = exec['id'] as String?;
       if (execId != null && execId.isNotEmpty) {
-        await http.patch(
-          Uri.parse('$baseUrl/execucoes/$execId/status'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'status': 'CANCELADO'}),
+        await ApiHelper.patch(
+          '$baseUrl/execucoes/$execId/status',
+          {'status': 'CANCELADO'},
         );
       }
     }
@@ -220,15 +211,7 @@ class ClientFlowApiRepository extends ClientFlowRepository {
 
   @override
   Future<String> fetchProfileName() async {
-    final headers = <String, String>{};
-    if (AuthManager.token != null) {
-      headers['Authorization'] = 'Bearer ${AuthManager.token}';
-    }
-
-    final response = await http.get(
-      Uri.parse('$baseUrl/usuarios/$clientId'),
-      headers: headers.isNotEmpty ? headers : null,
-    );
+    final response = await ApiHelper.get('$baseUrl/usuarios/$clientId');
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       return data['nome'] ?? 'Cliente';
@@ -238,7 +221,7 @@ class ClientFlowApiRepository extends ClientFlowRepository {
 
   @override
   Future<List<Map<String, dynamic>>> fetchVehicles() async {
-    final response = await http.get(Uri.parse('$baseUrl/veiculos/cliente/$clientId'));
+    final response = await ApiHelper.get('$baseUrl/veiculos/cliente/$clientId');
     if (response.statusCode != 200) {
       throw Exception('Falha ao carregar veículos.');
     }

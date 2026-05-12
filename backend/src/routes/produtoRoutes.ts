@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { ProdutoController } from '../controllers/produtoController';
+import { authMiddleware } from '../middlewares/AuthMiddleware';
+import { authorizeRole } from '../middlewares/RoleMiddleware';
 
 const produtoRouter = Router();
 
@@ -15,7 +17,7 @@ const produtoRouter = Router();
  *       200:
  *         description: Sucesso
  */
-produtoRouter.get('/', ProdutoController.index);
+produtoRouter.get('/', authMiddleware, ProdutoController.index);
 
 /**
  * @openapi
@@ -48,7 +50,7 @@ produtoRouter.get('/', ProdutoController.index);
  *       201:
  *         description: Criado
  */
-produtoRouter.post('/', ProdutoController.store);
+produtoRouter.post('/', authMiddleware, authorizeRole(['1', '3']), ProdutoController.store);
 
 /**
  * @openapi
@@ -67,7 +69,7 @@ produtoRouter.post('/', ProdutoController.store);
  *       200:
  *         description: Sucesso
  */
-produtoRouter.get('/search/:nome', ProdutoController.search);
+produtoRouter.get('/search/:nome', authMiddleware, ProdutoController.search);
 
 /**
  * @openapi
@@ -87,7 +89,7 @@ produtoRouter.get('/search/:nome', ProdutoController.search);
  *       200:
  *         description: Sucesso
  */
-produtoRouter.get('/:id', ProdutoController.show);
+produtoRouter.get('/:id', authMiddleware, ProdutoController.show);
 
 /**
  * @openapi
@@ -124,7 +126,7 @@ produtoRouter.get('/:id', ProdutoController.show);
  *       200:
  *         description: Atualizado com sucesso
  */
-produtoRouter.patch('/:id', ProdutoController.update);
+produtoRouter.patch('/:id', authMiddleware, authorizeRole(['1', '3']), ProdutoController.update);
 
 /**
  * @openapi
@@ -144,6 +146,6 @@ produtoRouter.patch('/:id', ProdutoController.update);
  *       204:
  *         description: Removido com sucesso
  */
-produtoRouter.delete('/:id', ProdutoController.destroy);
+produtoRouter.delete('/:id', authMiddleware, authorizeRole(['1']), ProdutoController.destroy);
 
 export { produtoRouter };
