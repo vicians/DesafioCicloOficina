@@ -149,6 +149,20 @@ export const runMigrations = async () => {
     )
   `);
 
+  // Migração para bases existentes sem a coluna observacoes
+  await db.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'orcamentos'
+          AND column_name = 'observacoes'
+      ) THEN
+        ALTER TABLE orcamentos ADD COLUMN observacoes TEXT;
+      END IF;
+    END $$;
+  `);
+
   // ========================================
   // TABELA: itens_orcamento_servico
   // ========================================

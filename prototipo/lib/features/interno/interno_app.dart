@@ -43,6 +43,7 @@ class InternoApp extends StatefulWidget {
 class _InternoAppState extends State<InternoApp> {
   int _currentIndex = 0;
   final _schedulingRefresh = ValueNotifier<int>(0);
+  final _servicesRefresh = ValueNotifier<int>(0);
   bool _drawerOpen = false;
   bool _showLogoutConfirm = false;
 
@@ -92,6 +93,7 @@ class _InternoAppState extends State<InternoApp> {
   void dispose() {
     _flowRepository.dispose();
     _schedulingRefresh.dispose();
+    _servicesRefresh.dispose();
     super.dispose();
   }
 
@@ -182,6 +184,8 @@ class _InternoAppState extends State<InternoApp> {
   List<Widget> get _managerScreens => [
         EmployeeDashboardScreen(
           repository: _flowRepository,
+          schedulingRepository: _schedulingRepository,
+          refreshSignal: _schedulingRefresh,
           isManager: true,
           onLogout: _requestLogout,
           onOpenDrawer: () => setState(() => _drawerOpen = true),
@@ -204,6 +208,7 @@ class _InternoAppState extends State<InternoApp> {
         ServiceListScreen(
           repository: _flowRepository,
           initialFilter: null,
+          refreshSignal: _servicesRefresh,
           onOpenDrawer: () => setState(() => _drawerOpen = true),
         ),
       ];
@@ -211,6 +216,8 @@ class _InternoAppState extends State<InternoApp> {
   List<Widget> get _employeeScreens => [
         EmployeeDashboardScreen(
           repository: _flowRepository,
+          schedulingRepository: _schedulingRepository,
+          refreshSignal: _schedulingRefresh,
           isManager: false,
           onLogout: _requestLogout,
           onOpenServices: () => setState(() => _currentIndex = 3),
@@ -220,11 +227,12 @@ class _InternoAppState extends State<InternoApp> {
           repository: _schedulingRepository,
           budgetRepository: _flowRepository,
           refreshSignal: _schedulingRefresh,
+          servicesRefreshSignal: _servicesRefresh,
           onOpenServices: () => setState(() => _currentIndex = 3),
           onOpenBudgets: () => setState(() => _currentIndex = 2),
         ),
         BudgetListScreen(repository: _flowRepository),
-        ServiceListScreen(repository: _flowRepository, initialFilter: null),
+        ServiceListScreen(repository: _flowRepository, initialFilter: null, refreshSignal: _servicesRefresh),
         InternalMessagesScreen(onUnreadCountChanged: _updateUnreadChatsCount),
         InternalNotificationsScreen(
           items: _internalNotifications,

@@ -14,12 +14,14 @@ import 'internal_service_detail_screen.dart';
 class ServiceListScreen extends StatefulWidget {
   final String? initialFilter;
   final InternalFlowRepository repository;
+  final ValueNotifier<int>? refreshSignal;
   final VoidCallback? onOpenDrawer;
 
   const ServiceListScreen({
     super.key,
     required this.repository,
     this.initialFilter,
+    this.refreshSignal,
     this.onOpenDrawer,
   });
 
@@ -58,11 +60,13 @@ class _ServiceListScreenState extends State<ServiceListScreen>
     _tabCtrl.addListener(() => setState(() {}));
     _servicesFuture = widget.repository.fetchServicos();
     widget.repository.addListener(_reloadServices);
+    widget.refreshSignal?.addListener(_reloadServices);
   }
 
   @override
   void dispose() {
     widget.repository.removeListener(_reloadServices);
+    widget.refreshSignal?.removeListener(_reloadServices);
     _tabCtrl.dispose();
     super.dispose();
   }
