@@ -55,8 +55,6 @@ flutter_launcher_icons:
   android: true
   ios: true
   image_path: "assets/images/icone.jpeg"
-  adaptive_icon_background: "#0B1A30"
-  adaptive_icon_foreground: "assets/images/icone.jpeg"
   min_sdk_android: 21
 
 # For information on the generic Dart part of this file, see the
