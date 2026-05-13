@@ -237,7 +237,7 @@ export class OrcamentoModel {
       `UPDATE orcamentos
        SET status = 'ENVIADO', valido_ate = NOW() + INTERVAL '7 days'
        WHERE id = $1
-         AND status = 'APROVADO'
+         AND status IN ('APROVADO', 'RASCUNHO')
        RETURNING *`,
       [id]
     );

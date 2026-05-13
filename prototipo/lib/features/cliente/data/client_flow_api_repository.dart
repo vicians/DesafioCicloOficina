@@ -24,7 +24,7 @@ class ClientFlowApiRepository extends ClientFlowRepository {
         final pendingOrc = orcs.firstWhere(
           (o) =>
               o['cliente_id'] == clientId &&
-              (o['status'] as String).toLowerCase() == 'enviado',
+              ['enviado', 'rascunho', 'orcamento'].contains((o['status'] as String).toLowerCase()),
           orElse: () => null,
         );
 

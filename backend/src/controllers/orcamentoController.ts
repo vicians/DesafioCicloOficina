@@ -183,7 +183,7 @@ export class OrcamentoController {
 
     if (!orcamento) {
       return res.status(409).json({
-        error: 'Somente orçamentos aprovados podem ser reenviados como add-ons para o cliente',
+        error: 'Somente orçamentos rascunho ou já aprovados podem ser enviados para o cliente',
       });
     }
 
