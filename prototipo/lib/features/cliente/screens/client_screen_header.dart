@@ -6,6 +6,7 @@ import '../../../core/theme/colors.dart';
 class ClientScreenHeader extends StatelessWidget {
   final String title;
   final String? subtitle;
+  final Widget? leading;
   final Widget? trailing;
   final Widget? child;
   final EdgeInsetsGeometry? contentPadding;
@@ -15,6 +16,7 @@ class ClientScreenHeader extends StatelessWidget {
     super.key,
     required this.title,
     this.subtitle,
+    this.leading,
     this.trailing,
     this.child,
     this.contentPadding,
@@ -45,6 +47,10 @@ class ClientScreenHeader extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
+                  if (leading != null) ...[
+                    leading!,
+                    const SizedBox(width: 8),
+                  ],
                   Expanded(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
