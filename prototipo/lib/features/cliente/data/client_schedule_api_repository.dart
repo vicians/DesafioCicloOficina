@@ -1,16 +1,19 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import '../../../core/config/auth_manager.dart';
 
 class ClientCatalogoItem {
   final String id;
   final String nome;
   final double preco;
+  final int duracaoMinutos;
 
   const ClientCatalogoItem({
     required this.id,
     required this.nome,
     required this.preco,
+    this.duracaoMinutos = 60,
   });
 }
 
@@ -60,10 +63,24 @@ class ClientScheduleApiRepository {
     http.Client? client,
   }) : _client = client ?? http.Client();
 
+  Map<String, String> get _headers {
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+    };
+    if (AuthManager.token != null) {
+      headers['Authorization'] = 'Bearer ${AuthManager.token}';
+    }
+    return headers;
+  }
+
   Future<ClientScheduleContext> resolveContext() async {
     if (_resolvedContext != null) return _resolvedContext!;
 
-    final usuarioResponse = await _client.get(Uri.parse('$baseUrl/usuarios/$clientId'));
+    final usuarioResponse = await _client.get(
+      Uri.parse('$baseUrl/usuarios/$clientId'),
+      headers: _headers,
+    );
+    
     if (usuarioResponse.statusCode != 200) {
       throw Exception('Falha ao carregar dados do seu perfil.');
     }
@@ -77,6 +94,7 @@ class ClientScheduleApiRepository {
 
     final veiculoResponse = await _client.get(
       Uri.parse('$baseUrl/veiculos/cliente/$clientId'),
+      headers: _headers,
     );
 
     if (veiculoResponse.statusCode != 200) {
@@ -124,8 +142,13 @@ class ClientScheduleApiRepository {
   }
 
   Future<List<ClientCatalogoItem>> fetchCatalogoServicos() async {
-    final response = await _client.get(Uri.parse('$baseUrl/servicos'));
-    if (response.statusCode != 200) return [];
+    final response = await _client.get(
+      Uri.parse('$baseUrl/servicos'),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Falha ao carregar serviços disponíveis.');
+    }
 
     final List data = jsonDecode(response.body) as List;
     return data
@@ -134,6 +157,7 @@ class ClientScheduleApiRepository {
               id: e['id'] as String,
               nome: e['nome'] as String,
               preco: ((e['preco'] as num?) ?? 0) / 100.0,
+              duracaoMinutos: ((e['duracao_minutos'] as num?) ?? 60).toInt(),
             ))
         .toList();
   }
@@ -144,7 +168,7 @@ class ClientScheduleApiRepository {
       queryParameters: {'data': data},
     );
 
-    final response = await _client.get(uri);
+    final response = await _client.get(uri, headers: _headers);
     if (response.statusCode != 200) {
       throw Exception('Falha ao consultar horários disponíveis.');
     }
@@ -163,19 +187,36 @@ class ClientScheduleApiRepository {
     required int hour,
     String? notes,
     List<ClientScheduleSelected> servicos = const [],
+    List<ClientCatalogoItem> catalogoCompleto = const [],
+    bool paraAvaliacao = false,
   }) async {
     final context = await resolveContext();
-    final agendadoParaUtc = DateTime(date.year, date.month, date.day, hour).toUtc();
+
+    // Calcula duração real somando duracao_minutos de cada serviço selecionado.
+    // Para avaliação usa mínimo de 60 min (slot padrão).
+    int duracaoMinutos = 60;
+    if (servicos.isNotEmpty && catalogoCompleto.isNotEmpty) {
+      final catalogoMap = {for (final c in catalogoCompleto) c.id: c};
+      final soma = servicos.fold<int>(
+        0,
+        (acc, s) => acc + (catalogoMap[s.servicoId]?.duracaoMinutos ?? 60),
+      );
+      if (soma > 0) duracaoMinutos = soma;
+    }
 
     final response = await _client.post(
       Uri.parse('$baseUrl/agendamentos'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _headers,
       body: jsonEncode({
         'cliente_id': context.clienteId,
         'veiculo_id': veiculoId,
-        'agendado_para': agendadoParaUtc.toIso8601String(),
-        'duracao_total_minutos': 60,
+        'data': '${date.year.toString().padLeft(4, '0')}-'
+            '${date.month.toString().padLeft(2, '0')}-'
+            '${date.day.toString().padLeft(2, '0')}',
+        'hora': hour,
+        'duracao_total_minutos': duracaoMinutos,
         'notas_cliente': (notes == null || notes.trim().isEmpty) ? null : notes.trim(),
+        if (paraAvaliacao) 'para_avaliacao': true,
         if (servicos.isNotEmpty)
           'servicos': servicos
               .map((s) => {'servico_id': s.servicoId, 'quantidade': s.quantidade})
@@ -185,13 +226,12 @@ class ClientScheduleApiRepository {
 
     if (response.statusCode == 201) return;
 
+    String errorMessage = 'Falha ao confirmar agendamento.';
     try {
       final body = jsonDecode(response.body) as Map<String, dynamic>;
-      final message = body['error'] as String?;
-      throw Exception(message ?? 'Falha ao confirmar agendamento.');
-    } catch (_) {
-      throw Exception('Falha ao confirmar agendamento.');
-    }
+      errorMessage = (body['error'] as String?) ?? errorMessage;
+    } catch (_) {}
+    throw Exception(errorMessage);
   }
 
   String _formatDate(DateTime date) {
@@ -201,3 +241,4 @@ class ClientScheduleApiRepository {
     return '$year-$month-$day';
   }
 }
+

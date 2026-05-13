@@ -131,13 +131,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     onPressed: _loading ? null : _login,
                   ),
                   const SizedBox(height: 24),
-                  Center(
-                    child: Text(
-                      'Senha: 1234 para todos\ncliente@tiao.com → App do Cliente\nfuncionario@tiao.com → Funcionário\ngerente@tiao.com → Gerente',
-                      style: GoogleFonts.dmSans(fontSize: 11, color: textMuted),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -176,7 +169,13 @@ class _Header extends StatelessWidget {
               color: Colors.white.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(20),
             ),
-            child: const Icon(Icons.build_rounded, color: Colors.white, size: 32),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: Image.asset(
+                'assets/images/icone.jpeg',
+                fit: BoxFit.cover,
+              ),
+            ),
           ),
           const SizedBox(height: 16),
           Text(

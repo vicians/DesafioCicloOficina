@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { UsuarioController } from '../controllers/usuarioController';
+import { authMiddleware } from '../middlewares/AuthMiddleware';
+import { authorizeRole } from '../middlewares/RoleMiddleware';
 
 const usuarioRouter = Router();
 
@@ -15,7 +17,7 @@ const usuarioRouter = Router();
  *       200:
  *         description: Sucesso
  */
-usuarioRouter.get('/', UsuarioController.index);
+usuarioRouter.get('/', authMiddleware, authorizeRole(['1']), UsuarioController.index);
 
 /**
  * @openapi
@@ -55,7 +57,7 @@ usuarioRouter.get('/', UsuarioController.index);
  *       201:
  *         description: Criado
  */
-usuarioRouter.post('/', UsuarioController.store);
+usuarioRouter.post('/', authMiddleware, authorizeRole(['1']), UsuarioController.store);
 
 /**
  * @openapi
@@ -64,6 +66,8 @@ usuarioRouter.post('/', UsuarioController.store);
  *     tags:
  *       - Usuários
  *     summary: Busca um usuário por ID
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -75,7 +79,7 @@ usuarioRouter.post('/', UsuarioController.store);
  *       200:
  *         description: Sucesso
  */
-usuarioRouter.get('/:id', UsuarioController.show);
+usuarioRouter.get('/:id', authMiddleware, UsuarioController.show);
 
 /**
  * @openapi
@@ -110,6 +114,6 @@ usuarioRouter.get('/:id', UsuarioController.show);
  *       200:
  *         description: Atualizado com sucesso
  */
-usuarioRouter.put('/:id', UsuarioController.update);
+usuarioRouter.put('/:id', authMiddleware, UsuarioController.update);
 
 export { usuarioRouter };

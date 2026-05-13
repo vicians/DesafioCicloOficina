@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { OrcamentoController } from '../controllers/orcamentoController';
+import { authMiddleware } from '../middlewares/AuthMiddleware';
+import { authorizeRole } from '../middlewares/RoleMiddleware';
 
 const orcamentoRouter = Router();
 
@@ -15,7 +17,7 @@ const orcamentoRouter = Router();
  *       200:
  *         description: Sucesso
  */
-orcamentoRouter.get('/', OrcamentoController.index);
+orcamentoRouter.get('/', authMiddleware, authorizeRole(['1', '3']), OrcamentoController.index);
 
 /**
  * @openapi
@@ -50,7 +52,7 @@ orcamentoRouter.get('/', OrcamentoController.index);
  *       201:
  *         description: Criado
  */
-orcamentoRouter.post('/', OrcamentoController.store);
+orcamentoRouter.post('/', authMiddleware, OrcamentoController.store);
 
 /**
  * @openapi
@@ -70,7 +72,7 @@ orcamentoRouter.post('/', OrcamentoController.store);
  *       200:
  *         description: Sucesso
  */
-orcamentoRouter.get('/:id', OrcamentoController.show);
+orcamentoRouter.get('/:id', authMiddleware, OrcamentoController.show);
 
 /**
  * @openapi
@@ -109,7 +111,7 @@ orcamentoRouter.get('/:id', OrcamentoController.show);
  *       201:
  *         description: Serviço adicionado
  */
-orcamentoRouter.post('/:id/servicos', OrcamentoController.addServico);
+orcamentoRouter.post('/:id/servicos', authMiddleware, authorizeRole(['1', '3']), OrcamentoController.addServico);
 
 /**
  * @openapi
@@ -135,7 +137,7 @@ orcamentoRouter.post('/:id/servicos', OrcamentoController.addServico);
  *       204:
  *         description: Removido
  */
-orcamentoRouter.delete('/:id/servicos/:item_id', OrcamentoController.removeServico);
+orcamentoRouter.delete('/:id/servicos/:item_id', authMiddleware, authorizeRole(['1', '3']), OrcamentoController.removeServico);
 
 /**
  * @openapi
@@ -174,7 +176,7 @@ orcamentoRouter.delete('/:id/servicos/:item_id', OrcamentoController.removeServi
  *       201:
  *         description: Produto adicionado
  */
-orcamentoRouter.post('/:id/produtos', OrcamentoController.addProduto);
+orcamentoRouter.post('/:id/produtos', authMiddleware, authorizeRole(['1', '3']), OrcamentoController.addProduto);
 
 /**
  * @openapi
@@ -200,7 +202,7 @@ orcamentoRouter.post('/:id/produtos', OrcamentoController.addProduto);
  *       204:
  *         description: Removido
  */
-orcamentoRouter.delete('/:id/produtos/:item_id', OrcamentoController.removeProduto);
+orcamentoRouter.delete('/:id/produtos/:item_id', authMiddleware, authorizeRole(['1', '3']), OrcamentoController.removeProduto);
 
 /**
  * @openapi
@@ -221,7 +223,7 @@ orcamentoRouter.delete('/:id/produtos/:item_id', OrcamentoController.removeProdu
  *       200:
  *         description: Rejeitado com sucesso
  */
-orcamentoRouter.patch('/:id/rejeitar', OrcamentoController.rejeitar);
+orcamentoRouter.patch('/:id/rejeitar', authMiddleware, OrcamentoController.rejeitar);
 
 /**
  * @openapi
@@ -242,7 +244,7 @@ orcamentoRouter.patch('/:id/rejeitar', OrcamentoController.rejeitar);
  *       200:
  *         description: Aprovado com sucesso
  */
-orcamentoRouter.patch('/:id/aprovar', OrcamentoController.aprovar);
+orcamentoRouter.patch('/:id/aprovar', authMiddleware, OrcamentoController.aprovar);
 
 /**
  * @openapi
@@ -263,8 +265,8 @@ orcamentoRouter.patch('/:id/aprovar', OrcamentoController.aprovar);
  *       200:
  *         description: Add-ons enviados com sucesso
  */
-orcamentoRouter.patch('/:id/enviar-addons', OrcamentoController.enviarAddons);
-orcamentoRouter.patch('/:id/rejeitar-addons', OrcamentoController.rejeitarAddons);
+orcamentoRouter.patch('/:id/enviar-addons', authMiddleware, authorizeRole(['1', '3']), OrcamentoController.enviarAddons);
+orcamentoRouter.patch('/:id/rejeitar-addons', authMiddleware, OrcamentoController.rejeitarAddons);
 
 /**
  * @openapi
@@ -298,6 +300,6 @@ orcamentoRouter.patch('/:id/rejeitar-addons', OrcamentoController.rejeitarAddons
  *       200:
  *         description: Atualizado com sucesso
  */
-orcamentoRouter.patch('/:id', OrcamentoController.update);
+orcamentoRouter.patch('/:id', authMiddleware, authorizeRole(['1', '3']), OrcamentoController.update);
 
 export { orcamentoRouter };

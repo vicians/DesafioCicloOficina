@@ -205,21 +205,21 @@ model veiculos {
 model produto_embeddings {
   id        String                       @id @db.Uuid
   content   String
-  embedding Unsupported("vector(1024)")?
+  embedding Unsupported("vector(2048)")?
   metadata  Json
 }
 
 model servico_embeddings {
   id        String                       @id @db.Uuid
   content   String
-  embedding Unsupported("vector(1024)")?
+  embedding Unsupported("vector(2048)")?
   metadata  Json
 }
 
 model document_embeddings {
   id        String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   content   String
-  embedding Unsupported("vector(1024)")?
+  embedding Unsupported("vector(2048)")?
   metadata  Json
   source    String                       @db.VarChar
   category  String                       @db.VarChar // 'policy' | 'manual'

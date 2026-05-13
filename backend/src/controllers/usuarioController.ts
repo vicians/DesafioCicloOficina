@@ -24,6 +24,15 @@ export class UsuarioController {
   }
 
   static async show(req: Request, res: Response) {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Não autorizado' });
+    }
+
+    // Apenas admins, gerentes, mecânicos ou o próprio dono do perfil podem acessar
+    if (req.user.role === '2' && req.user.id !== req.params.id) {
+      return res.status(403).json({ error: 'Acesso negado' });
+    }
+
     const usuario = await UsuarioModel.findById(req.params.id);
     if (!usuario) return res.status(404).json({ error: 'Usuário não encontrado' });
     return res.json(usuario);

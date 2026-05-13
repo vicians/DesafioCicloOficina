@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { ReportController } from '../controllers/reportController';
+import { authMiddleware } from '../middlewares/AuthMiddleware';
+import { authorizeRole } from '../middlewares/RoleMiddleware';
 
 const reportRouter = Router();
 
@@ -23,6 +25,6 @@ const reportRouter = Router();
  *       200:
  *         description: Sucesso
  */
-reportRouter.get('/internal', ReportController.internal);
+reportRouter.get('/internal', authMiddleware, authorizeRole(['1']), ReportController.internal);
 
 export { reportRouter };

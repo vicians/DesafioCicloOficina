@@ -106,13 +106,30 @@ export const runMigrations = async () => {
       cliente_id UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
       veiculo_id UUID NOT NULL REFERENCES veiculos(id) ON DELETE CASCADE,
       funcionario_id UUID REFERENCES usuarios(id),
-      agendado_para TIMESTAMP NOT NULL,
+      agendado_para TIMESTAMPTZ NOT NULL,
       duracao_total_minutos INTEGER NOT NULL,
-      fim_estimado_em TIMESTAMP NOT NULL,
+      fim_estimado_em TIMESTAMPTZ NOT NULL,
       status VARCHAR NOT NULL,
       notas_cliente TEXT,
       criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
+  `);
+
+  // Migração para bases existentes com colunas TIMESTAMP sem fuso
+  await db.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'agendamentos'
+          AND column_name = 'agendado_para'
+          AND data_type = 'timestamp without time zone'
+      ) THEN
+        ALTER TABLE agendamentos
+          ALTER COLUMN agendado_para   TYPE TIMESTAMPTZ USING agendado_para   AT TIME ZONE 'UTC',
+          ALTER COLUMN fim_estimado_em TYPE TIMESTAMPTZ USING fim_estimado_em AT TIME ZONE 'UTC';
+      END IF;
+    END $$;
   `);
 
   // ========================================
@@ -130,6 +147,20 @@ export const runMigrations = async () => {
       valido_ate TIMESTAMP,
       criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
+  `);
+
+  // Migração para bases existentes sem a coluna observacoes
+  await db.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'orcamentos'
+          AND column_name = 'observacoes'
+      ) THEN
+        ALTER TABLE orcamentos ADD COLUMN observacoes TEXT;
+      END IF;
+    END $$;
   `);
 
   // ========================================

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../../../core/api/api_helper.dart';
 import 'internal_flow_repository.dart';
 import 'models/catalogo_servico_item.dart';
 import 'models/internal_budget_item.dart';
@@ -9,7 +10,6 @@ import 'models/internal_chat_models.dart';
 
 class InternalFlowApiRepository extends InternalFlowRepository {
   final String baseUrl;
-  final http.Client _client;
 
   String _readErrorMessage(http.Response response, String fallback) {
     try {
@@ -43,12 +43,11 @@ class InternalFlowApiRepository extends InternalFlowRepository {
     }
   }
 
-  InternalFlowApiRepository({required this.baseUrl, http.Client? client})
-    : _client = client ?? http.Client();
+  InternalFlowApiRepository({required this.baseUrl});
 
   @override
   Future<List<CatalogoServicoItem>> fetchCatalogoServicos() async {
-    final response = await _client.get(Uri.parse('$baseUrl/servicos'));
+    final response = await ApiHelper.get('$baseUrl/servicos');
     if (response.statusCode == 200) {
       final List data = jsonDecode(response.body);
       return data.map((e) => CatalogoServicoItem.fromJson(e)).toList();
@@ -58,7 +57,7 @@ class InternalFlowApiRepository extends InternalFlowRepository {
 
   @override
   Future<List<ProdutoItem>> fetchProdutos() async {
-    final response = await _client.get(Uri.parse('$baseUrl/produtos'));
+    final response = await ApiHelper.get('$baseUrl/produtos');
     if (response.statusCode == 200) {
       final List data = jsonDecode(response.body);
       return data.map((e) => ProdutoItem.fromJson(e)).toList();
@@ -68,7 +67,7 @@ class InternalFlowApiRepository extends InternalFlowRepository {
 
   @override
   Future<List<InternalBudgetItem>> fetchOrcamentos() async {
-    final response = await _client.get(Uri.parse('$baseUrl/orcamentos'));
+    final response = await ApiHelper.get('$baseUrl/orcamentos');
     if (response.statusCode == 200) {
       final List data = jsonDecode(response.body);
       return data.map((e) => InternalBudgetItem.fromJson(e)).toList();
@@ -80,7 +79,7 @@ class InternalFlowApiRepository extends InternalFlowRepository {
   Future<List<InternalService>> fetchServicos() async {
     try {
       final List<InternalService> allServices = [];
-      final response = await _client.get(Uri.parse('$baseUrl/execucoes'));
+      final response = await ApiHelper.get('$baseUrl/execucoes');
 
       if (response.statusCode == 200) {
         final List data = jsonDecode(response.body);
@@ -98,9 +97,7 @@ class InternalFlowApiRepository extends InternalFlowRepository {
 
   @override
   Future<InternalService?> fetchServicoById(String serviceId) async {
-    final response = await _client.get(
-      Uri.parse('$baseUrl/execucoes/$serviceId'),
-    );
+    final response = await ApiHelper.get('$baseUrl/execucoes/$serviceId');
     if (response.statusCode == 200) {
       return InternalService.fromJson(jsonDecode(response.body));
     }
@@ -109,9 +106,7 @@ class InternalFlowApiRepository extends InternalFlowRepository {
 
   @override
   Future<InternalBudgetItem> updateOrcamento(InternalBudgetItem budget) async {
-    final detailResponse = await _client.get(
-      Uri.parse('$baseUrl/orcamentos/${budget.id}'),
-    );
+    final detailResponse = await ApiHelper.get('$baseUrl/orcamentos/${budget.id}');
     if (detailResponse.statusCode != 200) {
       throw Exception('Falha ao carregar orçamento para atualização');
     }
@@ -127,9 +122,7 @@ class InternalFlowApiRepository extends InternalFlowRepository {
       if (lineId == null || lineId.isEmpty) {
         continue;
       }
-      final response = await _client.delete(
-        Uri.parse('$baseUrl/orcamentos/${budget.id}/servicos/$lineId'),
-      );
+      final response = await ApiHelper.delete('$baseUrl/orcamentos/${budget.id}/servicos/$lineId');
       if (response.statusCode != 200 && response.statusCode != 204) {
         throw Exception('Falha ao remover item de serviço do orçamento');
       }
@@ -140,22 +133,19 @@ class InternalFlowApiRepository extends InternalFlowRepository {
       if (lineId == null || lineId.isEmpty) {
         continue;
       }
-      final response = await _client.delete(
-        Uri.parse('$baseUrl/orcamentos/${budget.id}/produtos/$lineId'),
-      );
+      final response = await ApiHelper.delete('$baseUrl/orcamentos/${budget.id}/produtos/$lineId');
       if (response.statusCode != 200 && response.statusCode != 204) {
         throw Exception('Falha ao remover item de produto do orçamento');
       }
     }
 
     for (final item in budget.services) {
-      final response = await _client.post(
-        Uri.parse('$baseUrl/orcamentos/${budget.id}/servicos'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
+      final response = await ApiHelper.post(
+        '$baseUrl/orcamentos/${budget.id}/servicos',
+        {
           'servico_id': item.id,
           'quantidade': item.qty,
-        }),
+        },
       );
       if (response.statusCode != 200 && response.statusCode != 201) {
         throw Exception(
@@ -165,13 +155,12 @@ class InternalFlowApiRepository extends InternalFlowRepository {
     }
 
     for (final item in budget.products) {
-      final response = await _client.post(
-        Uri.parse('$baseUrl/orcamentos/${budget.id}/produtos'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
+      final response = await ApiHelper.post(
+        '$baseUrl/orcamentos/${budget.id}/produtos',
+        {
           'produto_id': item.id,
           'quantidade': item.qty,
-        }),
+        },
       );
       if (response.statusCode != 200 && response.statusCode != 201) {
         throw Exception(
@@ -181,21 +170,18 @@ class InternalFlowApiRepository extends InternalFlowRepository {
     }
 
     // Atualiza observações por último para não interromper a persistência de itens/valor.
-    final updateBaseRes = await _client.patch(
-      Uri.parse('$baseUrl/orcamentos/${budget.id}'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
+    final updateBaseRes = await ApiHelper.patch(
+      '$baseUrl/orcamentos/${budget.id}',
+      {
         'observacoes': budget.observation,
-      }),
+      },
     );
     if (updateBaseRes.statusCode != 200) {
       // Não bloqueia o fluxo principal de persistência de itens.
       // A observação pode ser ajustada em tentativa posterior.
     }
 
-    final refreshedResponse = await _client.get(
-      Uri.parse('$baseUrl/orcamentos/${budget.id}'),
-    );
+    final refreshedResponse = await ApiHelper.get('$baseUrl/orcamentos/${budget.id}');
     if (refreshedResponse.statusCode != 200) {
       throw Exception('Falha ao recarregar orçamento atualizado');
     }
@@ -208,9 +194,7 @@ class InternalFlowApiRepository extends InternalFlowRepository {
 
   @override
   Future<InternalBudgetItem> sendAddons(String budgetId) async {
-    final response = await _client.patch(
-      Uri.parse('$baseUrl/orcamentos/$budgetId/enviar-addons'),
-    );
+    final response = await ApiHelper.patch('$baseUrl/orcamentos/$budgetId/enviar-addons');
 
     if (response.statusCode != 200) {
       throw Exception(_readErrorMessage(response, 'Falha ao enviar alterações para aprovação do cliente'));
@@ -224,9 +208,7 @@ class InternalFlowApiRepository extends InternalFlowRepository {
 
   @override
   Future<InternalBudgetItem> cancelOrcamento(String budgetId) async {
-    final response = await _client.patch(
-      Uri.parse('$baseUrl/orcamentos/$budgetId/rejeitar'),
-    );
+    final response = await ApiHelper.patch('$baseUrl/orcamentos/$budgetId/rejeitar');
     if (response.statusCode != 200) {
       throw Exception('Falha ao cancelar orçamento');
     }
@@ -239,16 +221,13 @@ class InternalFlowApiRepository extends InternalFlowRepository {
 
   @override
   Future<InternalService> approveOrcamento(String budgetId) async {
-    // O endpoint /aprovar agora cria a execucao automaticamente e retorna
-    // os dados detalhados da OS gerada (com todos os joins necessários).
-    final response = await _client.patch(
-      Uri.parse('$baseUrl/orcamentos/$budgetId/aprovar'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
+    final response = await ApiHelper.patch(
+      '$baseUrl/orcamentos/$budgetId/aprovar',
+      {
         'valido_ate': DateTime.now()
             .add(const Duration(days: 7))
             .toIso8601String(),
-      }),
+      },
     );
     if (response.statusCode == 200) {
       notifyListeners();
@@ -256,7 +235,7 @@ class InternalFlowApiRepository extends InternalFlowRepository {
         jsonDecode(response.body) as Map<String, dynamic>,
       );
     }
-    throw Exception('Falha ao aprovar orçamento');
+    throw Exception(_readErrorMessage(response, 'Falha ao aprovar orçamento'));
   }
 
   @override
@@ -265,13 +244,9 @@ class InternalFlowApiRepository extends InternalFlowRepository {
     String status,
   ) async {
     if (status.toLowerCase() == 'concluido') {
-      final response = await _client.patch(
-        Uri.parse('$baseUrl/execucoes/$serviceId/finalizar'),
-      );
+      final response = await ApiHelper.patch('$baseUrl/execucoes/$serviceId/finalizar');
       if (response.statusCode == 200) {
-        final res = await _client.get(
-          Uri.parse('$baseUrl/execucoes/$serviceId'),
-        );
+        final res = await ApiHelper.get('$baseUrl/execucoes/$serviceId');
         if (res.statusCode == 200) {
           notifyListeners();
           return InternalService.fromJson(
@@ -280,17 +255,14 @@ class InternalFlowApiRepository extends InternalFlowRepository {
         }
       }
     } else {
-      final response = await _client.patch(
-        Uri.parse('$baseUrl/execucoes/$serviceId/status'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
+      final response = await ApiHelper.patch(
+        '$baseUrl/execucoes/$serviceId/status',
+        {
           'status': _mapServiceStatusToApi(status),
-        }),
+        },
       );
       if (response.statusCode == 200) {
-        final res = await _client.get(
-          Uri.parse('$baseUrl/execucoes/$serviceId'),
-        );
+        final res = await ApiHelper.get('$baseUrl/execucoes/$serviceId');
         if (res.statusCode == 200) {
           notifyListeners();
           return InternalService.fromJson(
@@ -304,9 +276,7 @@ class InternalFlowApiRepository extends InternalFlowRepository {
 
   @override
   Future<List<InternalChatMessage>> fetchMensagensCliente(String clientId) async {
-    final response = await _client.get(
-      Uri.parse('$baseUrl/chat/clientes/$clientId/mensagens'),
-    );
+    final response = await ApiHelper.get('$baseUrl/chat/clientes/$clientId/mensagens');
     if (response.statusCode == 200) {
       final List data = jsonDecode(response.body) as List;
       return data
@@ -319,13 +289,12 @@ class InternalFlowApiRepository extends InternalFlowRepository {
 
   @override
   Future<InternalChatMessage> sendMensagemCliente(String clientId, String text) async {
-    final response = await _client.post(
-      Uri.parse('$baseUrl/chat/clientes/$clientId/mensagens'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
+    final response = await ApiHelper.post(
+      '$baseUrl/chat/clientes/$clientId/mensagens',
+      {
         'tipo_remetente': 'employee',
         'conteudo': text,
-      }),
+      },
     );
     if (response.statusCode == 201 || response.statusCode == 200) {
       notifyListeners();

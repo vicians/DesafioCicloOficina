@@ -121,9 +121,10 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
       Navigator.pop(context, service.id);
     } catch (e) {
       if (!mounted) return;
+      final msg = e.toString().replaceFirst('Exception: ', '');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erro ao aprovar: ${e.toString()}'),
+          content: Text('Erro ao aprovar: $msg'),
           backgroundColor: Colors.red,
         ),
       );
@@ -135,6 +136,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
   Future<void> _addService() async {
     final picked = await showModalBottomSheet<CatalogoServicoItem>(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -158,6 +160,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
   Future<void> _addProduct() async {
     final picked = await showModalBottomSheet<ProdutoItem>(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -210,6 +213,66 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
                   : 'Aberto em ${widget.budget.createdAt}',
               style: GoogleFonts.dmSans(fontSize: 12, color: textMuted),
             ),
+
+            // Banner de avaliação do veículo
+            if (widget.budget.isAvaliacao) ...[
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFF93C5FD)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.search_rounded,
+                            color: Color(0xFF1D4ED8), size: 18),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Avaliação do veículo',
+                          style: GoogleFonts.dmSans(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF1D4ED8),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'O cliente solicitou avaliação. Adicione os serviços necessários abaixo antes de aprovar.',
+                      style: GoogleFonts.dmSans(
+                          fontSize: 12, color: const Color(0xFF1E40AF)),
+                    ),
+                    if (widget.budget.notasCliente != null &&
+                        widget.budget.notasCliente!.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFF93C5FD)),
+                        ),
+                        child: Text(
+                          '“${widget.budget.notasCliente}”',
+                          style: GoogleFonts.dmSans(
+                              fontSize: 12,
+                              color: textPrimary,
+                              fontStyle: FontStyle.italic),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 20),
 
             // Serviços
@@ -349,13 +412,41 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: _saving ? null : _approveBudget,
-                  child: const Text('Aprovar e gerar OS'),
+              // Para avaliação: só deixa aprovar se já tem serviços adicionados
+              if (widget.budget.isAvaliacao && _services.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF8E1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFFFCC02)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded,
+                          color: Color(0xFFF59E0B), size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Adicione pelo menos um serviço antes de gerar a OS.',
+                          style: GoogleFonts.dmSans(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF92400E),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: _saving ? null : _approveBudget,
+                    child: const Text('Aprovar e gerar OS'),
+                  ),
                 ),
-              ),
               const SizedBox(height: 10),
               SizedBox(
                 width: double.infinity,
@@ -636,54 +727,54 @@ class _CatalogPicker<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final maxHeight = MediaQuery.of(context).size.height * 0.65;
+
     return SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text(
-              title,
-              style: GoogleFonts.dmSans(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: textPrimary,
+      child: SizedBox(
+        height: maxHeight,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text(
+                title,
+                style: GoogleFonts.dmSans(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: textPrimary,
+                ),
               ),
             ),
-          ),
-          const Divider(height: 1),
-          ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.5,
-            ),
-            child: ListView.separated(
-              shrinkWrap: true,
-              itemCount: items.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (_, i) {
-                final item = items[i];
-                return ListTile(
-                  title: Text(
-                    labelOf(item),
-                    style: GoogleFonts.dmSans(
-                        fontSize: 14, color: textPrimary),
-                  ),
-                  trailing: Text(
-                    'R\$ ${priceOf(item).toStringAsFixed(2).replaceAll('.', ',')}',
-                    style: GoogleFonts.dmSans(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: navyDark,
+            const Divider(height: 1),
+            Expanded(
+              child: ListView.separated(
+                padding: const EdgeInsets.only(bottom: 8),
+                itemCount: items.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (_, i) {
+                  final item = items[i];
+                  return ListTile(
+                    title: Text(
+                      labelOf(item),
+                      style: GoogleFonts.dmSans(
+                          fontSize: 14, color: textPrimary),
                     ),
-                  ),
-                  onTap: () => Navigator.pop(context, item),
-                );
-              },
+                    trailing: Text(
+                      'R\$ ${priceOf(item).toStringAsFixed(2).replaceAll('.', ',')}',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: navyDark,
+                      ),
+                    ),
+                    onTap: () => Navigator.pop(context, item),
+                  );
+                },
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-        ],
+          ],
+        ),
       ),
     );
   }

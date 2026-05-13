@@ -8,17 +8,44 @@ import '../data/client_flow_repository.dart';
 import '../data/models/client_models.dart';
 import 'client_screen_header.dart';
 
-class HistoryScreen extends StatelessWidget {
+class HistoryScreen extends StatefulWidget {
   final ClientFlowRepository repository;
   const HistoryScreen({super.key, required this.repository});
 
   @override
+  State<HistoryScreen> createState() => _HistoryScreenState();
+}
+
+class _HistoryScreenState extends State<HistoryScreen> {
+  late Future<List<Object?>> _dataFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+    widget.repository.addListener(_loadData);
+  }
+
+  @override
+  void dispose() {
+    widget.repository.removeListener(_loadData);
+    super.dispose();
+  }
+
+  void _loadData() {
+    if (!mounted) return;
+    setState(() {
+      _dataFuture = Future.wait([
+        widget.repository.fetchCurrentService(),
+        widget.repository.fetchServiceHistory(),
+      ]);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return FutureBuilder(
-      future: Future.wait([
-        repository.fetchCurrentService(),
-        repository.fetchServiceHistory(),
-      ]),
+      future: _dataFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator(color: orange));

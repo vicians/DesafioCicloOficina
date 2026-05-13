@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { AgendamentoController } from '../controllers/agendamentoController';
+import { authMiddleware } from '../middlewares/AuthMiddleware';
+import { authorizeRole } from '../middlewares/RoleMiddleware';
 
 const agendamentoRouter = Router();
 
@@ -15,7 +17,7 @@ const agendamentoRouter = Router();
  *       200:
  *         description: Sucesso
  */
-agendamentoRouter.get('/', AgendamentoController.index);
+agendamentoRouter.get('/', authMiddleware, authorizeRole(['1', '3']), AgendamentoController.index);
 
 /**
  * @openapi
@@ -25,6 +27,8 @@ agendamentoRouter.get('/', AgendamentoController.index);
  *       - Agendamentos
  *     summary: Cria um novo agendamento
  *     description: Registra uma nova solicitação de serviço (RN011, RN012, RN022)
+ *     security:
+ *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -51,7 +55,7 @@ agendamentoRouter.get('/', AgendamentoController.index);
  *       201:
  *         description: Criado
  */
-agendamentoRouter.post('/', AgendamentoController.store);
+agendamentoRouter.post('/', authMiddleware, AgendamentoController.store);
 
 /**
  * @openapi
@@ -94,7 +98,7 @@ agendamentoRouter.get('/disponibilidade', AgendamentoController.disponibilidade)
  *       200:
  *         description: Sucesso
  */
-agendamentoRouter.get('/cliente/:clienteId', AgendamentoController.listByCliente);
+agendamentoRouter.get('/cliente/:clienteId', authMiddleware, AgendamentoController.listByCliente);
 
 /**
  * @openapi
@@ -127,7 +131,7 @@ agendamentoRouter.get('/cliente/:clienteId', AgendamentoController.listByCliente
  *       200:
  *         description: Atualizado com sucesso
  */
-agendamentoRouter.patch('/:id/status', AgendamentoController.updateStatus);
+agendamentoRouter.patch('/:id/status', authMiddleware, authorizeRole(['1', '3']), AgendamentoController.updateStatus);
 
 /**
  * @openapi
@@ -148,7 +152,7 @@ agendamentoRouter.patch('/:id/status', AgendamentoController.updateStatus);
  *       201:
  *         description: OS aberta com sucesso
  */
-agendamentoRouter.patch('/:id/confirmar-recebimento', AgendamentoController.confirmarRecebimento);
+agendamentoRouter.patch('/:id/confirmar-recebimento', authMiddleware, authorizeRole(['1', '3']), AgendamentoController.confirmarRecebimento);
 
 /**
  * @openapi
@@ -169,6 +173,6 @@ agendamentoRouter.patch('/:id/confirmar-recebimento', AgendamentoController.conf
  *       200:
  *         description: Execução iniciada com sucesso
  */
-agendamentoRouter.patch('/:id/iniciar', AgendamentoController.iniciarExecucao);
+agendamentoRouter.patch('/:id/iniciar', authMiddleware, authorizeRole(['1', '3']), AgendamentoController.iniciarExecucao);
 
 export { agendamentoRouter };

@@ -13,6 +13,7 @@ class ScheduledServicesScreen extends StatefulWidget {
   final SchedulingRepository repository;
   final InternalFlowRepository? budgetRepository;
   final ValueNotifier<int>? refreshSignal;
+  final ValueNotifier<int>? servicesRefreshSignal;
   final VoidCallback? onOpenDrawer;
   final VoidCallback? onOpenServices;
   final VoidCallback? onOpenBudgets;
@@ -22,6 +23,7 @@ class ScheduledServicesScreen extends StatefulWidget {
     required this.repository,
     this.budgetRepository,
     this.refreshSignal,
+    this.servicesRefreshSignal,
     this.onOpenDrawer,
     this.onOpenServices,
     this.onOpenBudgets,
@@ -84,6 +86,8 @@ class _ScheduledServicesScreenState extends State<ScheduledServicesScreen> {
       final serviceId = await widget.repository.confirmScheduleToService(
         schedule: item,
       );
+      widget.refreshSignal?.value++;
+      widget.servicesRefreshSignal?.value++;
       await _reload();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -535,7 +539,8 @@ class _ScheduledCard extends StatelessWidget {
         '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
     final hour = '${dt.hour.toString().padLeft(2, '0')}h';
 
-    final canAct = item.status.toLowerCase() == 'confirmado';
+    final canAct = item.status.toLowerCase() == 'confirmado' || 
+                   item.status.toLowerCase() == 'pendente';
 
     return AppCard(
       child: Column(

@@ -7,10 +7,14 @@ import '../../../core/widgets/app_progress_bar.dart';
 import '../../../core/widgets/status_badge.dart';
 import '../data/models/internal_service.dart';
 import '../data/models/internal_budget_item.dart';
+import '../data/models/scheduled_service_item.dart';
 import '../data/internal_flow_repository.dart';
+import '../data/scheduling_repository.dart';
 
 class EmployeeDashboardScreen extends StatefulWidget {
   final InternalFlowRepository repository;
+  final SchedulingRepository schedulingRepository;
+  final ValueNotifier<int>? refreshSignal;
   final bool isManager;
   final VoidCallback onLogout;
   final VoidCallback? onOpenDrawer;
@@ -22,8 +26,10 @@ class EmployeeDashboardScreen extends StatefulWidget {
   const EmployeeDashboardScreen({
     super.key,
     required this.repository,
+    required this.schedulingRepository,
     required this.isManager,
     required this.onLogout,
+    this.refreshSignal,
     this.onOpenDrawer,
     this.onOpenAlerts,
     this.unreadAlertsCount = 0,
@@ -45,11 +51,13 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
     super.initState();
     _dashboardFuture = _loadDashboardData();
     widget.repository.addListener(_reload);
+    widget.refreshSignal?.addListener(_reload);
   }
 
   @override
   void dispose() {
     widget.repository.removeListener(_reload);
+    widget.refreshSignal?.removeListener(_reload);
     super.dispose();
   }
 
@@ -64,11 +72,13 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
     final results = await Future.wait([
       widget.repository.fetchServicos(),
       widget.repository.fetchOrcamentos(),
+      widget.schedulingRepository.fetchScheduledServices(),
     ]);
 
     return _DashboardData(
       services: results[0] as List<InternalService>,
       budgets: results[1] as List<InternalBudgetItem>,
+      scheduledServices: results[2] as List<ScheduledServiceItem>,
     );
   }
 
@@ -97,19 +107,21 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
         final data = snapshot.data;
         final internalServices = data?.services ?? const <InternalService>[];
         final budgets = data?.budgets ?? const <InternalBudgetItem>[];
+        final scheduledServices = data?.scheduledServices ?? const <ScheduledServiceItem>[];
         final now = DateTime.now();
 
-        // Filtros baseados no status do banco de dados (schema)
+        // Mantem os KPIs alinhados com as regras das telas de Serviços e Agendamentos.
         final activeExecutions = internalServices
-            .where(
-              (s) =>
-                  s.status == 'em_execucao' ||
-                  s.status == 'revisao_tecnica' ||
-                  s.status == 'aguardando_retirada',
-            )
-            .toList();
+          .where((s) => s.status != 'concluido' && s.status != 'cancelado')
+          .toList();
 
-        final openAppointments = 0;
+        final openAppointments = scheduledServices
+          .where(
+            (item) =>
+              item.status.toLowerCase() == 'pendente' ||
+              item.status.toLowerCase() == 'confirmado',
+          )
+          .length;
 
         final pendingBudgets = budgets
           .where((b) => b.isPending)
@@ -651,10 +663,12 @@ class _AlertBanner extends StatelessWidget {
 class _DashboardData {
   final List<InternalService> services;
   final List<InternalBudgetItem> budgets;
+  final List<ScheduledServiceItem> scheduledServices;
 
   const _DashboardData({
     required this.services,
     required this.budgets,
+    required this.scheduledServices,
   });
 }
 

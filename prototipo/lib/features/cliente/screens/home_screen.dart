@@ -162,10 +162,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           context,
                           _fadeRoute(ServiceDetailScreen(service: svc)),
                         ),
-                        child: _MechanicCard(svc: svc),
+                        child: _NextStepCard(svc: svc),
                       ),
                       const SizedBox(height: 10),
-                      _NextStepCard(svc: svc),
                     ] else ...[
                       _NoServiceCard(
                         hasVehicles: vehicles.isNotEmpty,
@@ -441,77 +440,6 @@ class _ActiveServiceCard extends StatelessWidget {
                 ),
               ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MechanicCard extends StatelessWidget {
-  final ServiceModel svc;
-  const _MechanicCard({required this.svc});
-
-  @override
-  Widget build(BuildContext context) {
-    return AppCard(
-      child: Row(
-        children: [
-          Stack(
-            children: [
-              AppAvatar(initials: svc.mechanicInitials),
-              Positioned(
-                right: 0,
-                bottom: 0,
-                child: Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    color: green,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 1.5),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  svc.mechanic,
-                  style: GoogleFonts.dmSans(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: textPrimary,
-                  ),
-                ),
-                Text(
-                  'Mecânico responsável',
-                  style: GoogleFonts.dmSans(
-                    fontSize: 12,
-                    color: textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: greenBg,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              'Online',
-              style: GoogleFonts.dmSans(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: green,
-              ),
-            ),
           ),
         ],
       ),

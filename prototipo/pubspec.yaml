@@ -35,6 +35,7 @@ dependencies:
   google_fonts: ^6.2.1
   firebase_core: ^4.7.0
   firebase_messaging: ^16.2.0
+  shared_preferences: ^2.2.2
   http: ^1.2.2
   flutter_local_notifications: ^17.2.3
 
@@ -48,6 +49,13 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/icone.jpeg"
+  min_sdk_android: 21
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
