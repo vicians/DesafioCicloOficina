@@ -1,0 +1,217 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model agendamentos {
+  id                                             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cliente_id                                     String       @db.Uuid
+  veiculo_id                                     String       @db.Uuid
+  funcionario_id                                 String?      @db.Uuid
+  agendado_para                                  DateTime     @db.Timestamp(6)
+  duracao_total_minutos                          Int
+  fim_estimado_em                                DateTime     @db.Timestamp(6)
+  status                                         String       @db.VarChar
+  notas_cliente                                  String?
+  criado_em                                      DateTime?    @default(now()) @db.Timestamp(6)
+  usuarios_agendamentos_cliente_idTousuarios     usuarios     @relation("agendamentos_cliente_idTousuarios", fields: [cliente_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  usuarios_agendamentos_funcionario_idTousuarios usuarios?    @relation("agendamentos_funcionario_idTousuarios", fields: [funcionario_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  veiculos                                       veiculos     @relation(fields: [veiculo_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  orcamentos                                     orcamentos[]
+}
+
+model catalogo_servicos {
+  id                      String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome                    String                    @db.VarChar
+  descricao               String?
+  preco                   Int
+  duracao_minutos         Int
+  ativo                   Boolean?                  @default(true)
+  itens_orcamento_servico itens_orcamento_servico[]
+}
+
+model conversacoes_chat {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cliente_id     String           @unique @db.Uuid
+  ia_pausada     Boolean?         @default(false)
+  atualizado_em  DateTime?        @default(now()) @db.Timestamp(6)
+  criado_em      DateTime?        @default(now()) @db.Timestamp(6)
+  usuarios       usuarios         @relation(fields: [cliente_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  mensagens_chat mensagens_chat[]
+}
+
+model execucoes_servico {
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orcamento_id   String     @unique @db.Uuid
+  funcionario_id String?    @db.Uuid
+  status         String     @db.VarChar
+  iniciado_em    DateTime?  @db.Timestamp(6)
+  finalizado_em  DateTime?  @db.Timestamp(6)
+  notas_internas String?
+  usuarios       usuarios?  @relation(fields: [funcionario_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  orcamentos     orcamentos @relation(fields: [orcamento_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model itens_orcamento_produto {
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orcamento_id   String     @db.Uuid
+  produto_id     String     @db.Uuid
+  quantidade     Int
+  preco_unitario Int
+  orcamentos     orcamentos @relation(fields: [orcamento_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  produtos       produtos   @relation(fields: [produto_id], references: [id], onUpdate: NoAction)
+}
+
+model itens_orcamento_servico {
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orcamento_id      String            @db.Uuid
+  servico_id        String            @db.Uuid
+  quantidade        Int               @default(1)
+  preco_unitario    Int
+  orcamentos        orcamentos        @relation(fields: [orcamento_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  catalogo_servicos catalogo_servicos @relation(fields: [servico_id], references: [id], onUpdate: NoAction)
+}
+
+model magic_links {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuario_id String    @db.Uuid
+  token      String    @unique @db.VarChar(64)
+  expires_at DateTime  @db.Timestamp(6)
+  used       Boolean?  @default(false)
+  criado_em  DateTime? @default(now()) @db.Timestamp(6)
+  usuarios   usuarios  @relation(fields: [usuario_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model mensagens_chat {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cliente_id        String             @db.Uuid
+  tipo_remetente    String             @db.VarChar
+  conteudo          String
+  criado_em         DateTime?          @default(now()) @db.Timestamp(6)
+  conversacao_id    String?            @db.Uuid
+  lida              Boolean?           @default(false)
+  usuarios          usuarios           @relation(fields: [cliente_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  conversacoes_chat conversacoes_chat? @relation(fields: [conversacao_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model notifications {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuario_id      String    @db.Uuid
+  tipo            String    @db.VarChar
+  titulo          String    @db.VarChar
+  mensagem        String
+  referencia_id   String?   @db.Uuid
+  referencia_tipo String?   @db.VarChar
+  push_enviado    Boolean?  @default(false)
+  push_enviado_em DateTime? @db.Timestamp(6)
+  lida            Boolean?  @default(false)
+  lido_em         DateTime? @db.Timestamp(6)
+  criado_em       DateTime? @default(now()) @db.Timestamp(6)
+  usuarios        usuarios  @relation(fields: [usuario_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model oficinas {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome             String    @db.VarChar
+  quantidade_boxes Int
+  criado_em        DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model orcamentos {
+  id                                           String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agendamento_id                               String?                   @db.Uuid
+  cliente_id                                   String                    @db.Uuid
+  funcionario_id                               String?                   @db.Uuid
+  status                                       String                    @db.VarChar
+  valor_total                                  Int
+  valido_ate                                   DateTime?                 @db.Timestamp(6)
+  criado_em                                    DateTime?                 @default(now()) @db.Timestamp(6)
+  execucoes_servico                            execucoes_servico?
+  itens_orcamento_produto                      itens_orcamento_produto[]
+  itens_orcamento_servico                      itens_orcamento_servico[]
+  agendamentos                                 agendamentos?             @relation(fields: [agendamento_id], references: [id], onUpdate: NoAction)
+  usuarios_orcamentos_cliente_idTousuarios     usuarios                  @relation("orcamentos_cliente_idTousuarios", fields: [cliente_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  usuarios_orcamentos_funcionario_idTousuarios usuarios?                 @relation("orcamentos_funcionario_idTousuarios", fields: [funcionario_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model produtos {
+  id                      String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome                    String                    @db.VarChar
+  marca                   String?                   @db.VarChar
+  valor                   Int
+  quantidade_estoque      Int                       @default(0)
+  ativo                   Boolean?                  @default(true)
+  categoria               String?                   @db.VarChar
+  min_estoque             Int?                      @default(10)
+  unidade                 String?                   @default("unid.") @db.VarChar
+  itens_orcamento_produto itens_orcamento_produto[]
+}
+
+model tipos_usuario {
+  id        Int        @id @default(autoincrement())
+  nome      String     @db.VarChar
+  descricao String?
+  usuarios  usuarios[]
+}
+
+model user_push_tokens {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuario_id             String    @db.Uuid
+  fcm_registration_token String    @unique
+  criado_em              DateTime? @default(now()) @db.Timestamp(6)
+  atualizado_em          DateTime? @default(now()) @db.Timestamp(6)
+  usuarios               usuarios  @relation(fields: [usuario_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model usuarios {
+  id                                                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tipo_id                                            Int
+  cpf_cnpj                                           String              @unique @db.VarChar
+  nome                                               String              @db.VarChar
+  telefone                                           String              @unique @db.VarChar
+  email                                              String?             @unique @db.VarChar
+  senha_hash                                         String?             @db.VarChar
+  criado_em                                          DateTime?           @default(now()) @db.Timestamp(6)
+  agendamentos_agendamentos_cliente_idTousuarios     agendamentos[]      @relation("agendamentos_cliente_idTousuarios")
+  agendamentos_agendamentos_funcionario_idTousuarios agendamentos[]      @relation("agendamentos_funcionario_idTousuarios")
+  conversacoes_chat                                  conversacoes_chat?
+  execucoes_servico                                  execucoes_servico[]
+  magic_links                                        magic_links[]
+  mensagens_chat                                     mensagens_chat[]
+  notifications                                      notifications[]
+  orcamentos_orcamentos_cliente_idTousuarios         orcamentos[]        @relation("orcamentos_cliente_idTousuarios")
+  orcamentos_orcamentos_funcionario_idTousuarios     orcamentos[]        @relation("orcamentos_funcionario_idTousuarios")
+  user_push_tokens                                   user_push_tokens[]
+  tipos_usuario                                      tipos_usuario       @relation(fields: [tipo_id], references: [id], onUpdate: NoAction)
+  veiculos                                           veiculos[]
+}
+
+model veiculos {
+  id                  String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cliente_id          String         @db.Uuid
+  placa               String         @unique @db.VarChar
+  marca               String?        @db.VarChar
+  modelo              String?        @db.VarChar
+  ano                 Int?
+  quilometragem_atual Int?
+  criado_em           DateTime?      @default(now()) @db.Timestamp(6)
+  agendamentos        agendamentos[]
+  usuarios            usuarios       @relation(fields: [cliente_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model produto_embeddings {
+  id        String                       @id @db.Uuid
+  content   String
+  embedding Unsupported("vector(1024)")?
+  metadata  Json
+}
+
+model servico_embeddings {
+  id        String                       @id @db.Uuid
+  content   String
+  embedding Unsupported("vector(1024)")?
+  metadata  Json
+}

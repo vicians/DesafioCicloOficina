@@ -1,0 +1,211 @@
+# =============================================================================
+# docker-compose.yml — Tião Oficina: Stack local completo
+#
+# Como usar:
+#   Subir tudo:     docker compose up -d
+#   Ver logs:       docker compose logs -f
+#   Derrubar:       docker compose down
+#   Apagar volumes: docker compose down -v   ⚠️  APAGA dados do banco!
+#
+# Variáveis de ambiente: crie um arquivo .env na raiz do projeto
+# (veja .env.example para o template)
+# =============================================================================
+
+services:
+
+  # ===========================================================================
+  # POSTGRES — Banco de dados relacional principal
+  # Usado tanto pelo backend quanto pelo ai_service
+  # ===========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: tiao_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-oficina}
+    ports:
+      # Mapeia a porta 5432 do container para a sua máquina local.
+      # Assim você pode conectar com pgAdmin ou DBeaver localmente também.
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # Volume nomeado: persiste os dados entre reinicializações de container.
+      # Sem isso, ao rodar "docker compose down -v", todos os dados são apagados.
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # Verifica se o postgres está pronto para aceitar conexões.
+      # Os outros serviços usam "depends_on: condition: service_healthy" para
+      # aguardar esse check antes de iniciar.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-oficina}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - tiao_net
+
+  # ===========================================================================
+  # REDIS — Cache e sessões
+  # ===========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: tiao_redis
+    restart: unless-stopped
+    # appendonly: habilita AOF (Append Only File) para persistência no disco
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - tiao_net
+
+  # ===========================================================================
+  # CHROMADB — Vector Store para busca semântica de produtos (AI Service)
+  # ===========================================================================
+  chromadb:
+    image: ghcr.io/chroma-core/chroma:latest
+    container_name: tiao_chromadb
+    restart: unless-stopped
+    ports:
+      - "${CHROMA_PORT:-8000}:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    healthcheck:
+      # A imagem oficial do Chroma nao inclui wget/curl por padrao.
+      # Fazemos healthcheck por socket TCP para validar que o servico esta aceitando conexoes.
+      test: ["CMD-SHELL", "bash -lc '</dev/tcp/localhost/8000' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    networks:
+      - tiao_net
+
+  # ===========================================================================
+  # BACKEND — API REST Node.js (Express)
+  # ===========================================================================
+  backend:
+    build:
+      # O context é a RAIZ do monorepo (dois níveis acima de infra/docker/).
+      # Isso é necessário porque o backend importa ../shared/dtos e
+      # o tsconfig tem rootDir: ".." apontando para a raiz.
+      context: ../..
+      dockerfile: backend/Dockerfile
+    container_name: tiao_backend
+    restart: unless-stopped
+    env_file:
+      # Arquivo .env do backend
+      - ../../backend/.env
+    environment:
+      # Sobrescrevemos a DATABASE_URL para usar o hostname "postgres"
+      # (nome do serviço nessa rede) em vez de "localhost"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-oficina}
+      AI_SERVICE_URL: http://ai_service:3001
+      PORT: 3000
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    volumes:
+      # Montamos o arquivo de credenciais do Firebase como volume read-only.
+      # Ele NÃO entra na imagem (está no .dockerignore), mas fica acessível em runtime.
+      - ../../backend/firebase-service-account.json:/app/backend/firebase-service-account.json:ro
+    depends_on:
+      postgres:
+        # Espera até o postgres passar no healthcheck antes de iniciar o backend
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - tiao_net
+
+  # ===========================================================================
+  # AI SERVICE — LangChain + LLM + Vector Store
+  # ===========================================================================
+  ai_service:
+    build:
+      context: ../../ai_service
+      dockerfile: Dockerfile
+    container_name: tiao_ai_service
+    restart: unless-stopped
+    env_file:
+      - ../../ai_service/.env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-oficina}
+      BACKEND_URL: http://backend:3000
+      CHROMA_URL: http://chromadb:8000
+      PORT: 3001
+    ports:
+      - "${AI_SERVICE_PORT:-3001}:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - tiao_net
+
+  # ===========================================================================
+  # PGADMIN — Interface web para gerenciar o PostgreSQL (opcional, dev only)
+  # Acesse em: http://localhost:5050
+  # Login: admin@tiao.local / admin (ou o que você definir no .env)
+  # ===========================================================================
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: tiao_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@tiao.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - tiao_net
+    # profiles: desabilita o pgAdmin por padrão.
+    # Para subir o pgAdmin junto: docker compose --profile tools up -d
+    profiles:
+      - tools
+
+# =============================================================================
+# VOLUMES — Dados persistentes entre reinicializações
+# =============================================================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  chroma_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+# =============================================================================
+# NETWORKS — Rede interna dos containers
+# Dentro dessa rede, cada container é acessível pelo nome do serviço.
+# Ex: backend acessa o banco em "postgres:5432" (não "localhost:5432")
+# =============================================================================
+networks:
+  tiao_net:
+    driver: bridge

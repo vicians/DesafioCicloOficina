@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tião Oficina Mecânica</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; font-family: 'DM Sans', sans-serif; background: #111820; }
+  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  #root { display: flex; align-items: center; justify-content: center; width: 100vw; min-height: 100vh; }
+  ::-webkit-scrollbar { display: none; }
+  * { -webkit-tap-highlight-color: transparent; }
+
+  @keyframes fadeSlide {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes ping {
+    from { transform: scale(1); opacity: 0.8; }
+    to   { transform: scale(2.8); opacity: 0; }
+  }
+  @keyframes scaleIn {
+    from { transform: scale(0.7); opacity: 0; }
+    to   { transform: scale(1); opacity: 1; }
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ─── TOKENS ──────────────────────────────────────────────────────────────────
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "primaryColor": "#1C2F4A",
+  "accentColor": "#F97316",
+  "bgColor": "#F4F5F7",
+  "cardRadius": 16,
+  "fontScale": 1
+}/*EDITMODE-END*/;
+
+const T = {
+  navy:    '#1C2F4A',
+  navyMid: '#2A4268',
+  orange:  '#F97316',
+  orangeLight: '#FFF0E6',
+  bg:      '#F4F5F7',
+  card:    '#FFFFFF',
+  textPrimary:   '#111827',
+  textSecondary: '#6B7280',
+  textMuted:     '#9CA3AF',
+  green:   '#16A34A',  greenBg: '#DCFCE7',
+  blue:    '#2563EB',  blueBg:  '#DBEAFE',
+  yellow:  '#D97706',  yellowBg:'#FEF3C7',
+  red:     '#DC2626',  redBg:   '#FEE2E2',
+  purple:  '#7C3AED',  purpleBg:'#EDE9FE',
+  border:  '#E5E7EB',
+  divider: '#F3F4F6',
+};
+
+const STATUS_MAP = {
+  aguardando: { label: 'Aguardando',        color: T.textMuted,  bg: '#F3F4F6', dot: '#9CA3AF' },
+  orcamento:  { label: 'Aprovar orçamento', color: T.yellow,     bg: T.yellowBg, dot: T.yellow },
+  andamento:  { label: 'Em andamento',      color: T.blue,       bg: T.blueBg,   dot: T.blue },
+  revisao:    { label: 'Em revisão',        color: T.purple,     bg: T.purpleBg, dot: T.purple },
+  concluido:  { label: 'Concluído',         color: T.green,      bg: T.greenBg,  dot: T.green },
+  cancelado:  { label: 'Cancelado',         color: T.red,        bg: T.redBg,    dot: T.red },
+};
+
+// ─── MOCK DATA ────────────────────────────────────────────────────────────────
+const currentService = {
+  id: 'OS-2026-089', car: 'Honda Civic 2019', plate: 'ABC-1234',
+  status: 'andamento', title: 'Revisão completa + troca de pastilhas',
+  mechanic: 'José Ferreira', mechanicInitials: 'JF',
+  startDate: '22 abr 2026', estimatedEnd: 'Hoje, até 17h', progress: 65,
+  timeline: [
+    { id:1, time:'08:00', date:'22 abr', title:'Veículo recebido',       desc:'Check-in realizado na oficina', done:true,  active:false },
+    { id:2, time:'09:30', date:'22 abr', title:'Diagnóstico concluído',  desc:'Pastilhas desgastadas, óleo vencido, filtro de ar sujo', done:true, active:false },
+    { id:3, time:'10:15', date:'22 abr', title:'Orçamento aprovado',     desc:'Aprovado via app pelo cliente', done:true,  active:false },
+    { id:4, time:'14:00', date:'24 abr', title:'Serviço em execução',    desc:'Troca de óleo e filtros concluída. Iniciando freios...', done:false, active:true },
+    { id:5, time:'—',     date:'—',      title:'Revisão final',          desc:'Teste de qualidade e lavagem', done:false, active:false },
+    { id:6, time:'—',     date:'—',      title:'Pronto para retirada',   desc:'Notificação enviada ao cliente', done:false, active:false },
+  ],
+  budget: {
+    items: [
+      { label:'Troca de óleo (5W30 sintético)',  total:89.90 },
+      { label:'Filtro de óleo',                   total:35.00 },
+      { label:'Filtro de ar',                      total:45.00 },
+      { label:'Pastilhas de freio (par diant.)',   total:120.00 },
+      { label:'Mão de obra',                       total:150.00 },
+    ],
+    total: 439.90,
+  }
+};
+
+const serviceHistory = [
+  { id:'OS-2026-072', title:'Alinhamento e balanceamento', date:'10 mar 2026', status:'concluido', total:'R$ 180,00' },
+  { id:'OS-2026-055', title:'Troca de pneus (4 unidades)', date:'18 jan 2026', status:'concluido', total:'R$ 1.200,00' },
+  { id:'OS-2026-031', title:'Revisão de 40.000 km',        date:'05 nov 2025', status:'concluido', total:'R$ 620,00' },
+  { id:'OS-2026-018', title:'Troca de bateria',             date:'22 ago 2025', status:'concluido', total:'R$ 380,00' },
+];
+
+const notificationsData = [
+  { id:1, type:'progress', title:'Serviço atualizado',       body:'Trocas de filtros concluídas. Iniciando freios.', time:'Agora há pouco', unread:true },
+  { id:2, type:'budget',   title:'Orçamento disponível',     body:'Seu orçamento está pronto para aprovação.',        time:'22 abr, 10:10',  unread:false },
+  { id:3, type:'checkin',  title:'Veículo recebido',          body:'Honda Civic ABC-1234 deu entrada na oficina.',     time:'22 abr, 08:05',  unread:false },
+  { id:4, type:'done',     title:'Serviço anterior concluído',body:'Alinhamento e balanceamento finalizado.',          time:'10 mar, 17:30',  unread:false },
+];
+
+// ─── PRIMITIVES ───────────────────────────────────────────────────────────────
+function StatusBadge({ status }) {
+  const s = STATUS_MAP[status] || STATUS_MAP.aguardando;
+  return (
+    <span style={{
+      display:'inline-flex', alignItems:'center', gap:5,
+      background:s.bg, color:s.color,
+      fontSize:11, fontWeight:600, letterSpacing:0.2,
+      padding:'3px 9px', borderRadius:20,
+    }}>
+      <span style={{ width:6, height:6, borderRadius:'50%', background:s.dot }} />
+      {s.label}
+    </span>
+  );
+}
+
+function ProgressBar({ pct, color = T.orange }) {
+  return (
+    <div style={{ height:6, background:T.border, borderRadius:99, overflow:'hidden' }}>
+      <div style={{
+        width:`${pct}%`, height:'100%',
+        background:`linear-gradient(90deg, ${color}, ${color}bb)`,
+        borderRadius:99, transition:'width 1.2s cubic-bezier(.4,0,.2,1)',
+      }} />
+    </div>
+  );
+}
+
+function Btn({ children, primary, outline, danger, full, small, onClick, disabled, loading }) {
+  const [pressed, setPressed] = useState(false);
+  let bg = primary ? T.orange : outline ? 'transparent' : T.card;
+  let col = primary ? '#fff' : outline ? T.orange : T.textPrimary;
+  let border = outline ? `1.5px solid ${T.orange}` : 'none';
+  if (danger) { bg = T.redBg; col = T.red; border = `1.5px solid ${T.red}44`; }
+  return (
+    <button
+      onMouseDown={() => setPressed(true)} onMouseUp={() => setPressed(false)}
+      onMouseLeave={() => setPressed(false)} onTouchStart={() => setPressed(true)}
+      onTouchEnd={() => setPressed(false)} onClick={onClick} disabled={disabled || loading}
+      style={{
+        width: full ? '100%' : 'auto',
+        padding: small ? '9px 18px' : '14px 20px',
+        background:bg, color:col, border, borderRadius:12,
+        fontSize: small ? 13 : 15, fontWeight:600,
+        fontFamily:'DM Sans, sans-serif', cursor:(disabled||loading) ? 'not-allowed' : 'pointer',
+        opacity:(disabled||loading) ? 0.6 : 1,
+        transform: pressed ? 'scale(0.97)' : 'scale(1)',
+        transition:'transform 0.12s, opacity 0.12s, box-shadow 0.12s',
+        boxShadow: (primary && !pressed) ? `0 4px 14px ${T.orange}44` : 'none',
+        display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+      }}
+    >
+      {loading && <div style={{ width:14, height:14, border:`2px solid ${col}44`, borderTop:`2px solid ${col}`, borderRadius:'50%', animation:'spin 0.7s linear infinite' }} />}
+      {children}
+    </button>
+  );
+}
+
+function Card({ children, style, onClick }) {
+  const [hov, setHov] = useState(false);
+  return (
+    <div onClick={onClick}
+      onMouseEnter={() => onClick && setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        background:T.card, borderRadius:16, padding:16,
+        boxShadow: hov ? '0 4px 16px rgba(0,0,0,0.1)' : '0 1px 3px rgba(0,0,0,0.07)',
+        transition:'box-shadow 0.2s, transform 0.15s',
+        transform: hov ? 'translateY(-1px)' : 'none',
+        cursor: onClick ? 'pointer' : 'default', ...style,
+      }}>{children}</div>
+  );
+}
+
+function Avatar({ initials, size = 36 }) {
+  return (
+    <div style={{
+      width:size, height:size, borderRadius:'50%',
+      background:`linear-gradient(135deg, ${T.navy}, ${T.navyMid})`,
+      color:'#fff', fontSize:size*0.33, fontWeight:700,
+      display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
+    }}>{initials}</div>
+  );
+}
+
+// ─── ICONS ────────────────────────────────────────────────────────────────────
+function Icon({ name, size=20, color=T.textSecondary }) {
+  const s = { width:size, height:size, display:'block', flexShrink:0 };
+  const icons = {
+    home:    <svg style={s} viewBox="0 0 24 24" fill="none"><path d="M3 12L12 3l9 9" stroke={color} strokeWidth="2" strokeLinecap="round"/><path d="M5 10v9a1 1 0 001 1h4v-4h4v4h4a1 1 0 001-1v-9" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+    wrench:  <svg style={s} viewBox="0 0 24 24" fill="none"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+    history: <svg style={s} viewBox="0 0 24 24" fill="none"><path d="M12 8v4l3 3" stroke={color} strokeWidth="2" strokeLinecap="round"/><path d="M3.05 11a9 9 0 100 2" stroke={color} strokeWidth="2" strokeLinecap="round"/><path d="M3 4v5h5" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+    bell:    <svg style={s} viewBox="0 0 24 24" fill="none"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M13.73 21a2 2 0 01-3.46 0" stroke={color} strokeWidth="2" strokeLinecap="round"/></svg>,
+    chevron: <svg style={s} viewBox="0 0 24 24" fill="none"><path d="M9 18l6-6-6-6" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+    back:    <svg style={s} viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+    car:     <svg style={s} viewBox="0 0 24 24" fill="none"><path d="M5 17H3v-5l2-5h14l2 5v5h-2" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><circle cx="7.5" cy="17.5" r="1.5" stroke={color} strokeWidth="2"/><circle cx="16.5" cy="17.5" r="1.5" stroke={color} strokeWidth="2"/><path d="M5 12h14" stroke={color} strokeWidth="2"/></svg>,
+    check:   <svg style={s} viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17l-5-5" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+    money:   <svg style={s} viewBox="0 0 24 24" fill="none"><rect x="2" y="6" width="20" height="13" rx="2" stroke={color} strokeWidth="2"/><path d="M12 10v4M10 12h4" stroke={color} strokeWidth="2" strokeLinecap="round"/></svg>,
+    info:    <svg style={s} viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke={color} strokeWidth="2"/><path d="M12 8h.01M12 12v4" stroke={color} strokeWidth="2" strokeLinecap="round"/></svg>,
+    alert:   <svg style={s} viewBox="0 0 24 24" fill="none"><path d="M12 2L2 20h20L12 2z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M12 9v4M12 17h.01" stroke={color} strokeWidth="2" strokeLinecap="round"/></svg>,
+    budget:  <svg style={s} viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke={color} strokeWidth="2"/><path d="M8 12h8M8 8h5M8 16h3" stroke={color} strokeWidth="2" strokeLinecap="round"/></svg>,
+    close:   <svg style={s} viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke={color} strokeWidth="2" strokeLinecap="round"/></svg>,
+  };
+  return icons[name] || null;
+}
+
+// ─── PHONE FRAME ──────────────────────────────────────────────────────────────
+function PhoneFrame({ children }) {
+  return (
+    <div style={{
+      width: 390, height: 844,
+      background: '#1a1a1a',
+      borderRadius: 54,
+      padding: 10,
+      boxShadow: '0 0 0 1px #333, 0 32px 80px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1)',
+      position: 'relative', flexShrink: 0,
+    }}>
+      {/* Buttons */}
+      <div style={{ position:'absolute', left:-3, top:120, width:3, height:36, background:'#2a2a2a', borderRadius:'2px 0 0 2px' }} />
+      <div style={{ position:'absolute', left:-3, top:168, width:3, height:64, background:'#2a2a2a', borderRadius:'2px 0 0 2px' }} />
+      <div style={{ position:'absolute', left:-3, top:244, width:3, height:64, background:'#2a2a2a', borderRadius:'2px 0 0 2px' }} />
+      <div style={{ position:'absolute', right:-3, top:160, width:3, height:80, background:'#2a2a2a', borderRadius:'0 2px 2px 0' }} />
+      {/* Screen */}
+      <div style={{
+        width:'100%', height:'100%', borderRadius:44,
+        overflow:'hidden', background:'#fff', display:'flex', flexDirection:'column',
+        position:'relative',
+      }}>
+        {/* Status bar */}
+        <div style={{
+          height: 50, background: T.navy, flexShrink: 0,
+          display:'flex', alignItems:'flex-end', justifyContent:'space-between',
+          padding:'0 24px 8px', color:'rgba(255,255,255,0.75)',
+        }}>
+          <span style={{ fontSize:14, fontWeight:600 }}>9:41</span>
+          <div style={{ width:120, height:30, background:'#111', borderRadius:20, position:'absolute', left:'50%', transform:'translateX(-50%)', top:0 }} />
+          <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+            <svg width="16" height="11" viewBox="0 0 16 11"><rect x="0" y="6" width="3" height="5" rx="0.6" fill="rgba(255,255,255,0.75)"/><rect x="4.5" y="4" width="3" height="7" rx="0.6" fill="rgba(255,255,255,0.75)"/><rect x="9" y="2" width="3" height="9" rx="0.6" fill="rgba(255,255,255,0.75)"/><rect x="13.5" y="0" width="2.5" height="11" rx="0.6" fill="rgba(255,255,255,0.75)"/></svg>
+            <svg width="24" height="11" viewBox="0 0 24 11"><rect x="0.5" y="0.5" width="21" height="10" rx="3" stroke="rgba(255,255,255,0.4)" fill="none"/><rect x="2" y="2" width="17" height="7" rx="1.5" fill="rgba(255,255,255,0.75)"/><path d="M23 3.5v4c.8-.3 1.3-1 1.3-2s-.5-1.7-1.3-2z" fill="rgba(255,255,255,0.4)"/></svg>
+          </div>
+        </div>
+        {children}
+        {/* Home indicator */}
+        <div style={{
+          position:'absolute', bottom:8, left:'50%', transform:'translateX(-50%)',
+          width:120, height:5, background:'rgba(0,0,0,0.2)', borderRadius:99,
+        }} />
+      </div>
+    </div>
+  );
+}
+
+// ─── NAV BAR ──────────────────────────────────────────────────────────────────
+function NavBar({ active, onNav, notifCount }) {
+  const tabs = [
+    { id:'home',    label:'Início',    icon:'home' },
+    { id:'budget',  label:'Orçamento', icon:'budget' },
+    { id:'history', label:'Histórico', icon:'history' },
+    { id:'notif',   label:'Alertas',   icon:'bell' },
+  ];
+  return (
+    <div style={{
+      position:'absolute', bottom:0, left:0, right:0,
+      background:'rgba(255,255,255,0.95)', backdropFilter:'blur(16px)',
+      borderTop:`1px solid ${T.border}`,
+      paddingBottom:22, paddingTop:8,
+      display:'flex', zIndex:100,
+    }}>
+      {tabs.map(t => {
+        const isActive = active === t.id;
+        return (
+          <button key={t.id} onClick={() => onNav(t.id)} style={{
+            flex:1, background:'none', border:'none', cursor:'pointer',
+            display:'flex', flexDirection:'column', alignItems:'center', gap:3,
+            padding:'4px 0', position:'relative', fontFamily:'DM Sans, sans-serif',
+          }}>
+            {t.id === 'notif' && notifCount > 0 && (
+              <span style={{
+                position:'absolute', top:0, right:'50%', marginRight:-16,
+                background:T.red, color:'#fff', fontSize:9, fontWeight:700,
+                width:16, height:16, borderRadius:'50%',
+                display:'flex', alignItems:'center', justifyContent:'center',
+              }}>{notifCount}</span>
+            )}
+            {t.id === 'budget' && (
+              <span style={{
+                position:'absolute', top:0, right:'50%', marginRight:-16,
+                background:T.yellow, color:'#fff', fontSize:9, fontWeight:700,
+                width:16, height:16, borderRadius:'50%',
+                display:'flex', alignItems:'center', justifyContent:'center',
+              }}>1</span>
+            )}
+            <Icon name={t.icon} size={22} color={isActive ? T.orange : T.textMuted} />
+            <span style={{ fontSize:10, fontWeight:isActive?600:400, color:isActive?T.orange:T.textMuted }}>
+              {t.label}
+            </span>
+            {isActive && (
+              <div style={{
+                position:'absolute', top:-1, left:'50%', transform:'translateX(-50%)',
+                width:20, height:2.5, background:T.orange, borderRadius:99,
+              }} />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── SCREEN: HOME ─────────────────────────────────────────────────────────────
+function HomeScreen({ onNav }) {
+  const [pulse, setPulse] = useState(false);
+  useEffect(() => {
+    const id = setInterval(() => setPulse(p => !p), 2200);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <div style={{ flex:1, overflowY:'auto', background:T.bg, paddingBottom:88 }}>
+      {/* Header */}
+      <div style={{
+        background:`linear-gradient(160deg, ${T.navy} 0%, ${T.navyMid} 100%)`,
+        padding:'16px 20px 24px', color:'#fff',
+      }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:18 }}>
+          <div>
+            <p style={{ fontSize:12, opacity:0.55, marginBottom:2 }}>Olá, Carlos 👋</p>
+            <p style={{ fontSize:20, fontWeight:700 }}>Tião Oficina</p>
+          </div>
+          <Avatar initials="CL" size={42} />
+        </div>
+        {/* Live status */}
+        <div style={{
+          background:'rgba(255,255,255,0.1)', borderRadius:16, padding:16,
+          border:'1px solid rgba(255,255,255,0.14)',
+        }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+            <div style={{ position:'relative', width:10, height:10 }}>
+              <div style={{ width:10, height:10, borderRadius:'50%', background:T.orange, position:'absolute' }} />
+              {pulse && <div style={{
+                position:'absolute', inset:-4, borderRadius:'50%',
+                background:`${T.orange}55`, animation:'ping 1.2s ease-out forwards',
+              }} />}
+            </div>
+            <span style={{ fontSize:11, fontWeight:600, color:T.orange, letterSpacing:0.5, textTransform:'uppercase' }}>Em andamento</span>
+          </div>
+          <p style={{ fontSize:15, fontWeight:600, color:'#fff', marginBottom:4, lineHeight:1.35 }}>
+            {currentService.title}
+          </p>
+          <p style={{ fontSize:12, color:'rgba(255,255,255,0.5)', marginBottom:14 }}>
+            {currentService.car} · {currentService.plate}
+          </p>
+          <ProgressBar pct={currentService.progress} color={T.orange} />
+          <div style={{ display:'flex', justifyContent:'space-between', marginTop:7 }}>
+            <span style={{ fontSize:11, color:'rgba(255,255,255,0.5)' }}>{currentService.progress}% concluído</span>
+            <span style={{ fontSize:11, color:'rgba(255,255,255,0.5)' }}>Até {currentService.estimatedEnd}</span>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding:'16px 16px 0' }}>
+        <Btn primary full onClick={() => onNav('service')}>Ver detalhes do serviço</Btn>
+
+        {/* Mechanic */}
+        <Card style={{ marginTop:14, display:'flex', alignItems:'center', gap:12 }}>
+          <Avatar initials={currentService.mechanicInitials} size={44} />
+          <div style={{ flex:1 }}>
+            <p style={{ fontSize:11, color:T.textMuted, marginBottom:2 }}>Mecânico responsável</p>
+            <p style={{ fontSize:14, fontWeight:600, color:T.textPrimary }}>{currentService.mechanic}</p>
+          </div>
+          <div style={{ background:T.greenBg, color:T.green, fontSize:10, fontWeight:600, padding:'4px 10px', borderRadius:20 }}>Online</div>
+        </Card>
+
+        {/* Hint */}
+        <Card style={{ marginTop:10, background:T.blueBg, border:`1px solid ${T.blue}22` }}>
+          <div style={{ display:'flex', gap:10 }}>
+            <Icon name="info" size={18} color={T.blue} />
+            <div>
+              <p style={{ fontSize:13, fontWeight:600, color:T.blue, marginBottom:3 }}>Próxima etapa</p>
+              <p style={{ fontSize:12, color:T.blue, opacity:0.85, lineHeight:1.5 }}>
+                Revisão final e lavagem do veículo. Estimativa: <strong>hoje até 17h</strong>.
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        {/* Recent history */}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:20, marginBottom:10 }}>
+          <p style={{ fontSize:14, fontWeight:700, color:T.textPrimary }}>Serviços anteriores</p>
+          <button onClick={() => onNav('history')} style={{
+            background:'none', border:'none', cursor:'pointer',
+            fontSize:12, color:T.orange, fontWeight:600, fontFamily:'DM Sans, sans-serif',
+          }}>Ver todos</button>
+        </div>
+        {serviceHistory.slice(0,2).map(h => (
+          <Card key={h.id} style={{ marginBottom:8, display:'flex', alignItems:'center', gap:12 }} onClick={() => onNav('history')}>
+            <div style={{ width:40, height:40, borderRadius:10, background:T.greenBg, display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <Icon name="check" size={18} color={T.green} />
+            </div>
+            <div style={{ flex:1 }}>
+              <p style={{ fontSize:13, fontWeight:600, color:T.textPrimary, lineHeight:1.3 }}>{h.title}</p>
+              <p style={{ fontSize:11, color:T.textMuted, marginTop:2 }}>{h.date}</p>
+            </div>
+            <p style={{ fontSize:13, fontWeight:600, color:T.textPrimary }}>{h.total}</p>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── SCREEN: SERVICE DETAILS ──────────────────────────────────────────────────
+function ServiceScreen({ onBack }) {
+  const [tab, setTab] = useState('timeline');
+  const svc = currentService;
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', background:T.bg, overflow:'hidden' }}>
+      <div style={{
+        background:`linear-gradient(160deg, ${T.navy}, ${T.navyMid})`,
+        padding:'12px 16px 18px', color:'#fff', flexShrink:0,
+      }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
+          <button onClick={onBack} style={{ background:'none', border:'none', cursor:'pointer', padding:4 }}>
+            <Icon name="back" size={22} color="rgba(255,255,255,0.8)" />
+          </button>
+          <div>
+            <p style={{ fontSize:16, fontWeight:700 }}>Detalhes do Serviço</p>
+            <p style={{ fontSize:11, opacity:0.5 }}>{svc.id}</p>
+          </div>
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+          <Icon name="car" size={15} color="rgba(255,255,255,0.55)" />
+          <span style={{ fontSize:12, opacity:0.6 }}>{svc.car} · {svc.plate}</span>
+          <StatusBadge status={svc.status} />
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display:'flex', background:T.card, borderBottom:`1px solid ${T.border}`, flexShrink:0 }}>
+        {[['timeline','Acompanhamento'],['budget','Orçamento']].map(([id,label]) => (
+          <button key={id} onClick={() => setTab(id)} style={{
+            flex:1, background:'none', border:'none', cursor:'pointer',
+            padding:'13px 0', fontSize:13, fontWeight:tab===id?700:500,
+            color:tab===id?T.orange:T.textMuted, fontFamily:'DM Sans, sans-serif',
+            borderBottom: tab===id ? `2px solid ${T.orange}` : '2px solid transparent',
+            transition:'color 0.2s',
+          }}>{label}</button>
+        ))}
+      </div>
+
+      <div style={{ flex:1, overflowY:'auto', padding:16, paddingBottom:24 }}>
+        {tab === 'timeline' && (
+          <div>
+            {svc.timeline.map((step, i) => (
+              <div key={step.id} style={{ display:'flex', gap:12 }}>
+                <div style={{ display:'flex', flexDirection:'column', alignItems:'center', width:28, flexShrink:0 }}>
+                  <div style={{
+                    width:28, height:28, borderRadius:'50%', flexShrink:0, zIndex:1,
+                    background: step.done ? T.green : step.active ? T.orange : T.border,
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    boxShadow: step.active ? `0 0 0 5px ${T.orange}28` : 'none',
+                  }}>
+                    {step.done
+                      ? <Icon name="check" size={14} color="#fff" />
+                      : <div style={{ width:8, height:8, borderRadius:'50%', background: step.active ? '#fff' : T.textMuted }} />
+                    }
+                  </div>
+                  {i < svc.timeline.length-1 && (
+                    <div style={{ width:2, flex:1, minHeight:24, background:step.done?T.green:T.border, margin:'4px 0' }} />
+                  )}
+                </div>
+                <div style={{ flex:1, paddingBottom:20 }}>
+                  <div style={{ display:'flex', alignItems:'baseline', justifyContent:'space-between', marginBottom:3 }}>
+                    <p style={{ fontSize:13, fontWeight:step.active?700:600, color:step.done?T.textPrimary:step.active?T.orange:T.textMuted }}>
+                      {step.title}
+                    </p>
+                    {step.time !== '—' && <span style={{ fontSize:10, color:T.textMuted }}>{step.time} · {step.date}</span>}
+                  </div>
+                  <p style={{ fontSize:12, color:step.active?T.textSecondary:T.textMuted, lineHeight:1.5 }}>{step.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {tab === 'budget' && (
+          <div>
+            <Card style={{ marginBottom:14 }}>
+              {svc.budget.items.map((item, i) => (
+                <div key={i} style={{
+                  display:'flex', justifyContent:'space-between', alignItems:'center',
+                  paddingBottom: i < svc.budget.items.length-1 ? 11 : 0,
+                  marginBottom: i < svc.budget.items.length-1 ? 11 : 0,
+                  borderBottom: i < svc.budget.items.length-1 ? `1px solid ${T.divider}` : 'none',
+                }}>
+                  <p style={{ fontSize:13, color:T.textPrimary, flex:1 }}>{item.label}</p>
+                  <p style={{ fontSize:13, fontWeight:600, color:T.textPrimary, marginLeft:8 }}>
+                    R$ {item.total.toFixed(2)}
+                  </p>
+                </div>
+              ))}
+            </Card>
+            <div style={{
+              background:T.navy, color:'#fff', borderRadius:16, padding:'16px 20px',
+              display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14,
+            }}>
+              <div>
+                <p style={{ fontSize:12, opacity:0.6, marginBottom:4 }}>Total do serviço</p>
+                <p style={{ fontSize:26, fontWeight:700 }}>R$ {svc.budget.total.toFixed(2)}</p>
+              </div>
+              <div style={{ background:T.greenBg, borderRadius:20, padding:'6px 12px', display:'flex', alignItems:'center', gap:6 }}>
+                <Icon name="check" size={14} color={T.green} />
+                <span style={{ fontSize:12, fontWeight:600, color:T.green }}>Aprovado</span>
+              </div>
+            </div>
+            <p style={{ fontSize:11, color:T.textMuted, textAlign:'center' }}>
+              Aprovado em 22 abr 2026 às 10:15
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── SCREEN: HISTORY ─────────────────────────────────────────────────────────
+function HistoryScreen() {
+  return (
+    <div style={{ flex:1, overflowY:'auto', background:T.bg, paddingBottom:88 }}>
+      <div style={{ background:`linear-gradient(160deg, ${T.navy}, ${T.navyMid})`, padding:'16px 20px 22px', color:'#fff' }}>
+        <p style={{ fontSize:18, fontWeight:700 }}>Histórico</p>
+        <p style={{ fontSize:12, opacity:0.5, marginTop:3 }}>Todos os serviços do veículo</p>
+      </div>
+      <div style={{ padding:16 }}>
+        <p style={{ fontSize:11, fontWeight:700, color:T.textMuted, letterSpacing:0.9, textTransform:'uppercase', marginBottom:10 }}>Em andamento</p>
+        <Card style={{ marginBottom:20 }}>
+          <div style={{ display:'flex', gap:12 }}>
+            <div style={{ width:42, height:42, borderRadius:10, background:T.blueBg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              <Icon name="wrench" size={20} color={T.blue} />
+            </div>
+            <div style={{ flex:1 }}>
+              <p style={{ fontSize:13, fontWeight:600, color:T.textPrimary, lineHeight:1.3, marginBottom:7 }}>{currentService.title}</p>
+              <StatusBadge status="andamento" />
+              <div style={{ marginTop:10 }}>
+                <ProgressBar pct={currentService.progress} color={T.blue} />
+                <p style={{ fontSize:11, color:T.textMuted, marginTop:5 }}>{currentService.progress}% · Hoje até 17h</p>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        <p style={{ fontSize:11, fontWeight:700, color:T.textMuted, letterSpacing:0.9, textTransform:'uppercase', marginBottom:10 }}>Concluídos</p>
+        {serviceHistory.map(h => (
+          <Card key={h.id} style={{ marginBottom:9, display:'flex', gap:12, alignItems:'center' }}>
+            <div style={{ width:42, height:42, borderRadius:10, background:T.greenBg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              <Icon name="check" size={20} color={T.green} />
+            </div>
+            <div style={{ flex:1 }}>
+              <p style={{ fontSize:13, fontWeight:600, color:T.textPrimary, lineHeight:1.3 }}>{h.title}</p>
+              <div style={{ display:'flex', gap:8, marginTop:4, alignItems:'center' }}>
+                <span style={{ fontSize:11, color:T.textMuted }}>{h.date}</span>
+                <span style={{ width:3, height:3, borderRadius:'50%', background:T.border }} />
+                <span style={{ fontSize:11, color:T.textMuted }}>{h.id}</span>
+              </div>
+            </div>
+            <p style={{ fontSize:13, fontWeight:700, color:T.textPrimary, whiteSpace:'nowrap' }}>{h.total}</p>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── SCREEN: BUDGET APPROVAL ──────────────────────────────────────────────────
+function BudgetScreen() {
+  const [approved, setApproved] = useState(false);
+  const [declined, setDeclined] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleApprove = () => {
+    setLoading(true);
+    setTimeout(() => { setLoading(false); setApproved(true); }, 1600);
+  };
+
+  if (approved) return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', background:T.bg, padding:32 }}>
+      <div style={{
+        width:80, height:80, borderRadius:'50%', background:T.greenBg,
+        display:'flex', alignItems:'center', justifyContent:'center',
+        marginBottom:20, boxShadow:`0 0 0 18px ${T.greenBg}66`,
+        animation:'scaleIn 0.4s cubic-bezier(.34,1.56,.64,1)',
+      }}>
+        <Icon name="check" size={38} color={T.green} />
+      </div>
+      <p style={{ fontSize:20, fontWeight:700, color:T.textPrimary, marginBottom:10 }}>Orçamento aprovado!</p>
+      <p style={{ fontSize:14, color:T.textSecondary, textAlign:'center', lineHeight:1.6 }}>
+        O Tião já foi notificado e iniciará o serviço em breve.
+      </p>
+    </div>
+  );
+
+  const items = [
+    { label:'Troca de óleo (5W30 sint.)', total:89.90 },
+    { label:'Filtro de óleo',              total:35.00 },
+    { label:'Filtro de ar',                 total:45.00 },
+    { label:'Pastilhas de freio (par)',     total:120.00 },
+    { label:'Mão de obra',                  total:150.00 },
+  ];
+
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', background:T.bg, overflow:'hidden' }}>
+      <div style={{ background:`linear-gradient(160deg, ${T.navy}, ${T.navyMid})`, padding:'16px 20px 22px', color:'#fff', flexShrink:0 }}>
+        <p style={{ fontSize:18, fontWeight:700 }}>Aprovar Orçamento</p>
+        <p style={{ fontSize:12, opacity:0.5, marginTop:3 }}>{currentService.car} · {currentService.plate}</p>
+      </div>
+      <div style={{ flex:1, overflowY:'auto', padding:16, paddingBottom:24 }}>
+        <Card style={{ marginBottom:14, background:T.yellowBg, border:`1px solid ${T.yellow}44` }}>
+          <div style={{ display:'flex', gap:10 }}>
+            <Icon name="alert" size={18} color={T.yellow} />
+            <div>
+              <p style={{ fontSize:13, fontWeight:600, color:T.yellow }}>Aguardando sua aprovação</p>
+              <p style={{ fontSize:12, color:T.yellow, opacity:0.9, marginTop:3, lineHeight:1.5 }}>
+                Válido até <strong>hoje às 18h</strong>. Após isso, o serviço será cancelado.
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        <p style={{ fontSize:13, fontWeight:700, color:T.textPrimary, marginBottom:10 }}>Itens do serviço</p>
+        <Card style={{ marginBottom:14 }}>
+          {items.map((item, i) => (
+            <div key={i} style={{
+              display:'flex', justifyContent:'space-between', alignItems:'center',
+              paddingBottom: i < items.length-1 ? 11 : 0,
+              marginBottom: i < items.length-1 ? 11 : 0,
+              borderBottom: i < items.length-1 ? `1px solid ${T.divider}` : 'none',
+            }}>
+              <p style={{ fontSize:13, color:T.textPrimary, flex:1 }}>{item.label}</p>
+              <p style={{ fontSize:13, fontWeight:600, color:T.textPrimary, marginLeft:8 }}>R$ {item.total.toFixed(2)}</p>
+            </div>
+          ))}
+        </Card>
+
+        <div style={{
+          background:T.navy, color:'#fff', borderRadius:16, padding:'16px 20px',
+          display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18,
+        }}>
+          <p style={{ fontSize:14, opacity:0.7 }}>Total</p>
+          <p style={{ fontSize:26, fontWeight:700 }}>R$ 439,90</p>
+        </div>
+
+        <Btn primary full onClick={handleApprove} loading={loading} disabled={declined}>
+          {!loading && '✓  Aprovar orçamento'}
+        </Btn>
+        <div style={{ height:10 }} />
+        <Btn outline full onClick={() => setDeclined(true)} disabled={declined}>
+          Recusar e cancelar
+        </Btn>
+        {declined && (
+          <Card style={{ marginTop:12, background:T.redBg, border:`1px solid ${T.red}33` }}>
+            <p style={{ fontSize:13, color:T.red, lineHeight:1.6, textAlign:'center' }}>
+              Para cancelar, entre em contato:<br/><strong>(11) 9 8765-4321</strong>
+            </p>
+          </Card>
+        )}
+        <div style={{ height:20 }} />
+      </div>
+    </div>
+  );
+}
+
+// ─── SCREEN: NOTIFICATIONS ────────────────────────────────────────────────────
+function NotifTypeIcon({ type }) {
+  const cfg = {
+    progress: { icon:'wrench', bg:T.blueBg,   col:T.blue   },
+    budget:   { icon:'money',  bg:T.yellowBg,  col:T.yellow },
+    checkin:  { icon:'car',    bg:T.purpleBg,  col:T.purple },
+    done:     { icon:'check',  bg:T.greenBg,   col:T.green  },
+  }[type] || { icon:'bell', bg:T.bg, col:T.textMuted };
+  return (
+    <div style={{ width:42, height:42, borderRadius:12, background:cfg.bg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+      <Icon name={cfg.icon} size={20} color={cfg.col} />
+    </div>
+  );
+}
+
+function NotificationsScreen() {
+  const [notifs, setNotifs] = useState(notificationsData);
+  const mark = (id) => setNotifs(ns => ns.map(n => n.id === id ? {...n, unread:false} : n));
+  const unread = notifs.filter(n => n.unread).length;
+
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', background:T.bg, overflow:'hidden' }}>
+      <div style={{ background:`linear-gradient(160deg, ${T.navy}, ${T.navyMid})`, padding:'16px 20px 22px', color:'#fff', flexShrink:0 }}>
+        <p style={{ fontSize:18, fontWeight:700 }}>Notificações</p>
+        <p style={{ fontSize:12, opacity:0.5, marginTop:3 }}>{unread > 0 ? `${unread} não lida${unread>1?'s':''}` : 'Tudo em dia'}</p>
+      </div>
+      <div style={{ flex:1, overflowY:'auto', padding:14, paddingBottom:88 }}>
+        {notifs.map(n => (
+          <div key={n.id} onClick={() => mark(n.id)} style={{
+            display:'flex', gap:12, alignItems:'flex-start',
+            padding:14, borderRadius:14, marginBottom:8, cursor:'pointer',
+            background: n.unread ? T.card : 'rgba(255,255,255,0.45)',
+            boxShadow: n.unread ? '0 1px 4px rgba(0,0,0,0.07)' : 'none',
+            transition:'all 0.2s', position:'relative',
+          }}>
+            {n.unread && (
+              <div style={{
+                position:'absolute', top:14, right:14,
+                width:8, height:8, borderRadius:'50%', background:T.orange,
+              }} />
+            )}
+            <NotifTypeIcon type={n.type} />
+            <div style={{ flex:1 }}>
+              <p style={{ fontSize:13, fontWeight:n.unread?700:600, color:T.textPrimary, marginBottom:3 }}>{n.title}</p>
+              <p style={{ fontSize:12, color:T.textSecondary, lineHeight:1.5 }}>{n.body}</p>
+              <p style={{ fontSize:10, color:T.textMuted, marginTop:5 }}>{n.time}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── TWEAKS PANEL ─────────────────────────────────────────────────────────────
+function TweaksUI({ onClose }) {
+  return (
+    <div style={{
+      position:'fixed', bottom:24, right:24, zIndex:1000,
+      background:'#fff', borderRadius:20, padding:'18px 20px',
+      boxShadow:'0 16px 48px rgba(0,0,0,0.2)', width:240,
+      fontFamily:'DM Sans, sans-serif', animation:'scaleIn 0.2s ease',
+    }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+        <p style={{ fontSize:14, fontWeight:700, color:T.textPrimary }}>Tweaks</p>
+        <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', padding:2 }}>
+          <Icon name="close" size={18} color={T.textMuted} />
+        </button>
+      </div>
+      <p style={{ fontSize:11, color:T.textMuted, lineHeight:1.6 }}>
+        Este protótipo demonstra todas as 5 telas do app com navegação interativa.<br/><br/>
+        <strong style={{ color:T.textSecondary }}>Telas disponíveis:</strong><br/>
+        · Início (Home com status ao vivo)<br/>
+        · Orçamento (aprovação interativa)<br/>
+        · Histórico de serviços<br/>
+        · Notificações (marcar como lida)<br/>
+        · Detalhes + timeline (via botão)
+      </p>
+      <div style={{ marginTop:14, padding:'10px 0', borderTop:`1px solid ${T.divider}` }}>
+        <p style={{ fontSize:11, fontWeight:600, color:T.textMuted, marginBottom:8 }}>Sistema de cores</p>
+        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+          {[['Primária (confiança)', T.navy], ['Destaque (ação)', T.orange], ['Sucesso', T.green], ['Alerta', T.yellow]].map(([label, color]) => (
+            <div key={label} style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <div style={{ width:20, height:20, borderRadius:6, background:color, flexShrink:0 }} />
+              <div>
+                <p style={{ fontSize:11, color:T.textPrimary, fontWeight:500 }}>{label}</p>
+                <p style={{ fontSize:10, color:T.textMuted }}>{color}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── APP ──────────────────────────────────────────────────────────────────────
+function App() {
+  const [screen, setScreen] = useState('home');
+  const [animKey, setAnimKey] = useState(0);
+  const [showTweaks, setShowTweaks] = useState(false);
+
+  // Tweaks protocol
+  useEffect(() => {
+    const onMsg = (e) => {
+      if (e.data?.type === '__activate_edit_mode') setShowTweaks(true);
+      if (e.data?.type === '__deactivate_edit_mode') setShowTweaks(false);
+    };
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  const goTo = (s) => { setScreen(s); setAnimKey(k => k+1); };
+  const unread = notificationsData.filter(n => n.unread).length;
+  const isDetail = screen === 'service';
+
+  return (
+    <>
+      <PhoneFrame>
+        <div key={animKey} style={{
+          flex:1, display:'flex', flexDirection:'column', overflow:'hidden',
+          animation:'fadeSlide 0.2s cubic-bezier(.4,0,.2,1)',
+        }}>
+          {screen === 'home'    && <HomeScreen onNav={goTo} />}
+          {screen === 'service' && <ServiceScreen onBack={() => goTo('home')} />}
+          {screen === 'budget'  && <BudgetScreen />}
+          {screen === 'history' && <HistoryScreen />}
+          {screen === 'notif'   && <NotificationsScreen />}
+        </div>
+        {!isDetail && (
+          <NavBar
+            active={screen}
+            onNav={goTo}
+            notifCount={unread}
+          />
+        )}
+      </PhoneFrame>
+
+      {showTweaks && <TweaksUI onClose={() => {
+        setShowTweaks(false);
+        window.parent.postMessage({ type: '__edit_mode_dismissed' }, '*');
+      }} />}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
