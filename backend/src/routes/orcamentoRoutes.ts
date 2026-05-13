@@ -17,7 +17,7 @@ const orcamentoRouter = Router();
  *       200:
  *         description: Sucesso
  */
-orcamentoRouter.get('/', authMiddleware, authorizeRole(['1', '3']), OrcamentoController.index);
+orcamentoRouter.get('/', authMiddleware, authorizeRole(['1', '2', '3']), OrcamentoController.index);
 
 /**
  * @openapi

@@ -8,13 +8,27 @@ import { sendPushToUsers } from '../services/pushService';
 
 export class OrcamentoController {
   static async index(req: Request, res: Response) {
-    const orcamentos = await OrcamentoModel.findAll();
+    const user = req.user;
+    let clientIdFilter: string | undefined = undefined;
+
+    // Se o usuário for cliente (role '2'), só pode ver os próprios orçamentos
+    if (user?.role === '2') {
+      clientIdFilter = user.id;
+    }
+
+    const orcamentos = await OrcamentoModel.findAll(clientIdFilter);
     return res.json(orcamentos);
   }
 
   static async show(req: Request, res: Response) {
     const orcamento = await OrcamentoModel.findById(req.params.id);
     if (!orcamento) return res.status(404).json({ error: 'Orçamento não encontrado' });
+
+    // Verificação de segurança para clientes
+    if (req.user?.role === '2' && orcamento.cliente_id !== req.user.id) {
+      return res.status(403).json({ error: 'Forbidden: Você não tem permissão para acessar este orçamento' });
+    }
+
     return res.json(orcamento);
   }
 

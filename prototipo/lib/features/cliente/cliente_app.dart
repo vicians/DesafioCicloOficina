@@ -119,7 +119,7 @@ class _ClienteAppState extends State<ClienteApp> {
   @override
   Widget build(BuildContext context) {
     final unreadCount = _clientNotifications.where((n) => n.unread).length;
-    final hasPendingBudget = _currentService?.status == 'orcamento' || _currentService?.status == 'enviado';
+    final hasPendingBudget = _currentService?.status == 'orcamento' || _currentService?.status == 'enviado' || _currentService?.status == 'rascunho';
 
     return Scaffold(
       backgroundColor: bgPage,

@@ -3,8 +3,16 @@ import type { OrcamentoDTO, CreateOrcamentoDTO, OrcamentoDetalhadoDTO } from '..
 import type { ItemOrcamentoServicoDTO, ItemOrcamentoProdutoDTO } from '../../../shared/dtos/itemOrcamentoSimplesDto';
 
 export class OrcamentoModel {
-  static async findAll(): Promise<OrcamentoDetalhadoDTO[]> {
+  static async findAll(cliente_id?: string): Promise<OrcamentoDetalhadoDTO[]> {
     const db = getDb();
+    const values: any[] = [];
+    let whereClause = '';
+
+    if (cliente_id) {
+      whereClause = 'WHERE o.cliente_id = $1';
+      values.push(cliente_id);
+    }
+
     const query = `
       SELECT 
         o.*,
@@ -32,9 +40,10 @@ export class OrcamentoModel {
       JOIN usuarios c ON o.cliente_id = c.id
       LEFT JOIN agendamentos a ON o.agendamento_id = a.id
       LEFT JOIN veiculos v ON a.veiculo_id = v.id
+      ${whereClause}
       ORDER BY o.criado_em DESC
     `;
-    const result = await db.query(query);
+    const result = await db.query(query, values);
     return result.rows;
   }
 
