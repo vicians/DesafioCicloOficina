@@ -8,8 +8,19 @@ import { sendPushToUsers } from '../services/pushService';
 
 export class OrcamentoController {
   static async index(req: Request, res: Response) {
-    const orcamentos = await OrcamentoModel.findAll();
-    return res.json(orcamentos);
+    try {
+      // Se cliente (role 2), retornar apenas seus orçamentos
+      if (req.user?.role === '2') {
+        const orcamentos = await OrcamentoModel.findByClienteId(req.user.id);
+        return res.json(orcamentos);
+      }
+      
+      // Se funcionário/gerente (roles 1 e 3), retornar todos
+      const orcamentos = await OrcamentoModel.findAll();
+      return res.json(orcamentos);
+    } catch (error) {
+      return res.status(500).json({ error: 'Erro ao buscar orçamentos' });
+    }
   }
 
   static async show(req: Request, res: Response) {
@@ -188,6 +199,7 @@ export class OrcamentoController {
     }
 
     try {
+      // Notificar usuários internos
       const internalUserIds = await NotificationModel.findInternalUserIds();
       const titulo = 'Add-ons enviados para aprovação';
       const mensagem = `Orçamento ${orcamento.id} possui itens extras pendentes de aprovação do cliente.`;
@@ -199,6 +211,16 @@ export class OrcamentoController {
         referencia_tipo: 'orcamento',
       });
       await sendPushToUsers(internalUserIds, notifIds, titulo, mensagem);
+
+      // Notificar cliente sobre add-ons para aprovação
+      const clientNotifIds = await NotificationModel.createForUsers([orcamento.cliente_id], {
+        tipo: 'budget_updated',
+        titulo: 'Novo orçamento para aprovar',
+        mensagem: 'Seu orçamento foi atualizado e está pronto para aprovação.',
+        referencia_id: orcamento.id,
+        referencia_tipo: 'orcamento',
+      });
+      await sendPushToUsers([orcamento.cliente_id], clientNotifIds, 'Novo orçamento para aprovar', 'Seu orçamento foi atualizado e está pronto para aprovação.');
     } catch (error) {
       console.error('Falha ao criar notificações de add-ons enviados:', error);
     }
@@ -220,11 +242,38 @@ export class OrcamentoController {
 
   static async update(req: Request, res: Response) {
     const { id } = req.params;
-    const data = req.body;
+    let data = req.body;
+
+    // Buscar orçamento atual antes da atualização
+    const orcamentoAtual = await OrcamentoModel.findById(id);
+    if (!orcamentoAtual) {
+      return res.status(404).json({ error: 'Orçamento não encontrado' });
+    }
+
+    // Se estava APROVADO e está sendo modificado, enviar para ENVIADO para re-aprovação do cliente
+    if (orcamentoAtual.status === 'APROVADO' && Object.keys(data).length > 0) {
+      data = { ...data, status: 'ENVIADO', valido_ate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) };
+    }
 
     const orcamento = await OrcamentoModel.update(id, data);
     if (!orcamento) {
       return res.status(404).json({ error: 'Orçamento não encontrado' });
+    }
+
+    // Se mudou para ENVIADO, notificar o cliente
+    if (orcamentoAtual.status === 'APROVADO' && orcamento.status === 'ENVIADO') {
+      try {
+        const clientNotifIds = await NotificationModel.createForUsers([orcamento.cliente_id], {
+          tipo: 'budget_updated',
+          titulo: 'Novo orçamento para aprovar',
+          mensagem: 'Seu orçamento foi atualizado com novos itens. Por favor, revise e aprove.',
+          referencia_id: orcamento.id,
+          referencia_tipo: 'orcamento',
+        });
+        await sendPushToUsers([orcamento.cliente_id], clientNotifIds, 'Novo orçamento para aprovar', 'Seu orçamento foi atualizado com novos itens. Por favor, revise e aprove.');
+      } catch (error) {
+        console.error('Falha ao notificar cliente sobre alterações no orçamento:', error);
+      }
     }
 
     return res.json(orcamento);

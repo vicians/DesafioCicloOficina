@@ -72,6 +72,42 @@ export class OrcamentoModel {
     return result.rows[0] ?? null;
   }
 
+  static async findByClienteId(clienteId: string): Promise<OrcamentoDetalhadoDTO[]> {
+    const db = getDb();
+    const query = `
+      SELECT 
+        o.*,
+        c.nome AS cliente_nome,
+        (SELECT nome FROM oficinas ORDER BY criado_em ASC LIMIT 1) AS oficina_nome,
+        v.marca AS veiculo_marca,
+        v.modelo AS veiculo_modelo,
+        v.placa AS veiculo_placa,
+        a.notas_cliente,
+        (o.status = 'RASCUNHO' AND NOT EXISTS (
+          SELECT 1 FROM itens_orcamento_servico ios WHERE ios.orcamento_id = o.id
+        )) AS is_avaliacao,
+        COALESCE(
+          (SELECT json_agg(json_build_object('id', ios.id, 'item_id', ios.servico_id, 'nome', cs.nome, 'quantidade', ios.quantidade, 'preco_unitario', ios.preco_unitario, 'preco_total', ios.quantidade * ios.preco_unitario))
+           FROM itens_orcamento_servico ios JOIN catalogo_servicos cs ON ios.servico_id = cs.id WHERE ios.orcamento_id = o.id),
+          '[]'::json
+        ) AS itens_servico,
+        COALESCE(
+          (SELECT json_agg(json_build_object('id', iop.id, 'item_id', iop.produto_id, 'nome', p.nome, 'quantidade', iop.quantidade, 'preco_unitario', iop.preco_unitario, 'preco_total', iop.quantidade * iop.preco_unitario))
+           FROM itens_orcamento_produto iop JOIN produtos p ON iop.produto_id = p.id WHERE iop.orcamento_id = o.id),
+          '[]'::json
+        ) AS itens_produto,
+        (SELECT cs.nome FROM itens_orcamento_servico ios JOIN catalogo_servicos cs ON ios.servico_id = cs.id WHERE ios.orcamento_id = o.id LIMIT 1) AS servico_resumo
+      FROM orcamentos o
+      JOIN usuarios c ON o.cliente_id = c.id
+      LEFT JOIN agendamentos a ON o.agendamento_id = a.id
+      LEFT JOIN veiculos v ON a.veiculo_id = v.id
+      WHERE o.cliente_id = $1
+      ORDER BY o.criado_em DESC
+    `;
+    const result = await db.query(query, [clienteId]);
+    return result.rows;
+  }
+
   static async findByAgendamentoId(agendamentoId: string): Promise<OrcamentoDTO | null> {
     const db = getDb();
     const result = await db.query(

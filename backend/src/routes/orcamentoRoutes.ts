@@ -12,12 +12,12 @@ const orcamentoRouter = Router();
  *     tags:
  *       - Orçamentos
  *     summary: Lista todos os orçamentos
- *     description: Retorna uma lista de todos os orçamentos gerados (RN028, RN173)
+ *     description: Retorna uma lista de todos os orçamentos gerados (RN028, RN173). Clientes (role 2) veem apenas seus orçamentos.
  *     responses:
  *       200:
  *         description: Sucesso
  */
-orcamentoRouter.get('/', authMiddleware, authorizeRole(['1', '3']), OrcamentoController.index);
+orcamentoRouter.get('/', authMiddleware, OrcamentoController.index);
 
 /**
  * @openapi
@@ -52,7 +52,7 @@ orcamentoRouter.get('/', authMiddleware, authorizeRole(['1', '3']), OrcamentoCon
  *       201:
  *         description: Criado
  */
-orcamentoRouter.post('/', authMiddleware, OrcamentoController.store);
+orcamentoRouter.post('/', authMiddleware, authorizeRole(['1', '3']), OrcamentoController.store);
 
 /**
  * @openapi
