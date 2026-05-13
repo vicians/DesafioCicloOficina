@@ -1,10 +1,6 @@
-interface ProdutoPayload {
-  id: string;
-  nome: string;
-  valor: number;
-  quantidade_estoque: number;
-  marca?: string;
-}
+// =========================================================
+// Esquemas para o Controller
+// =========================================================
 
 interface CreateOsBody {
   number: string;
@@ -19,6 +15,25 @@ interface AnalyzeRequestBody {
   number: string;
 }
 
+// =========================================================
+// Esquemas para o VectorStore
+// =========================================================
+
+interface DocumentChunk {
+  content: string;
+  metadata: Record<string, any>;
+  source: string;
+  category: 'policy' | 'manual';
+}
+
+interface ProdutoPayload {
+  id: string;
+  nome: string;
+  valor: number;
+  quantidade_estoque: number;
+  marca?: string;
+}
+
 interface ServicoPayload {
   id: string;
   nome: string;
@@ -27,4 +42,5 @@ interface ServicoPayload {
   duracao_minutos: number;
 }
 
-export { ProdutoPayload, CreateOsBody, AnalyzeRequestBody, ServicoPayload };
+
+export { ProdutoPayload, CreateOsBody, AnalyzeRequestBody, ServicoPayload, DocumentChunk };
