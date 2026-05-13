@@ -3,39 +3,6 @@ import { CreateOsBody } from '../schemas/ai_schemas';
 import { nextBusinessDay9am } from '../utils/date_utils';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
-const BACKEND_SERVICE_EMAIL = process.env.BACKEND_SERVICE_EMAIL;
-const BACKEND_SERVICE_PASSWORD = process.env.BACKEND_SERVICE_PASSWORD;
-
-let cachedBackendToken: string | null = null;
-let backendTokenFetchedAt = 0;
-const BACKEND_TOKEN_TTL_MS = 10 * 60 * 1000;
-
-async function getBackendAuthToken(): Promise<string> {
-  const now = Date.now();
-
-  if (cachedBackendToken && now - backendTokenFetchedAt < BACKEND_TOKEN_TTL_MS) {
-    return cachedBackendToken;
-  }
-
-  const loginResponse = await axios.post(`${BACKEND_URL}/auth/login`, {
-    email: BACKEND_SERVICE_EMAIL,
-    senha: BACKEND_SERVICE_PASSWORD,
-  });
-
-  const token = loginResponse?.data?.token;
-  if (!token) {
-    throw new Error('Falha ao autenticar no backend: token ausente em /auth/login.');
-  }
-
-  cachedBackendToken = token;
-  backendTokenFetchedAt = now;
-  return token;
-}
-
-async function getAuthHeaders() {
-  const token = await getBackendAuthToken();
-  return { Authorization: `Bearer ${token}` };
-}
 
 export async function createOsWorkflow(body: CreateOsBody & { services?: string[] }) {
   const { number, customerName, vehiclePlate, description, serviceType, services } = body;
@@ -48,11 +15,9 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
   console.log(`[OS] 📝 Iniciando processo de criação para: ${number}`);
   let clienteId: string;
   let clienteTelefone: string = number;
-  const headers = await getAuthHeaders();
 
   const usuariosRes = await axios.get(`${BACKEND_URL}/usuarios`, {
     params: { tipo_id: 2 },
-    headers,
   });
   const todos: any[] = usuariosRes.data ?? [];
   const found = todos.find((u: any) => u.telefone === number);
@@ -62,15 +27,11 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
     console.log(`[OS] Cliente encontrado: ${found.nome} (${clienteId})`);
   } else {
     console.log(`[OS] Cliente não encontrado. Criando novo registro...`);
-    const temporaryPassword = `whatsapp_${number.replace(/\D/g, '').slice(-8)}_tmp`;
     const novoCliente = await axios.post(`${BACKEND_URL}/usuarios`, {
       tipo_id: 2,
       cpf_cnpj: number.replace(/\D/g, '').slice(0, 20),
       nome: customerName ?? `Cliente WhatsApp ${number}`,
       telefone: number,
-      senha: temporaryPassword,
-    }, {
-      headers,
     });
     clienteId = novoCliente.data.id;
     console.log(`[OS] Novo cliente criado: ${clienteId}`);
@@ -83,7 +44,7 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
     throw new Error('Placa do veículo é obrigatória para criar a OS. Por favor, informe a placa.');
   }
 
-  const veiculosRes = await axios.get(`${BACKEND_URL}/veiculos`, { headers });
+  const veiculosRes = await axios.get(`${BACKEND_URL}/veiculos`);
   const veiculos: any[] = veiculosRes.data ?? [];
   const veiculoFound = veiculos.find(
     (v: any) => v.placa.toUpperCase() === vehiclePlate.toUpperCase()
@@ -101,8 +62,6 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
       modelo: 'Não informado',
       ano: new Date().getFullYear(),
       quilometragem_atual: 0,
-    }, {
-      headers,
     });
     veiculoId = novoVeiculo.data.id;
     console.log(`[OS] Novo veículo criado: ${vehiclePlate} (${veiculoId})`);
@@ -115,7 +74,6 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
   try {
     const mecanicosRes = await axios.get(`${BACKEND_URL}/usuarios`, {
       params: { tipo_id: 3 },
-      headers,
     });
     const mecanicos: any[] = mecanicosRes.data ?? [];
     if (mecanicos.length > 0) {
@@ -129,56 +87,31 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
 
   // ── 4. Criar agendamento (próximo dia útil às 09:00) ─────────────────────
   const agendadoPara = nextBusinessDay9am();
-  const data = agendadoPara.toISOString().slice(0, 10);
-  const hora = agendadoPara.getHours();
 
   const agendRes = await axios.post(`${BACKEND_URL}/agendamentos`, {
     cliente_id: clienteId,
     veiculo_id: veiculoId,
     funcionario_id: mecanicoId,
-    data,
-    hora,
-    para_avaliacao: true,
+    agendado_para: agendadoPara.toISOString(),
+    duracao_total_minutos: 60,
     notas_cliente: `[WhatsApp] ${serviceType ?? ''} — ${description}`.trim(),
-  }, {
-    headers,
   });
   const agendamentoId = agendRes.data.id;
   console.log(`[OS] Agendamento criado: ${agendamentoId}`);
 
   // ── 5. Criar orçamento (rascunho) ─────────────────────────────────────────
-  let orcamentoId: string;
-  try {
-    const orcRes = await axios.post(`${BACKEND_URL}/orcamentos`, {
-      agendamento_id: agendamentoId,
-      cliente_id: clienteId,
-      funcionario_id: mecanicoId,
-    }, {
-      headers,
-    });
-    orcamentoId = orcRes.data.id;
-  } catch (err: any) {
-    if (err?.response?.status === 409) {
-      const existingOrcamentos = await axios.get(`${BACKEND_URL}/orcamentos`, { headers });
-      const foundOrcamento = (existingOrcamentos.data ?? []).find(
-        (o: any) => o.agendamento_id === agendamentoId
-      );
-
-      if (!foundOrcamento?.id) {
-        throw err;
-      }
-
-      orcamentoId = foundOrcamento.id;
-    } else {
-      throw err;
-    }
-  }
+  const orcRes = await axios.post(`${BACKEND_URL}/orcamentos`, {
+    agendamento_id: agendamentoId,
+    cliente_id: clienteId,
+    funcionario_id: mecanicoId,
+  });
+  const orcamentoId = orcRes.data.id;
   console.log(`[OS] Orçamento criado: ${orcamentoId}`);
 
   // ── 6. Adicionar serviços identificados ───────────────────────────────────
   if (services && services.length > 0) {
     console.log(`[OS] 🛠️ Adicionando serviços identificados: ${services.join(', ')}`);
-    const catalogoRes = await axios.get(`${BACKEND_URL}/servicos`, { headers });
+    const catalogoRes = await axios.get(`${BACKEND_URL}/servicos`);
     const catalogo: any[] = catalogoRes.data ?? [];
 
     for (const sName of services) {
@@ -193,8 +126,6 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
             servico_id: match.id,
             quantidade: 1,
             preco_unitario: match.preco
-          }, {
-            headers,
           });
           console.log(`[OS] Serviço adicionado: ${match.nome}`);
         } catch (err: any) {
@@ -227,8 +158,7 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
 
 export async function checkAvailability(date: string) {
   console.log(`[AI] Consultando disponibilidade para: ${date}`);
-  const headers = await getAuthHeaders();
-  const res = await axios.get(`${BACKEND_URL}/agendamentos`, { headers });
+  const res = await axios.get(`${BACKEND_URL}/agendamentos`);
   const all: any[] = res.data ?? [];
   
   const targetDate = new Date(date);
@@ -254,14 +184,13 @@ export async function checkAvailability(date: string) {
 
 export async function getCustomerHistory(number: string) {
   console.log(`[AI] Buscando histórico para o número: ${number}`);
-  const headers = await getAuthHeaders();
   
-  const usuariosRes = await axios.get(`${BACKEND_URL}/usuarios`, { params: { tipo_id: 2 }, headers });
+  const usuariosRes = await axios.get(`${BACKEND_URL}/usuarios`, { params: { tipo_id: 2 } });
   const cliente = (usuariosRes.data ?? []).find((u: any) => u.telefone === number);
 
   if (!cliente) return "Cliente não encontrado na base de dados.";
 
-  const agendRes = await axios.get(`${BACKEND_URL}/agendamentos/cliente/${cliente.id}`, { headers });
+  const agendRes = await axios.get(`${BACKEND_URL}/agendamentos/cliente/${cliente.id}`);
   const history: any[] = agendRes.data ?? [];
 
   if (history.length === 0) return "Não há histórico de atendimentos para este cliente.";
