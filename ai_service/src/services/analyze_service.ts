@@ -3,10 +3,63 @@ import { model } from '../config/ai_model';
 import { queryProdutos } from '../vectorstore/productVectorStore';
 import { queryServicos } from '../vectorstore/serviceVectorStore';
 import { getTools } from '../tools';
-import { HumanMessage, SystemMessage, AIMessage, ToolMessage } from '@langchain/core/messages';
+import { HumanMessage, SystemMessage, ToolMessage } from '@langchain/core/messages';
 
 import dotenv from 'dotenv';
 dotenv.config();
+
+const MAX_TOOL_ROUNDS = 3;
+
+function parseJsonText(content: string): unknown | null {
+  try {
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeAssistantReply(content: string): string {
+  const trimmed = content.trim();
+
+  if (!trimmed) {
+    return 'Não consegui concluir a solicitação agora. Pode reformular a mensagem?';
+  }
+
+  const parsed = parseJsonText(trimmed);
+  if (!parsed || typeof parsed !== 'object') {
+    return trimmed;
+  }
+
+  const data = parsed as Record<string, unknown>;
+
+  if (typeof data.result === 'string' && data.result.trim()) {
+    return data.result.trim();
+  }
+
+  if (typeof data.message === 'string' && data.message.trim()) {
+    return data.message.trim();
+  }
+
+  if (data.ok === false && typeof data.error === 'string') {
+    return `Não consegui concluir a ação no sistema: ${data.error}`;
+  }
+
+  if (
+    typeof data.agendamento_id === 'string' &&
+    typeof data.orcamento_id === 'string'
+  ) {
+    const dateText = typeof data.agendado_para === 'string'
+      ? ` para ${new Date(data.agendado_para).toLocaleString('pt-BR')}`
+      : '';
+    const magicLinkText = typeof data.magic_link_url === 'string' && data.magic_link_url
+      ? ` Acompanhe pelo link: ${data.magic_link_url}`
+      : '';
+
+    return `Agendamento e orçamento criados com sucesso${dateText}.${magicLinkText}`.trim();
+  }
+
+  return trimmed;
+}
 
 export async function analyzeMessage(message: string, number: string) {
   console.log(`\n[AI Service] 📩 Requisição recebida de: ${number}`);
@@ -40,7 +93,7 @@ ${ragServicos.length > 0 ? ragServicos.map(d => `- ${d}`).join('\n') : 'Nenhum s
 `;
 
   // 3. Configurar Agent/Tools
-  const tools = getTools(number);
+  const tools = getTools(number, message);
   const modelWithTools = model.bindTools(tools);
 
   const messages: any[] = [
@@ -52,9 +105,11 @@ Objetivos:
 
 Regras:
 - Nunca invente preços. Use apenas o que está no contexto.
-- Se o cliente quiser agendar, use a ferramenta 'create_appointment'.
+- Se o cliente quiser agendar, use a ferramenta 'create_appointment' ou 'backend_api' quando precisar consultar ou registrar dados no backend.
 - Se identificar um serviço específico do catálogo (ex: Troca de óleo), passe-o no parâmetro 'services'.
-- Responda de forma cordial e profissional.
+- Quando uma ferramenta retornar dados estruturados, use esses dados para redigir a resposta final. Nunca devolva JSON cru ao cliente.
+- Se faltarem dados obrigatórios para executar uma ação, peça somente os dados faltantes.
+- Responda sempre em português, de forma cordial e profissional.
 
 CONTEXTO ATUAL:
 ${contextBlock}`),
@@ -65,25 +120,30 @@ ${contextBlock}`),
   console.log(`[AI Service] 🤖 Processando com NVIDIA NIM e Tools...`);
   let response = await modelWithTools.invoke(messages);
 
-  // Se houver chamadas de ferramentas, executamos
-  if (response.tool_calls && response.tool_calls.length > 0) {
+  // Se houver chamadas de ferramentas, executamos em rodadas limitadas.
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+    if (!response.tool_calls || response.tool_calls.length === 0) {
+      break;
+    }
+
+    messages.push(response);
+
     for (const toolCall of response.tool_calls) {
       const tool = tools.find(t => t.name === toolCall.name);
       if (tool) {
         console.log(`[AI Service] 🛠️ Executando ferramenta: ${toolCall.name}`);
         const toolResult = await (tool as any).call(toolCall.args);
-        messages.push(response);
         messages.push(new ToolMessage({
           tool_call_id: toolCall.id!,
           content: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult)
         }));
       }
     }
-    // Segunda chamada para gerar a resposta final com base no resultado da ferramenta
+
     response = await modelWithTools.invoke(messages);
   }
 
-  const finalContent = String(response.content).trim();
+  const finalContent = normalizeAssistantReply(String(response.content));
   
   // O retorno segue o padrão esperado pelo frontend/whatsapp
   return { 

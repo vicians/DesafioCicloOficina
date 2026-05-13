@@ -20,6 +20,8 @@ import 'screens/settings_screen.dart';
 import 'screens/internal_notifications_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/internal_messages_screen.dart';
+import 'screens/catalog_services_screen.dart';
+import 'screens/users_screen.dart';
 import '../../core/config/api_config.dart';
 import '../shared/models/notification_item.dart';
 import '../../services/firebase_messaging_service.dart';
@@ -41,6 +43,7 @@ class InternoApp extends StatefulWidget {
 class _InternoAppState extends State<InternoApp> {
   int _currentIndex = 0;
   final _schedulingRefresh = ValueNotifier<int>(0);
+  final _servicesRefresh = ValueNotifier<int>(0);
   bool _drawerOpen = false;
   bool _showLogoutConfirm = false;
 
@@ -90,6 +93,7 @@ class _InternoAppState extends State<InternoApp> {
   void dispose() {
     _flowRepository.dispose();
     _schedulingRefresh.dispose();
+    _servicesRefresh.dispose();
     super.dispose();
   }
 
@@ -147,6 +151,14 @@ class _InternoAppState extends State<InternoApp> {
         return InventoryScreen(
           onOpenDrawer: () => setState(() => _drawerOpen = true),
         );
+      case 'catalog':
+        return CatalogServicesScreen(
+          onOpenDrawer: () => setState(() => _drawerOpen = true),
+        );
+      case 'users':
+        return UsersScreen(
+          onOpenDrawer: () => setState(() => _drawerOpen = true),
+        );
       case 'reports':
         return ReportsScreen(
           repository: _reportRepository,
@@ -172,6 +184,8 @@ class _InternoAppState extends State<InternoApp> {
   List<Widget> get _managerScreens => [
         EmployeeDashboardScreen(
           repository: _flowRepository,
+          schedulingRepository: _schedulingRepository,
+          refreshSignal: _schedulingRefresh,
           isManager: true,
           onLogout: _requestLogout,
           onOpenDrawer: () => setState(() => _drawerOpen = true),
@@ -194,6 +208,7 @@ class _InternoAppState extends State<InternoApp> {
         ServiceListScreen(
           repository: _flowRepository,
           initialFilter: null,
+          refreshSignal: _servicesRefresh,
           onOpenDrawer: () => setState(() => _drawerOpen = true),
         ),
       ];
@@ -201,6 +216,8 @@ class _InternoAppState extends State<InternoApp> {
   List<Widget> get _employeeScreens => [
         EmployeeDashboardScreen(
           repository: _flowRepository,
+          schedulingRepository: _schedulingRepository,
+          refreshSignal: _schedulingRefresh,
           isManager: false,
           onLogout: _requestLogout,
           onOpenServices: () => setState(() => _currentIndex = 3),
@@ -210,11 +227,12 @@ class _InternoAppState extends State<InternoApp> {
           repository: _schedulingRepository,
           budgetRepository: _flowRepository,
           refreshSignal: _schedulingRefresh,
+          servicesRefreshSignal: _servicesRefresh,
           onOpenServices: () => setState(() => _currentIndex = 3),
           onOpenBudgets: () => setState(() => _currentIndex = 2),
         ),
         BudgetListScreen(repository: _flowRepository),
-        ServiceListScreen(repository: _flowRepository, initialFilter: null),
+        ServiceListScreen(repository: _flowRepository, initialFilter: null, refreshSignal: _servicesRefresh),
         InternalMessagesScreen(onUnreadCountChanged: _updateUnreadChatsCount),
         InternalNotificationsScreen(
           items: _internalNotifications,
@@ -271,6 +289,8 @@ class _InternoAppState extends State<InternoApp> {
               SideDrawer(
                 onClose: () => setState(() => _drawerOpen = false),
                 onOpenInventory: () => _navigateDrawer('stock'),
+                onOpenCatalog: () => _navigateDrawer('catalog'),
+                onOpenUsers: () => _navigateDrawer('users'),
                 onOpenReports: () => _navigateDrawer('reports'),
                 onOpenSettings: () => _navigateDrawer('settings'),
                 onLogoutRequest: _requestLogout,

@@ -33,26 +33,59 @@ export class AgendamentoController {
   }
 
   static async store(req: Request, res: Response) {
-    const { cliente_id, veiculo_id, funcionario_id, agendado_para, duracao_total_minutos, notas_cliente } = req.body;
+    const { cliente_id, veiculo_id, funcionario_id, notas_cliente, para_avaliacao } = req.body;
+    const servicos = req.body.servicos as Array<{ servico_id: string; quantidade?: number }> | undefined;
 
-    if (!cliente_id || !veiculo_id || !agendado_para || !duracao_total_minutos) {
-      return res.status(400).json({ error: 'cliente_id, veiculo_id, agendado_para e duracao_total_minutos são obrigatórios' });
+    // Contrato: cliente envia data (YYYY-MM-DD) + hora (int 7-18) como intenção pura.
+    // O backend constrói o TIMESTAMPTZ no fuso da oficina — sem depender do timezone do dispositivo.
+    const data: string = req.body.data;
+    const hora: number = Number(req.body.hora);
+
+    if (!cliente_id || !veiculo_id || !data || !Number.isFinite(hora)) {
+      return res.status(400).json({ error: 'cliente_id, veiculo_id, data e hora são obrigatórios' });
     }
 
-    const duracao = Number(duracao_total_minutos);
-    if (!Number.isFinite(duracao) || duracao <= 0) {
-      return res.status(400).json({ error: 'duracao_total_minutos deve ser maior que zero' });
+    if (!req.user) {
+      return res.status(401).json({ error: 'Não autorizado' });
     }
 
-    const inicio = new Date(agendado_para);
-    if (Number.isNaN(inicio.getTime())) {
-      return res.status(400).json({ error: 'agendado_para inválido' });
+    if (req.user.role === '2' && req.user.id !== cliente_id) {
+      return res.status(403).json({ error: 'Você não tem permissão para agendar para este cliente' });
     }
 
-    const hora = inicio.getHours();
-    const horaUtc = inicio.getUTCHours();
-    if (inicio.getUTCMinutes() !== 0 || inicio.getUTCSeconds() !== 0 || horaUtc < 7 || horaUtc > 18) {
-      return res.status(400).json({ error: 'agendado_para deve ser em hora cheia entre 07:00 e 18:00' });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) {
+      return res.status(400).json({ error: 'data deve estar no formato YYYY-MM-DD' });
+    }
+
+    if (!Number.isFinite(hora) || hora < 7 || hora > 18) {
+      return res.status(400).json({ error: 'hora deve ser um inteiro entre 7 e 18' });
+    }
+
+    // Regra de negócio: pelo menos um serviço ou flag de avaliação é obrigatório
+    const temServicos = Array.isArray(servicos) && servicos.length > 0;
+    const ehAvaliacao = para_avaliacao === true;
+    if (!temServicos && !ehAvaliacao) {
+      return res.status(400).json({
+        error: 'Selecione pelo menos um serviço ou solicite avaliação do veículo.',
+      });
+    }
+
+    // Calcula duração real somando duracao_minutos de cada serviço selecionado.
+    // Ignora o valor enviado pelo frontend (duracao_total_minutos) por segurança (RN de Duração).
+    let duracao = 60; // Duração padrão para avaliação
+    if (temServicos) {
+      const { CatalogoServicoModel } = await import('../models/catalogoServicoModel');
+      let soma = 0;
+      for (const item of servicos!) {
+        if (!item.servico_id) continue;
+        const catalogo = await CatalogoServicoModel.findById(item.servico_id);
+        if (catalogo) {
+          // A quantidade não multiplica a duração se assumirmos que a duração é por item, mas vamos deixar como 1 se não enviado.
+          // Aqui a regra de negócio dita soma das durações dos serviços no catálogo
+          soma += (catalogo.duracao_minutos ?? 60);
+        }
+      }
+      if (soma > 0) duracao = soma;
     }
 
     const clienteVeiculoOk = await AgendamentoModel.clienteVeiculoRelacionados(cliente_id, veiculo_id);
@@ -60,7 +93,8 @@ export class AgendamentoController {
       return res.status(400).json({ error: 'veiculo_id não pertence ao cliente informado' });
     }
 
-    const fim = new Date(inicio.getTime() + duracao * 60000);
+    // Constrói o TIMESTAMPTZ no fuso do servidor (oficina) — data + hora local → UTC correto.
+    const { inicio, fim } = await AgendamentoModel.buildSlotTimestamps(data, hora, duracao);
 
     const conflitoOficina = await AgendamentoModel.checkWorkshopConflict(inicio, fim);
     if (conflitoOficina) {
@@ -68,7 +102,6 @@ export class AgendamentoController {
     }
 
     const conflito = await AgendamentoModel.checkConflict(veiculo_id, funcionario_id ?? null, inicio, fim);
-
     if (conflito.veiculo) {
       return res.status(409).json({ error: 'Veículo já possui agendamento nesse horário' });
     }
@@ -76,24 +109,31 @@ export class AgendamentoController {
       return res.status(409).json({ error: 'Funcionário já possui agendamento nesse horário' });
     }
 
+    const agendamentoData = {
+      cliente_id,
+      veiculo_id,
+      funcionario_id,
+      inicio,
+      fim,
+      duracao_total_minutos: duracao,
+      notas_cliente,
+    };
+
     let agendamento;
     try {
-      const created = await AgendamentoModel.createWithApprovedInitialBudget({
-        cliente_id,
-        veiculo_id,
-        funcionario_id,
-        agendado_para,
-        duracao_total_minutos: duracao,
-        notas_cliente,
-      });
-      agendamento = created.agendamento;
+      if (ehAvaliacao) {
+        agendamento = await AgendamentoModel.create(agendamentoData);
+        await OrcamentoModel.create({
+          agendamento_id: agendamento.id,
+          cliente_id,
+          funcionario_id: funcionario_id ?? null,
+        });
+      } else {
+        const created = await AgendamentoModel.createWithApprovedInitialBudget(agendamentoData);
+        agendamento = created.agendamento;
 
-      // Adicionar serviços ao orçamento inicial se fornecidos
-      const servicos = req.body.servicos as Array<{ servico_id: string; quantidade?: number }> | undefined;
-      if (servicos && servicos.length > 0) {
-        const { OrcamentoModel } = await import('../models/orcamentoModel');
         const { CatalogoServicoModel } = await import('../models/catalogoServicoModel');
-        for (const item of servicos) {
+        for (const item of servicos!) {
           if (!item.servico_id) continue;
           const catalogo = await CatalogoServicoModel.findById(item.servico_id);
           if (!catalogo) continue;
@@ -112,7 +152,7 @@ export class AgendamentoController {
     try {
       const internalUserIds = await NotificationModel.findInternalUserIds();
       const titulo = 'Novo agendamento recebido';
-      const mensagem = `Agendamento ${agendamento.id} criado para ${new Date(agendado_para).toLocaleString('pt-BR')}.`;
+      const mensagem = `Agendamento ${agendamento.id} criado para ${data} às ${hora}:00.`;
       const notifIds = await NotificationModel.createForUsers(internalUserIds, {
         tipo: 'new_schedule',
         titulo,
@@ -122,12 +162,12 @@ export class AgendamentoController {
       });
       await sendPushToUsers(internalUserIds, notifIds, titulo, mensagem);
     } catch (error) {
-      // Não interrompe o fluxo principal de agendamento por falha de notificação.
       console.error('Falha ao criar notificações internas de agendamento:', error);
     }
 
     return res.status(201).json(agendamento);
   }
+
 
   static async confirmarRecebimento(req: Request, res: Response) {
     const { id } = req.params;

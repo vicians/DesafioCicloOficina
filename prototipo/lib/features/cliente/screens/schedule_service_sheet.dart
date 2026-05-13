@@ -37,6 +37,7 @@ class _ClientScheduleSheetState extends State<_ClientScheduleSheet> {
   bool _confirming = false;
   String? _error;
   String? _selectedVehicleId;
+  bool _paraAvaliacao = false;
   final TextEditingController _notesController = TextEditingController();
 
   ClientScheduleContext? _context;
@@ -224,11 +225,14 @@ class _ClientScheduleSheetState extends State<_ClientScheduleSheet> {
     });
   }
 
+  bool get _servicoSelecionado => _selectedServicos.isNotEmpty || _paraAvaliacao;
+
   Future<void> _confirmSchedule() async {
     final selectedHour = _selectedHour;
     final selectedVehicleId = _selectedVehicleId;
     if (selectedHour == null) return;
     if (selectedVehicleId == null || selectedVehicleId.isEmpty) return;
+    if (!_servicoSelecionado) return;
 
     setState(() {
       _confirming = true;
@@ -241,6 +245,8 @@ class _ClientScheduleSheetState extends State<_ClientScheduleSheet> {
         date: _selectedDate,
         hour: selectedHour,
         notes: _notesController.text,
+        paraAvaliacao: _paraAvaliacao,
+        catalogoCompleto: _catalogoServicos,
         servicos: _selectedServicos
             .map((id) => ClientScheduleSelected(servicoId: id))
             .toList(),
@@ -248,12 +254,13 @@ class _ClientScheduleSheetState extends State<_ClientScheduleSheet> {
 
       if (!mounted) return;
       Navigator.of(context).pop();
+
+      final msg = _paraAvaliacao
+          ? 'Agendamento criado — orçamento será enviado após avaliação'
+          : 'Agendamento confirmado';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            'Agendamento confirmado',
-            style: GoogleFonts.dmSans(color: Colors.white),
-          ),
+          content: Text(msg, style: GoogleFonts.dmSans(color: Colors.white)),
           backgroundColor: green,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -597,55 +604,94 @@ class _ClientScheduleSheetState extends State<_ClientScheduleSheet> {
               ),
             ],
             const SizedBox(height: 16),
-            if (_catalogoServicos.isNotEmpty) ...[
-              Text(
-                'Serviços desejados',
-                style: GoogleFonts.dmSans(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: textPrimary,
+            // ── Serviço obrigatório ───────────────────────────────────────
+            Row(
+              children: [
+                Text(
+                  'Serviço',
+                  style: GoogleFonts.dmSans(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: textPrimary,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Selecione os serviços que precisa (opcional)',
-                style: GoogleFonts.dmSans(fontSize: 12, color: textSecondary),
-              ),
-              const SizedBox(height: 8),
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFE5E5),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    'obrigatório',
+                    style: GoogleFonts.dmSans(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: red,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Escolha os serviços ou solicite avaliação do veículo.',
+              style: GoogleFonts.dmSans(fontSize: 12, color: textSecondary),
+            ),
+            const SizedBox(height: 10),
+            // Opção A: serviços do catálogo
+            if (_catalogoServicos.isNotEmpty) ...[
               Container(
                 decoration: BoxDecoration(
-                  color: bgPage,
+                  color: (!_paraAvaliacao && _selectedServicos.isNotEmpty)
+                      ? orangeLight
+                      : bgPage,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: borderColor),
+                  border: Border.all(
+                    color: (!_paraAvaliacao && _selectedServicos.isNotEmpty)
+                        ? orange
+                        : borderColor,
+                  ),
                 ),
                 child: InkWell(
-                  onTap: _openServiceSelector,
+                  onTap: _paraAvaliacao ? null : _openServiceSelector,
                   borderRadius: BorderRadius.circular(12),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                     child: Row(
                       children: [
-                        const Icon(Icons.playlist_add_check_rounded, color: navyMid, size: 20),
+                        Icon(
+                          Icons.playlist_add_check_rounded,
+                          color: _paraAvaliacao ? textMuted : navyMid,
+                          size: 20,
+                        ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
                             _selectedServicos.isEmpty
-                                ? 'Toque para escolher serviços'
+                                ? 'Escolher serviços do catálogo'
                                 : '${_selectedServicos.length} serviço(s) selecionado(s)',
                             style: GoogleFonts.dmSans(
                               fontSize: 13,
-                              color: _selectedServicos.isEmpty ? textSecondary : textPrimary,
+                              color: _paraAvaliacao
+                                  ? textMuted
+                                  : _selectedServicos.isEmpty
+                                      ? textSecondary
+                                      : textPrimary,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
-                        const Icon(Icons.keyboard_arrow_down_rounded, color: textSecondary),
+                        Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          color: _paraAvaliacao ? textMuted : textSecondary,
+                        ),
                       ],
                     ),
                   ),
                 ),
               ),
-              if (_selectedServicos.isNotEmpty) ...[
+              if (!_paraAvaliacao && _selectedServicos.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 6,
@@ -668,8 +714,103 @@ class _ClientScheduleSheetState extends State<_ClientScheduleSheet> {
                       .toList(),
                 ),
               ],
-              const SizedBox(height: 14),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(child: Divider(color: borderColor, thickness: 1)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    child: Text(
+                      'ou',
+                      style: GoogleFonts.dmSans(fontSize: 12, color: textMuted),
+                    ),
+                  ),
+                  Expanded(child: Divider(color: borderColor, thickness: 1)),
+                ],
+              ),
+              const SizedBox(height: 10),
             ],
+            // Opção B: avaliação do veículo
+            GestureDetector(
+              onTap: () => setState(() {
+                _paraAvaliacao = !_paraAvaliacao;
+                if (_paraAvaliacao) _selectedServicos.clear();
+              }),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                decoration: BoxDecoration(
+                  color: _paraAvaliacao ? const Color(0xFFF0F4FF) : bgPage,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _paraAvaliacao ? navyMid : borderColor,
+                    width: _paraAvaliacao ? 1.5 : 1,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      _paraAvaliacao
+                          ? Icons.check_circle_rounded
+                          : Icons.search_rounded,
+                      color: _paraAvaliacao ? navyMid : textMuted,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Avaliação do veículo',
+                            style: GoogleFonts.dmSans(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: _paraAvaliacao ? navyMid : textPrimary,
+                            ),
+                          ),
+                          Text(
+                            'O orçamento será enviado após avaliação da oficina',
+                            style: GoogleFonts.dmSans(
+                              fontSize: 11,
+                              color: textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (!_servicoSelecionado) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF8E1),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFFFCC02)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline_rounded,
+                        color: Color(0xFFF59E0B), size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Escolha pelo menos um serviço ou selecione avaliação do veículo para continuar.',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF92400E),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 14),
             AppButton(
               label: 'Confirmar agendamento',
               fullWidth: true,
@@ -677,7 +818,8 @@ class _ClientScheduleSheetState extends State<_ClientScheduleSheet> {
               onPressed: (_selectedHour == null ||
                       _selectedVehicleId == null ||
                       _loadingAvailability ||
-                      _confirming)
+                      _confirming ||
+                      !_servicoSelecionado)
                   ? null
                   : _confirmSchedule,
             ),

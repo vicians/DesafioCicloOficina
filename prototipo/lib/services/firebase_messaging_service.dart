@@ -10,6 +10,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 class FirebaseMessagingService {
+  static bool _fcmAvailable = true;
   static bool _listenersConfigured = false;
   static String? _currentUserId;
   static String? _currentBaseUrl;
@@ -48,6 +49,7 @@ class FirebaseMessagingService {
         debugPrint('[FCM] Token obtido com sucesso');
       }
     } catch (e) {
+      _fcmAvailable = false;
       debugPrint('[FCM] init falhou (emulador/sem Firebase): $e');
     }
   }
@@ -115,6 +117,8 @@ class FirebaseMessagingService {
   }
 
   static void _configureListeners() {
+    if (!_fcmAvailable) return;
+
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       debugPrint('[FCM][foreground] ${message.messageId} ${message.notification?.title}');
       _showForegroundNotification(message);
@@ -180,11 +184,13 @@ class FirebaseMessagingService {
     required String baseUrl,
     required String usuarioId,
   }) async {
+    if (!_fcmAvailable) return;
     try {
       final token = await FirebaseMessaging.instance.getToken();
       if (token == null || token.isEmpty) return;
       await _upsertPushToken(baseUrl: baseUrl, usuarioId: usuarioId, token: token);
     } catch (e) {
+      _fcmAvailable = false;
       debugPrint('[FCM] getToken falhou (emulador/sem Firebase): $e');
     }
   }

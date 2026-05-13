@@ -8,9 +8,14 @@ import 'features/interno/screens/login_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'services/firebase_messaging_service.dart';
+import 'core/config/auth_manager.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Inicializar Persistência de Auth
+  await AuthManager.init();
+
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
 
@@ -19,9 +24,8 @@ void main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
     await FirebaseMessagingService.init();
-  } catch (_) {
-    // Firebase indisponível neste ambiente (ex.: web sem projeto configurado).
-    // O app roda normalmente com dados mock.
+  } catch (e) {
+    debugPrint('Erro Firebase: $e');
   }
 
   runApp(const TiaoApp());
