@@ -133,28 +133,6 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
     }
   }
 
-  Future<void> _sendToClient() async {
-    setState(() => _saving = true);
-    try {
-      await widget.repository.sendAddons(widget.budget.id);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Orçamento enviado para o cliente!')),
-      );
-      Navigator.pop(context, true);
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Erro ao enviar: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
   Future<void> _addService() async {
     final picked = await showModalBottomSheet<CatalogoServicoItem>(
       context: context,
@@ -434,18 +412,6 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-              if (widget.budget.status == 'rascunho' || widget.budget.status == 'aprovado') ...[
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(backgroundColor: orange),
-                    onPressed: _saving ? null : _sendToClient,
-                    icon: const Icon(Icons.send_rounded, size: 18),
-                    label: const Text('Enviar para o Cliente'),
-                  ),
-                ),
-                const SizedBox(height: 10),
-              ],
               // Para avaliação: só deixa aprovar se já tem serviços adicionados
               if (widget.budget.isAvaliacao && _services.isEmpty)
                 Container(

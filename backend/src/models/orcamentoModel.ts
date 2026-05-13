@@ -120,6 +120,16 @@ export class OrcamentoModel {
       values.push(data.valido_ate);
     }
 
+    // Se houver qualquer alteração e o status for RASCUNHO ou APROVADO, move para ENVIADO
+    // Isso garante que o cliente veja as mudanças para aprovação.
+    // Só fazemos isso se o status não foi passado explicitamente (ex: em aprovações diretas)
+    if (data.status === undefined) {
+      fields.push(`status = CASE WHEN status IN ('RASCUNHO', 'APROVADO') THEN 'ENVIADO' ELSE status END`);
+      if (data.valido_ate === undefined) {
+        fields.push(`valido_ate = CASE WHEN status IN ('RASCUNHO', 'APROVADO') THEN NOW() + INTERVAL '7 days' ELSE valido_ate END`);
+      }
+    }
+
     if (fields.length === 0) return this.findById(id);
 
     values.push(id);
@@ -141,7 +151,15 @@ export class OrcamentoModel {
          SELECT COALESCE(SUM(quantidade * preco_unitario), 0)
          FROM itens_orcamento_produto
          WHERE orcamento_id = $1
-       )
+       ),
+       status = CASE 
+         WHEN status IN ('RASCUNHO', 'APROVADO') THEN 'ENVIADO'
+         ELSE status
+       END,
+       valido_ate = CASE
+         WHEN status IN ('RASCUNHO', 'APROVADO') THEN NOW() + INTERVAL '7 days'
+         ELSE valido_ate
+       END
        WHERE id = $1`,
       [orcamento_id]
     );
