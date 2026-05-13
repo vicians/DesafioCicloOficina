@@ -1,16 +1,15 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../../../core/api/api_helper.dart';
 import 'models/scheduled_service_item.dart';
 import 'scheduling_repository.dart';
 
 class SchedulingApiRepository implements SchedulingRepository {
   final String baseUrl;
-  final http.Client _client;
 
   SchedulingApiRepository({
     required this.baseUrl,
-    http.Client? client,
-  }) : _client = client ?? http.Client();
+  });
 
   String _normalizeStatus(String rawStatus) {
     switch (rawStatus.toUpperCase()) {
@@ -77,8 +76,8 @@ class SchedulingApiRepository implements SchedulingRepository {
 
   @override
   Future<List<ScheduledServiceItem>> fetchScheduledServices() async {
-    final agendamentosResp = await _client.get(Uri.parse('$baseUrl/agendamentos'));
-    final orcamentosResp = await _client.get(Uri.parse('$baseUrl/orcamentos'));
+    final agendamentosResp = await ApiHelper.get('$baseUrl/agendamentos');
+    final orcamentosResp = await ApiHelper.get('$baseUrl/orcamentos');
 
     if (agendamentosResp.statusCode != 200) {
       throw Exception('Falha ao buscar agendamentos: ${agendamentosResp.statusCode}');
@@ -118,12 +117,11 @@ class SchedulingApiRepository implements SchedulingRepository {
   Future<String> confirmScheduleToService({
     required ScheduledServiceItem schedule,
   }) async {
-    final response = await _client.patch(
-      Uri.parse('$baseUrl/agendamentos/${schedule.id}/confirmar-recebimento'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
+    final response = await ApiHelper.patch(
+      '$baseUrl/agendamentos/${schedule.id}/confirmar-recebimento',
+      {
         'funcionario_id': schedule.funcionarioId,
-      }),
+      },
     );
 
     if (response.statusCode != 201 && response.statusCode != 200) {
@@ -142,14 +140,13 @@ class SchedulingApiRepository implements SchedulingRepository {
   Future<String> openScheduleBudget({
     required ScheduledServiceItem schedule,
   }) async {
-    final response = await _client.post(
-      Uri.parse('$baseUrl/orcamentos'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
+    final response = await ApiHelper.post(
+      '$baseUrl/orcamentos',
+      {
         'cliente_id': schedule.clienteId,
         'funcionario_id': schedule.funcionarioId,
         'agendamento_id': schedule.id,
-      }),
+      },
     );
 
     if (response.statusCode == 201 || response.statusCode == 200) {
