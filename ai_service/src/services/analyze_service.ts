@@ -1,19 +1,24 @@
 import { prisma } from '../config/prisma';
 import { model } from '../config/ai_model';
-import { queryProdutos } from '../vectorstore/productVectorStore';
-import { queryServicos } from '../vectorstore/serviceVectorStore';
 import { getTools } from '../tools';
-import { HumanMessage, SystemMessage, AIMessage, ToolMessage } from '@langchain/core/messages';
+import { HumanMessage, SystemMessage, ToolMessage, BaseMessage } from '@langchain/core/messages';
 
 import dotenv from 'dotenv';
 dotenv.config();
 
+const MAX_ITERATIONS = 4;
+
+/**
+ * Serviço principal de análise de mensagens.
+ * Agora opera como um Agente Autônomo com suporte a múltiplas rodadas de ferramentas (Multi-turn).
+ * O RAG foi desacoplado e agora é acionado sob demanda via 'catalog_search_tool'.
+ */
 export async function analyzeMessage(message: string, number: string) {
   console.log(`\n[AI Service] 📩 Requisição recebida de: ${number}`);
   console.log(`[AI Service] 💬 Mensagem: "${message}"`);
 
-  // 1. Identificar status do cliente
-  let customer = await prisma.usuarios.findUnique({
+  // 1. Identificar status do cliente e verificar se está em atendimento humano
+  const customer = await prisma.usuarios.findUnique({
     where: { telefone: number },
   });
 
@@ -25,69 +30,73 @@ export async function analyzeMessage(message: string, number: string) {
     };
   }
 
-  // 2. Consultar RAG (Produtos + Serviços)
-  const [ragProdutos, ragServicos] = await Promise.all([
-    queryProdutos(message),
-    queryServicos(message)
-  ]);
-
-  const contextBlock = `
-CATÁLOGO DE PRODUTOS:
-${ragProdutos.length > 0 ? ragProdutos.map(d => `- ${d}`).join('\n') : 'Nenhum produto relevante encontrado.'}
-
-CATÁLOGO DE SERVIÇOS:
-${ragServicos.length > 0 ? ragServicos.map(d => `- ${d}`).join('\n') : 'Nenhum serviço relevante encontrado.'}
-`;
-
-  // 3. Configurar Agent/Tools
+  // 2. Configurar Agente e Ferramentas
   const tools = getTools(number);
   const modelWithTools = model.bindTools(tools);
 
-  const messages: any[] = [
+  const messages: BaseMessage[] = [
     new SystemMessage(`És o assistente virtual da CicloOficina.
 Objetivos:
 1. Ajudar clientes com informações sobre produtos, preços e serviços.
-2. Identificar serviços desejados no CATÁLOGO DE SERVIÇOS e usá-los ao criar agendamentos.
-3. Facilitar agendamentos e consultas de disponibilidade.
+2. Facilitar agendamentos e consultas de disponibilidade.
 
-Regras:
-- Nunca invente preços. Use apenas o que está no contexto.
-- Se o cliente quiser agendar, use a ferramenta 'create_appointment'.
-- Se identificar um serviço específico do catálogo (ex: Troca de óleo), passe-o no parâmetro 'services'.
-- Responda de forma cordial e profissional.
-
-CONTEXTO ATUAL:
-${contextBlock}`),
+Regras Cruciais:
+- Você NÃO tem conhecimento prévio de preços, estoque ou serviços.
+- USE SEMPRE a ferramenta 'catalog_search_tool' para buscar qualquer informação do catálogo.
+- Nunca invente preços ou prazos. Informe apenas o que for retornado pelas ferramentas.
+- Se o cliente quiser agendar, use 'create_appointment'.
+- Se identificar um serviço específico no catálogo, passe-o no parâmetro 'services' do agendamento.
+- Você pode usar múltiplas ferramentas em sequência se necessário (ex: pesquisar preço e depois agendar).
+- Responda de forma cordial e profissional em Português (Brasil).`),
     new HumanMessage(message)
   ];
 
-  // 4. Execução do Loop de IA
-  console.log(`[AI Service] 🤖 Processando com NVIDIA NIM e Tools...`);
-  let response = await modelWithTools.invoke(messages);
+  // 3. Loop de Execução do Agente (Reasoning Loop)
+  console.log(`[AI Service] 🤖 Iniciando raciocínio do agente...`);
+  
+  let iterations = 0;
+  let finalResponse: any = null;
 
-  // Se houver chamadas de ferramentas, executamos
-  if (response.tool_calls && response.tool_calls.length > 0) {
+  while (iterations < MAX_ITERATIONS) {
+    iterations++;
+    const response = await modelWithTools.invoke(messages);
+    
+    // Se não houver chamadas de ferramentas, o agente terminou de pensar
+    if (!response.tool_calls || response.tool_calls.length === 0) {
+      finalResponse = response;
+      break;
+    }
+
+    // Adiciona a intenção da IA ao histórico de mensagens
+    messages.push(response);
+
+    // Processa cada chamada de ferramenta solicitada pelo modelo
     for (const toolCall of response.tool_calls) {
       const tool = tools.find(t => t.name === toolCall.name);
       if (tool) {
-        console.log(`[AI Service] 🛠️ Executando ferramenta: ${toolCall.name}`);
-        const toolResult = await (tool as any).call(toolCall.args);
-        messages.push(response);
-        messages.push(new ToolMessage({
-          tool_call_id: toolCall.id!,
-          content: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult)
-        }));
+        console.log(`[AI Service] 🛠️ [Turno ${iterations}] Executando ferramenta: ${toolCall.name}`);
+        try {
+          const toolResult = await (tool as any).call(toolCall.args);
+          messages.push(new ToolMessage({
+            tool_call_id: toolCall.id!,
+            content: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult)
+          }));
+        } catch (error) {
+          console.error(`[AI Service] ❌ Erro na ferramenta ${toolCall.name}:`, error);
+          messages.push(new ToolMessage({
+            tool_call_id: toolCall.id!,
+            content: `Erro técnico ao executar a ferramenta. Por favor, tente novamente.`
+          }));
+        }
       }
     }
-    // Segunda chamada para gerar a resposta final com base no resultado da ferramenta
-    response = await modelWithTools.invoke(messages);
   }
 
-  const finalContent = String(response.content).trim();
+  // Fallback se o loop atingir o limite sem uma resposta final (raro)
+  const finalContent = String(finalResponse?.content || "Desculpe, tive um problema ao processar sua solicitação no momento. Posso tentar novamente?").trim();
   
-  // O retorno segue o padrão esperado pelo frontend/whatsapp
   return { 
     result: finalContent, 
     action: 'REPLY' 
   };
-}
+}
