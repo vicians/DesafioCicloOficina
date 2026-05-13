@@ -33,7 +33,7 @@ class FirebaseMessagingService {
         alert: true,
         badge: true,
         sound: true,
-      );
+      ).timeout(const Duration(seconds: 3));
 
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
       await _initLocalNotifications();
@@ -44,13 +44,20 @@ class FirebaseMessagingService {
         sound: true,
       );
 
-      final token = await messaging.getToken();
-      if (token != null) {
-        debugPrint('[FCM] Token obtido com sucesso');
+      try {
+        final token = await messaging.getToken().timeout(
+          const Duration(seconds: 5),
+          onTimeout: () => throw 'getToken timeout',
+        );
+        if (token != null) {
+          debugPrint('[FCM] Token obtido com sucesso');
+        }
+      } catch (e) {
+        debugPrint('[FCM] Falha silenciosa no getToken: $e');
       }
     } catch (e) {
       _fcmAvailable = false;
-      debugPrint('[FCM] init falhou (emulador/sem Firebase): $e');
+      debugPrint('[FCM] init falhou completamente: $e');
     }
   }
 
@@ -186,12 +193,17 @@ class FirebaseMessagingService {
   }) async {
     if (!_fcmAvailable) return;
     try {
-      final token = await FirebaseMessaging.instance.getToken();
+      final token = await FirebaseMessaging.instance.getToken().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => throw 'getToken timeout',
+      );
       if (token == null || token.isEmpty) return;
       await _upsertPushToken(baseUrl: baseUrl, usuarioId: usuarioId, token: token);
     } catch (e) {
-      _fcmAvailable = false;
-      debugPrint('[FCM] getToken falhou (emulador/sem Firebase): $e');
+      debugPrint('[FCM] getToken falhou: $e');
+      if (e.toString().contains('FirebaseInstallationsException')) {
+        _fcmAvailable = false;
+      }
     }
   }
 

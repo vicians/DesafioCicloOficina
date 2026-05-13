@@ -1,16 +1,15 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../../../core/api/api_helper.dart';
 import 'models/report_data.dart';
 import 'report_repository.dart';
 
 class ReportApiRepository implements ReportRepository {
   final String baseUrl;
-  final http.Client _client;
 
   ReportApiRepository({
     required this.baseUrl,
-    http.Client? client,
-  }) : _client = client ?? http.Client();
+  });
 
   @override
   Future<ReportData> fetchInternalReport({
@@ -34,7 +33,7 @@ class ReportApiRepository implements ReportRepository {
       queryParameters: query.isEmpty ? null : query,
     );
 
-    final response = await _client.get(uri);
+    final response = await ApiHelper.get(uri.toString());
     if (response.statusCode != 200) {
       throw Exception('Falha ao carregar relatório: ${response.statusCode}');
     }
