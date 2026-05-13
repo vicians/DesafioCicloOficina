@@ -434,7 +434,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-              if (widget.budget.status == 'rascunho') ...[
+              if (widget.budget.status == 'rascunho' || widget.budget.status == 'aprovado') ...[
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(

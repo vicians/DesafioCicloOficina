@@ -197,7 +197,7 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
       );
     }
 
-    if (svc == null || (svc.status != 'orcamento' && svc.status != 'enviado' && !_approved && !_canceled)) {
+    if (svc == null || (svc.status != 'orcamento' && svc.status != 'enviado' && svc.status != 'rascunho' && !_approved && !_canceled)) {
       return Scaffold(
         backgroundColor: bgPage,
         body: Center(
