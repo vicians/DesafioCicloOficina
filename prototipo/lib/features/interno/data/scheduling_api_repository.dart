@@ -102,7 +102,11 @@ class SchedulingApiRepository implements SchedulingRepository {
         jsonDecode(agendamentosResp.body) as List<dynamic>;
     final items = agendamentos
         .cast<Map<String, dynamic>>()
-        .where((map) => !sentBudgetAgendamentoIds.contains(map['id'] as String? ?? ''))
+        .where((map) {
+          final agendamentoId = map['id'] as String? ?? '';
+          final possuiExecucao = map['possui_execucao'] == true;
+          return !sentBudgetAgendamentoIds.contains(agendamentoId) && !possuiExecucao;
+        })
         .map(_mapScheduledItem)
         .toList();
 

@@ -4,6 +4,8 @@ import type { ExecucaoServicoDTO } from '../../../shared/dtos/execucaoServicoDto
 import type { OrcamentoDTO } from '../../../shared/dtos/orcamentoDto';
 
 export class AgendamentoModel {
+  private static readonly WORKSHOP_TIMEZONE = 'America/Sao_Paulo';
+
   static async findAll(): Promise<any[]> {
     const db = getDb();
     const query = `
@@ -149,15 +151,13 @@ export class AgendamentoModel {
     duracaoMinutos: number
   ): Promise<{ inicio: Date; fim: Date }> {
     const db = getDb();
-    const tzResult = await db.query(`SHOW timezone`);
-    const tz: string = tzResult.rows[0]?.TimeZone ?? 'America/Sao_Paulo';
 
     const result = await db.query(
       `SELECT
          ($1::date + ($2::int || ':00:00')::time) AT TIME ZONE $3 AS inicio,
          ($1::date + ($2::int || ':00:00')::time) AT TIME ZONE $3
            + ($4::int * interval '1 minute') AS fim`,
-      [dataIso, hora, tz, duracaoMinutos]
+      [dataIso, hora, AgendamentoModel.WORKSHOP_TIMEZONE, duracaoMinutos]
     );
 
     return {
@@ -168,9 +168,6 @@ export class AgendamentoModel {
 
   static async findUnavailableHoursByDate(dataIso: string): Promise<number[]> {
     const db = getDb();
-
-    const tzResult = await db.query(`SHOW timezone`);
-    const tz: string = tzResult.rows[0]?.TimeZone ?? 'America/Sao_Paulo';
 
     const [quantidadeBoxesResult, slotsResult] = await Promise.all([
       db.query(`SELECT quantidade_boxes FROM oficinas LIMIT 1`),
@@ -188,7 +185,7 @@ export class AgendamentoModel {
           AND a.fim_estimado_em > slot_inicio
          GROUP BY slot_inicio
          ORDER BY slot_inicio`,
-        [dataIso, tz]
+        [dataIso, AgendamentoModel.WORKSHOP_TIMEZONE]
       ),
     ]);
 

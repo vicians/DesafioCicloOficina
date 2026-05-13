@@ -136,6 +136,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
   Future<void> _addService() async {
     final picked = await showModalBottomSheet<CatalogoServicoItem>(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -159,6 +160,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
   Future<void> _addProduct() async {
     final picked = await showModalBottomSheet<ProdutoItem>(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -725,54 +727,54 @@ class _CatalogPicker<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final maxHeight = MediaQuery.of(context).size.height * 0.65;
+
     return SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text(
-              title,
-              style: GoogleFonts.dmSans(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: textPrimary,
+      child: SizedBox(
+        height: maxHeight,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text(
+                title,
+                style: GoogleFonts.dmSans(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: textPrimary,
+                ),
               ),
             ),
-          ),
-          const Divider(height: 1),
-          ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.5,
-            ),
-            child: ListView.separated(
-              shrinkWrap: true,
-              itemCount: items.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (_, i) {
-                final item = items[i];
-                return ListTile(
-                  title: Text(
-                    labelOf(item),
-                    style: GoogleFonts.dmSans(
-                        fontSize: 14, color: textPrimary),
-                  ),
-                  trailing: Text(
-                    'R\$ ${priceOf(item).toStringAsFixed(2).replaceAll('.', ',')}',
-                    style: GoogleFonts.dmSans(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: navyDark,
+            const Divider(height: 1),
+            Expanded(
+              child: ListView.separated(
+                padding: const EdgeInsets.only(bottom: 8),
+                itemCount: items.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (_, i) {
+                  final item = items[i];
+                  return ListTile(
+                    title: Text(
+                      labelOf(item),
+                      style: GoogleFonts.dmSans(
+                          fontSize: 14, color: textPrimary),
                     ),
-                  ),
-                  onTap: () => Navigator.pop(context, item),
-                );
-              },
+                    trailing: Text(
+                      'R\$ ${priceOf(item).toStringAsFixed(2).replaceAll('.', ',')}',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: navyDark,
+                      ),
+                    ),
+                    onTap: () => Navigator.pop(context, item),
+                  );
+                },
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-        ],
+          ],
+        ),
       ),
     );
   }
