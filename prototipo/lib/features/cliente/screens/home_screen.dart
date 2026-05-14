@@ -3,7 +3,6 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
-import '../../../core/widgets/app_avatar.dart';
 import '../../../core/widgets/app_progress_bar.dart';
 import '../../../core/widgets/pulsing_dot.dart';
 import '../data/client_flow_repository.dart';
@@ -14,12 +13,18 @@ import 'service_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final VoidCallback? onLogout;
+  final VoidCallback? onOpenDrawer;
+  final VoidCallback? onOpenAlerts;
   final ClientFlowRepository repository;
+  final int unreadCount;
 
   const HomeScreen({
     super.key,
     required this.repository,
     this.onLogout,
+    this.onOpenDrawer,
+    this.onOpenAlerts,
+    this.unreadCount = 0,
   });
 
   @override
@@ -91,6 +96,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 svc: svc,
                 clientName: clientName,
                 onLogout: widget.onLogout,
+                onOpenDrawer: widget.onOpenDrawer,
+                onOpenAlerts: widget.onOpenAlerts,
+                unreadCount: widget.unreadCount,
               ),
               Padding(
                 padding: const EdgeInsets.all(16),
@@ -258,51 +266,29 @@ class _Header extends StatelessWidget {
   final ServiceModel? svc;
   final String clientName;
   final VoidCallback? onLogout;
+  final VoidCallback? onOpenDrawer;
+  final VoidCallback? onOpenAlerts;
+  final int unreadCount;
   const _Header({
     this.svc,
     required this.clientName,
     this.onLogout,
+    this.onOpenDrawer,
+    this.onOpenAlerts,
+    this.unreadCount = 0,
   });
-
-  String _getInitials(String name) {
-    if (name.isEmpty) return '??';
-    final parts = name.trim().split(' ');
-    if (parts.length > 1) {
-      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-    }
-    return parts[0][0].toUpperCase();
-  }
 
   @override
   Widget build(BuildContext context) {
     return ClientScreenHeader(
       title: 'Tião Oficina',
       subtitle: 'Olá, $clientName',
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          AppAvatar(initials: _getInitials(clientName), size: 40),
-          if (onLogout != null) ...[
-            const SizedBox(width: 10),
-            GestureDetector(
-              onTap: onLogout,
-              child: Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.logout_rounded,
-                  color: Colors.white,
-                  size: 18,
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
+      leading: onOpenDrawer != null
+          ? ClientMenuButton(onTap: onOpenDrawer!)
+          : null,
+      trailing: onOpenAlerts != null
+          ? ClientAlertsButton(unreadCount: unreadCount, onTap: onOpenAlerts!)
+          : null,
       childSpacing: 14,
       child: svc != null ? _ActiveServiceCard(svc: svc!) : const _WelcomePlaceholder(),
     );

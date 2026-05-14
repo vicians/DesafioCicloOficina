@@ -8,12 +8,14 @@ class NotificationsScreen extends StatefulWidget {
   final List<NotificationItem> items;
   final ValueChanged<String> onMarkRead;
   final VoidCallback? onMarkAllRead;
+  final VoidCallback? onOpenDrawer;
 
   const NotificationsScreen({
     super.key,
     required this.items,
     required this.onMarkRead,
     this.onMarkAllRead,
+    this.onOpenDrawer,
   });
 
   @override
@@ -28,6 +30,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       children: [
         ClientScreenHeader(
           title: 'Alertas',
+          leading: widget.onOpenDrawer != null
+              ? ClientMenuButton(onTap: widget.onOpenDrawer!)
+              : null,
           trailing: (unreadCount == 0 || widget.onMarkAllRead == null)
               ? null
               : GestureDetector(
