@@ -41,13 +41,7 @@ class ApiHelper {
     );
   }
 
-  static Future<http.Response> put(String url, [dynamic body]) async {
-    return await http.put(
-      Uri.parse(url),
-      headers: _headers,
-      body: body != null ? jsonEncode(body) : null,
-    );
-  }
+
 
   static Future<http.Response> delete(String url) async {
     return await http.delete(Uri.parse(url), headers: _headers);
