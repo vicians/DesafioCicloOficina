@@ -8,12 +8,68 @@ import {
   validateFinalReplyGuardrails,
   validateToolCallGuardrails,
 } from '../guardrails/security_guardrails';
-import { HumanMessage, SystemMessage, ToolMessage, BaseMessage } from '@langchain/core/messages';
+import {
+  ChatHistoryMessage,
+  getRecentConversationMessages,
+  resolveConversationId,
+} from '../repositories/conversation_repository';
+import { AIMessage, HumanMessage, SystemMessage, ToolMessage, BaseMessage } from '@langchain/core/messages';
 
 import dotenv from 'dotenv';
 dotenv.config();
 
 const MAX_ITERATIONS = 4;
+const DEFAULT_CONVERSATION_HISTORY_LIMIT = 10;
+
+function getConversationHistoryLimit(): number {
+  const parsed = Number.parseInt(process.env.CONVERSATION_HISTORY_LIMIT ?? '', 10);
+
+  if (Number.isNaN(parsed) || parsed < 0) {
+    return DEFAULT_CONVERSATION_HISTORY_LIMIT;
+  }
+
+  return parsed;
+}
+
+function mapConversationHistoryToLlmMessages(
+  history: ChatHistoryMessage[],
+): BaseMessage[] {
+  return history.flatMap<BaseMessage>((chatMessage) => {
+    const content = chatMessage.conteudo?.trim();
+
+    if (!content) {
+      return [];
+    }
+
+    if (chatMessage.tipo_remetente === 'client') {
+      return [new HumanMessage(content)];
+    }
+
+    if (chatMessage.tipo_remetente === 'bot') {
+      return [new AIMessage(content)];
+    }
+
+    return [];
+  });
+}
+
+function getMessageText(message: BaseMessage): string {
+  const { content } = message;
+  return typeof content === 'string' ? content.trim() : JSON.stringify(content).trim();
+}
+
+function shouldAppendCurrentMessage(
+  historyMessages: BaseMessage[],
+  currentMessage: string,
+): boolean {
+  const lastMessage = historyMessages[historyMessages.length - 1];
+
+  if (!lastMessage || !(lastMessage instanceof HumanMessage)) {
+    return true;
+  }
+
+  return getMessageText(lastMessage) !== currentMessage.trim();
+}
 
 function parseJsonText(content: string): unknown | null {
   try {
@@ -66,7 +122,7 @@ function normalizeAssistantReply(content: string): string {
   return trimmed;
 }
 
-export async function analyzeMessage(message: string, number: string) {
+export async function analyzeMessage(message: string, number: string, conversacaoId?: string) {
   console.log(`\n[AI Service] 📩 Requisição recebida de: ${number}`);
   console.log(`[AI Service] 💬 Mensagem: "${message}"`);
 
@@ -98,11 +154,25 @@ export async function analyzeMessage(message: string, number: string) {
   const tools = getTools(number, message);
   const modelWithTools = model.bindTools(tools);
 
+  const resolvedConversationId = await resolveConversationId(conversacaoId, customer?.id);
+  const historyLimit = getConversationHistoryLimit();
+  const conversationHistory = await getRecentConversationMessages(
+    resolvedConversationId,
+    customer?.id,
+    historyLimit,
+  );
+  const historyMessages = mapConversationHistoryToLlmMessages(conversationHistory);
+
   const messages: BaseMessage[] = [
     new SystemMessage(OFICINA_TIAO_SYSTEM_PROMPT),
-    new HumanMessage(message)
+    ...historyMessages,
   ];
 
+  if (shouldAppendCurrentMessage(historyMessages, message)) {
+    messages.push(new HumanMessage(message));
+  }
+
+  console.log(`[AI Service] 🧠 Contexto carregado: ${historyMessages.length}/${historyLimit} mensagens`);
   console.log(`[AI Service] 🤖 Iniciando raciocínio do agente...`);
 
   let iterations = 0;
