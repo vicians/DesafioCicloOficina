@@ -1,11 +1,11 @@
 import 'dart:convert';
 import '../core/api/api_helper.dart';
 import '../core/config/api_config.dart';
+import '../core/api/api_helper.dart';
 import '../features/interno/data/models/user_item.dart';
 
 class UserService {
   static final String _baseUrl = ApiConfig.baseUrl;
-  static const Duration _timeout = Duration(seconds: 8);
 
   static Future<List<UserItem>> getUsers() async {
     try {
