@@ -9,6 +9,7 @@ import '../interno_app.dart';
 import '../../cliente/cliente_app.dart';
 import '../../../data/auth_repository.dart';
 import '../../../core/config/api_config.dart';
+import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -129,6 +130,19 @@ class _LoginScreenState extends State<LoginScreen> {
                     fullWidth: true,
                     loading: _loading,
                     onPressed: _loading ? null : _login,
+                  ),
+                  const SizedBox(height: 12),
+                  AppButton(
+                    label: 'Criar uma conta',
+                    fullWidth: true,
+                    variant: AppButtonVariant.outline,
+                    onPressed: _loading
+                        ? null
+                        : () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const RegisterScreen()),
+                            ),
                   ),
                   const SizedBox(height: 24),
                 ],
