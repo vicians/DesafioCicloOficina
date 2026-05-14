@@ -12,4 +12,5 @@ abstract class ClientFlowRepository extends ChangeNotifier {
   Future<void> createVeiculo(String marca, String modelo, String placa, int ano);
   Future<String> fetchProfileName();
   Future<List<Map<String, dynamic>>> fetchVehicles();
+  void invalidateProfile();
 }

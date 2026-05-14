@@ -11,7 +11,7 @@ import { queryDocuments } from '../vectorstore/documentVectorStore';
  */
 export const catalogTool = new DynamicStructuredTool({
   name: "catalog_search_tool",
-  description: "Consulta o catálogo de produtos, serviços e manuais técnicos da CicloOficina. Use para buscar preços, disponibilidade e informações técnicas.",
+  description: "Consulta o catálogo de produtos, serviços e manuais técnicos da Oficina do Tião. Use para buscar preços, disponibilidade e informações técnicas automotivas.",
   schema: z.object({
     query: z.string().describe("O termo de busca ou pergunta do usuário em linguagem natural."),
     category: z.enum(['all', 'products', 'services', 'manuals']).default('all').describe("Categoria específica de busca (opcional).")

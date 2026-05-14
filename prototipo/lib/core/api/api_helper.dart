@@ -25,8 +25,24 @@ class ApiHelper {
     );
   }
 
+  static Future<http.Response> put(String url, [dynamic body]) async {
+    return await http.put(
+      Uri.parse(url),
+      headers: _headers,
+      body: body != null ? jsonEncode(body) : null,
+    );
+  }
+
   static Future<http.Response> patch(String url, [dynamic body]) async {
     return await http.patch(
+      Uri.parse(url),
+      headers: _headers,
+      body: body != null ? jsonEncode(body) : null,
+    );
+  }
+
+  static Future<http.Response> put(String url, [dynamic body]) async {
+    return await http.put(
       Uri.parse(url),
       headers: _headers,
       body: body != null ? jsonEncode(body) : null,

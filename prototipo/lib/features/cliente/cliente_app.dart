@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/colors.dart';
 import '../../core/widgets/quick_action_fab.dart';
-import '../../data/mock_data.dart' hide NotificationItem;
 import '../../core/config/api_config.dart';
 import '../shared/models/notification_item.dart';
 import '../../services/firebase_messaging_service.dart';
 import '../interno/screens/login_screen.dart';
+import '../../core/widgets/side_drawer.dart' show LogoutConfirmSheet;
 import 'data/client_notification_api_repository.dart';
 import 'data/client_notification_repository.dart';
 import 'data/client_schedule_api_repository.dart';
@@ -18,6 +18,9 @@ import 'screens/budget_approval_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/schedule_service_sheet.dart';
+import 'screens/client_side_drawer.dart';
+import 'screens/edit_profile_screen.dart';
+import 'screens/change_password_screen.dart';
 
 final _kApiBaseUrl = ApiConfig.baseUrl;
 const _kEnableDevClientSeedOnStartup = true;
@@ -32,6 +35,9 @@ class ClienteApp extends StatefulWidget {
 
 class _ClienteAppState extends State<ClienteApp> {
   int _currentIndex = 0;
+  bool _drawerOpen = false;
+  bool _showLogoutConfirm = false;
+
   late final ClientNotificationRepository _notificationRepository;
   late final ClientScheduleApiRepository _scheduleRepository;
   late final ClientFlowRepository _flowRepository;
@@ -105,14 +111,41 @@ class _ClienteAppState extends State<ClienteApp> {
     );
   }
 
+  void _requestLogout() {
+    setState(() {
+      _drawerOpen = false;
+      _showLogoutConfirm = true;
+    });
+  }
+
+  int get _unreadCount => _clientNotifications.where((n) => n.unread).length;
+
+  // The first 3 screens are cached to avoid rebuilds when drawer opens/closes (prevents flicker).
+  // NotificationsScreen is rebuilt when _clientNotifications changes — that's intentional.
+  late final BudgetApprovalScreen _budgetScreen = BudgetApprovalScreen(
+    repository: _flowRepository,
+    onOpenDrawer: () => setState(() => _drawerOpen = true),
+  );
+  late final HistoryScreen _historyScreen = HistoryScreen(
+    repository: _flowRepository,
+    onOpenDrawer: () => setState(() => _drawerOpen = true),
+  );
+
   List<Widget> get _screens => [
-    HomeScreen(onLogout: _logout, repository: _flowRepository),
-    BudgetApprovalScreen(repository: _flowRepository),
-    HistoryScreen(repository: _flowRepository),
+    HomeScreen(
+      onLogout: _logout,
+      onOpenDrawer: () => setState(() => _drawerOpen = true),
+      onOpenAlerts: () => setState(() => _currentIndex = 3),
+      repository: _flowRepository,
+      unreadCount: _unreadCount,
+    ),
+    _budgetScreen,
+    _historyScreen,
     NotificationsScreen(
       items: _clientNotifications,
       onMarkRead: _markNotificationAsRead,
       onMarkAllRead: _markAllNotificationsAsRead,
+      onOpenDrawer: () => setState(() => _drawerOpen = true),
     ),
   ];
 
@@ -124,19 +157,73 @@ class _ClienteAppState extends State<ClienteApp> {
     return Scaffold(
       backgroundColor: bgPage,
       appBar: null,
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
+      body: Stack(
+        children: [
+          // Main content
+          IndexedStack(
+            index: _currentIndex,
+            children: _screens,
+          ),
+
+          // Client side drawer overlay
+          if (_drawerOpen)
+            ClientSideDrawer(
+              onClose: () => setState(() => _drawerOpen = false),
+              onOpenEditProfile: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => EditProfileScreen(
+                    clientId: widget.clientId,
+                    baseUrl: _kApiBaseUrl,
+                    onSaved: _flowRepository.invalidateProfile,
+                  ),
+                ),
+              ),
+              onOpenChangePassword: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ChangePasswordScreen(
+                    clientId: widget.clientId,
+                    baseUrl: _kApiBaseUrl,
+                  ),
+                ),
+              ),
+              onLogoutRequest: _requestLogout,
+            ),
+
+          // Logout confirmation sheet overlay
+          if (_showLogoutConfirm) ...[
+            GestureDetector(
+              onTap: () => setState(() => _showLogoutConfirm = false),
+              child: Container(color: Colors.black.withValues(alpha: 0.5)),
+            ),
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: LogoutConfirmSheet(
+                onConfirm: () {
+                  setState(() => _showLogoutConfirm = false);
+                  _logout();
+                },
+                onCancel: () => setState(() => _showLogoutConfirm = false),
+              ),
+            ),
+          ],
+        ],
       ),
-      floatingActionButton: _currentIndex == 0
+      floatingActionButton: _currentIndex == 0 && !_drawerOpen
           ? QuickActionFab(onScheduleTap: _openScheduleFlow)
           : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      bottomNavigationBar: _ClienteNavBar(
-        currentIndex: _currentIndex,
-        onTap: (i) => setState(() => _currentIndex = i),
-        unreadCount: unreadCount,
-        hasPendingBudget: hasPendingBudget,
+      bottomNavigationBar: AbsorbPointer(
+        absorbing: _drawerOpen,
+        child: _ClienteNavBar(
+          currentIndex: _currentIndex,
+          onTap: (i) => setState(() => _currentIndex = i),
+          unreadCount: _unreadCount,
+          hasPendingBudget: hasPendingBudget,
+        ),
       ),
     );
   }
@@ -221,7 +308,6 @@ class _ClienteNavBar extends StatelessWidget {
                                 ),
                               ],
                             ),
-                            // Badge para notificações
                             if (tab.id == 3 && unreadCount > 0)
                               Positioned(
                                 top: -4,
@@ -245,7 +331,6 @@ class _ClienteNavBar extends StatelessWidget {
                                   ),
                                 ),
                               ),
-                            // Badge para orçamento
                             if (tab.id == 1 && hasPendingBudget)
                               Positioned(
                                 top: -4,

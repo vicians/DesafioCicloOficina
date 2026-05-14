@@ -10,7 +10,8 @@ import 'client_screen_header.dart';
 
 class BudgetApprovalScreen extends StatefulWidget {
   final ClientFlowRepository repository;
-  const BudgetApprovalScreen({super.key, required this.repository});
+  final VoidCallback? onOpenDrawer;
+  const BudgetApprovalScreen({super.key, required this.repository, this.onOpenDrawer});
 
   @override
   State<BudgetApprovalScreen> createState() => _BudgetApprovalScreenState();

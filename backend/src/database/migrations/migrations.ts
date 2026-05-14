@@ -44,14 +44,18 @@ export const runMigrations = async () => {
     CREATE TABLE IF NOT EXISTS usuarios (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       tipo_id INTEGER NOT NULL REFERENCES tipos_usuario(id) ON DELETE RESTRICT,
-      cpf_cnpj VARCHAR UNIQUE NOT NULL,
+      cpf_cnpj VARCHAR UNIQUE,
       nome VARCHAR NOT NULL,
-      telefone VARCHAR UNIQUE NOT NULL,
+      telefone VARCHAR UNIQUE,
       email VARCHAR UNIQUE,
       senha_hash VARCHAR,
       criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Torna cpf_cnpj e telefone opcionais para suportar auto-cadastro de clientes
+  await db.query(`ALTER TABLE usuarios ALTER COLUMN cpf_cnpj DROP NOT NULL`).catch(() => {});
+  await db.query(`ALTER TABLE usuarios ALTER COLUMN telefone DROP NOT NULL`).catch(() => {});
 
   // ========================================
   // TABELA: veiculos

@@ -107,6 +107,7 @@ export const handleMessage = async (req: Request, res: Response) => {
     const aiResponse = await axios.post(`${AI_SERVICE_URL}/ai/analyze`, {
       message: customerText,
       number: customerNumber,
+      conversacaoId,
     });
 
     const { action, result, demand } = aiResponse.data;

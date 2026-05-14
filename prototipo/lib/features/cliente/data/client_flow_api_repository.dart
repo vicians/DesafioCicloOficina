@@ -227,6 +227,9 @@ class ClientFlowApiRepository extends ClientFlowRepository {
   }
 
   @override
+  void invalidateProfile() => notifyListeners();
+
+  @override
   Future<String> fetchProfileName() async {
     final response = await ApiHelper.get('$baseUrl/usuarios/$clientId');
     if (response.statusCode == 200) {
