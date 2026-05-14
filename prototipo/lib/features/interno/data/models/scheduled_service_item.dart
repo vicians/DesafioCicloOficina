@@ -12,6 +12,8 @@ class ScheduledServiceItem {
   final bool possuiOrcamento;
   final bool possuiExecucao;
   final String? notasCliente;
+  final String? orcamentoStatus;
+  final bool orcamentoTemItens;
 
   const ScheduledServiceItem({
     required this.id,
@@ -27,5 +29,7 @@ class ScheduledServiceItem {
     this.possuiOrcamento = false,
     this.possuiExecucao = false,
     this.notasCliente,
+    this.orcamentoStatus,
+    this.orcamentoTemItens = false,
   });
 }

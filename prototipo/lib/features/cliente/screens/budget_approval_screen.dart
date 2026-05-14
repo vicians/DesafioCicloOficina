@@ -24,7 +24,8 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
   bool _approved = false;
   bool _refused = false;
   bool _canceled = false;
-  ServiceModel? _service;
+  List<ServiceModel> _budgets = [];
+  ServiceModel? _service; // O orçamento selecionado para visualização detalhada
 
   late AnimationController _approvedCtrl;
   late Animation<double> _approvedScale;
@@ -48,10 +49,18 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
       _error = false;
     });
     try {
-      final svc = await widget.repository.fetchCurrentService();
+      final budgets = await widget.repository.fetchPendingBudgets();
       if (!mounted) return;
       setState(() {
-        _service = svc;
+        _budgets = budgets;
+        // Se houver apenas um, seleciona automaticamente para facilitar? 
+        // Não, o usuário quer cards. Mas se for 1 só, talvez detalhe direto?
+        // Vamos seguir a regra de cards se houver múltiplos.
+        if (budgets.length == 1) {
+          _service = budgets.first;
+        } else {
+          _service = null;
+        }
         _loading = false;
       });
     } catch (e) {
@@ -80,6 +89,11 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
         _approved = true;
       });
       _approvedCtrl.forward();
+
+      // Recarrega a lista após 2 segundos para refletir a mudança
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) _loadService();
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -99,6 +113,11 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
       setState(() {
         _loading = false;
         _refused = true;
+      });
+      
+      // Recarrega a lista após 2 segundos
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) _loadService();
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -151,6 +170,11 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Atendimento cancelado com sucesso.')),
       );
+
+      // Recarrega a lista após 2 segundos
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) _loadService();
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -164,8 +188,6 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
 
   @override
   Widget build(BuildContext context) {
-    final svc = _service;
-    
     if (_loading) {
       return Scaffold(
         backgroundColor: bgPage,
@@ -183,7 +205,7 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
               const Icon(Icons.error_outline_rounded, color: red, size: 48),
               const SizedBox(height: 16),
               Text(
-                'Erro ao carregar orçamento',
+                'Erro ao carregar orçamentos',
                 style: GoogleFonts.dmSans(color: textPrimary, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
@@ -198,34 +220,65 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
       );
     }
 
-    if (svc == null || (svc.status != 'orcamento' && svc.status != 'enviado' && !_approved && !_canceled)) {
+    if (_service == null) {
+      if (_budgets.isEmpty) {
+        return Scaffold(
+          backgroundColor: bgPage,
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.receipt_long_rounded, color: textMuted.withValues(alpha: 0.5), size: 64),
+                const SizedBox(height: 16),
+                Text(
+                  'Nenhum orçamento pendente',
+                  style: GoogleFonts.dmSans(
+                    color: textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Você será notificado quando um novo\norçamento estiver disponível.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.dmSans(color: textMuted, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+
       return Scaffold(
         backgroundColor: bgPage,
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.receipt_long_rounded, color: textMuted.withValues(alpha: 0.5), size: 64),
-              const SizedBox(height: 16),
-              Text(
-                'Nenhum orçamento pendente',
-                style: GoogleFonts.dmSans(
-                  color: textPrimary,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
+        body: Column(
+          children: [
+            const ClientScreenHeader(
+              title: 'Meus Orçamentos',
+              subtitle: 'Selecione um item para revisar e aprovar',
+            ),
+            Expanded(
+              child: ListView.separated(
+                padding: const EdgeInsets.all(16),
+                itemCount: _budgets.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                itemBuilder: (ctx, index) {
+                  final b = _budgets[index];
+                  return _BudgetCard(
+                    budget: b,
+                    onTap: () => setState(() => _service = b),
+                    fmt: _fmt,
+                  );
+                },
               ),
-              const SizedBox(height: 4),
-              Text(
-                'Você será notificado quando um novo\norçamento estiver disponível.',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.dmSans(color: textMuted, fontSize: 13),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       );
     }
+
+    final svc = _service!;
 
     final parts = svc.budgetItems.where((i) => i.type == 'part').toList();
     final labor = svc.budgetItems.where((i) => i.type == 'labor').toList();
@@ -414,11 +467,20 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
       ? 'aprovado'
       : (_canceled ? 'cancelado' : (_refused ? 'confirmado' : 'orcamento'));
     return ClientScreenHeader(
-      title: 'Orçamento',
-      subtitle: '${svc.id} · ${svc.car} · ${svc.plate}',
-      leading: widget.onOpenDrawer != null
-          ? ClientMenuButton(onTap: widget.onOpenDrawer!)
-          : null,
+      title: 'Detalhes do Orçamento',
+      subtitle: '${svc.car} · ${svc.plate}',
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back_rounded, color: textPrimary),
+        onPressed: () {
+          _loadService();
+          setState(() {
+            _service = null;
+            _approved = false;
+            _refused = false;
+            _canceled = false;
+          });
+        },
+      ),
       trailing: AnimatedSwitcher(
         duration: const Duration(milliseconds: 300),
         child: StatusBadge(
@@ -426,7 +488,7 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
           status: badgeStatus,
         ),
       ),
-      contentPadding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
+      contentPadding: const EdgeInsets.fromLTRB(8, 14, 18, 16),
     );
   }
 
@@ -548,6 +610,95 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _BudgetCard extends StatelessWidget {
+  final ServiceModel budget;
+  final VoidCallback onTap;
+  final String Function(double) fmt;
+
+  const _BudgetCard({
+    required this.budget,
+    required this.onTap,
+    required this.fmt,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: cardWhite,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: const [cardShadow],
+          border: Border.all(color: dividerColor, width: 1),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        budget.car,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: textPrimary,
+                        ),
+                      ),
+                      Text(
+                        budget.plate,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 12,
+                          color: textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                StatusBadge(status: 'orcamento'),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Total do Orçamento',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 11,
+                          color: textMuted,
+                        ),
+                      ),
+                      Text(
+                        fmt(budget.budgetTotal),
+                        style: GoogleFonts.dmSans(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: orange,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, color: orange),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

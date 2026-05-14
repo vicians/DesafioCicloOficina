@@ -49,7 +49,7 @@ class ClientScreenHeader extends StatelessWidget {
                 children: [
                   if (leading != null) ...[
                     leading!,
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 8),
                   ],
                   Expanded(
                     child: Column(

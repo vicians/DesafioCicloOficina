@@ -3,6 +3,7 @@ import 'models/client_models.dart';
 
 abstract class ClientFlowRepository extends ChangeNotifier {
   Future<ServiceModel?> fetchCurrentService();
+  Future<List<ServiceModel>> fetchPendingBudgets();
   Future<List<HistoryItem>> fetchServiceHistory();
   Future<void> approveBudget(String budgetId);
   Future<void> refuseBudget(String budgetId);

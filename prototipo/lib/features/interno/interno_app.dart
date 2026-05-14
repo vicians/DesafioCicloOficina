@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/colors.dart';
@@ -47,6 +48,7 @@ class _InternoAppState extends State<InternoApp> {
   final _servicesRefresh = ValueNotifier<int>(0);
   bool _drawerOpen = false;
   bool _showLogoutConfirm = false;
+  Timer? _autoRefreshTimer;
 
   late final InternalFlowRepository _flowRepository;
   late final NotificationRepository _notificationRepository;
@@ -74,6 +76,16 @@ class _InternoAppState extends State<InternoApp> {
     _reportRepository = ReportApiRepository(baseUrl: _kApiBaseUrl);
     _loadNotifications();
     _configurePushAndDevSeed();
+    _startAutoRefresh();
+  }
+
+  void _startAutoRefresh() {
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) {
+        _schedulingRefresh.value++;
+        _servicesRefresh.value++;
+      }
+    });
   }
 
   Future<void> _configurePushAndDevSeed() async {
@@ -92,6 +104,7 @@ class _InternoAppState extends State<InternoApp> {
 
   @override
   void dispose() {
+    _autoRefreshTimer?.cancel();
     _flowRepository.dispose();
     _schedulingRefresh.dispose();
     _servicesRefresh.dispose();

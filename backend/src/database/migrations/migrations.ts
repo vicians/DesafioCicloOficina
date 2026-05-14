@@ -176,8 +176,13 @@ export const runMigrations = async () => {
       orcamento_id UUID NOT NULL REFERENCES orcamentos(id) ON DELETE CASCADE,
       servico_id UUID NOT NULL REFERENCES catalogo_servicos(id) ON DELETE RESTRICT,
       quantidade INTEGER NOT NULL DEFAULT 1,
-      preco_unitario INTEGER NOT NULL
+      preco_unitario INTEGER NOT NULL,
+      em_revisao BOOLEAN DEFAULT false
     )
+  `);
+
+  await db.query(`
+    ALTER TABLE itens_orcamento_servico ADD COLUMN IF NOT EXISTS em_revisao BOOLEAN DEFAULT false
   `);
 
   // ========================================
@@ -189,8 +194,13 @@ export const runMigrations = async () => {
       orcamento_id UUID NOT NULL REFERENCES orcamentos(id) ON DELETE CASCADE,
       produto_id UUID NOT NULL REFERENCES produtos(id) ON DELETE RESTRICT,
       quantidade INTEGER NOT NULL,
-      preco_unitario INTEGER NOT NULL
+      preco_unitario INTEGER NOT NULL,
+      em_revisao BOOLEAN DEFAULT false
     )
+  `);
+
+  await db.query(`
+    ALTER TABLE itens_orcamento_produto ADD COLUMN IF NOT EXISTS em_revisao BOOLEAN DEFAULT false
   `);
 
   // ========================================
