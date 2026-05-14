@@ -12,6 +12,7 @@ import { pushTokenRouter } from './pushTokenRoutes';
 import { authRouter } from './authRoutes';
 import { chatMessageRouter } from './chatMessageRoutes';
 import { conversationRouter } from './conversationRoutes';
+import { oficinaRouter } from './oficinaRoutes';
 
 const routes = Router();
 
@@ -28,5 +29,6 @@ routes.use('/push-tokens', pushTokenRouter);
 routes.use('/auth', authRouter);
 routes.use('/chat', chatMessageRouter);
 routes.use('/conversacoes', conversationRouter);
+routes.use('/oficina', oficinaRouter);
 
 export default routes;

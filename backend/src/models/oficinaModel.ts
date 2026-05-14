@@ -23,4 +23,29 @@ export class OficinaModel {
     );
     return result.rows[0];
   }
+
+  static async update(id: string, data: Partial<CreateOficinaDTO>): Promise<OficinaDTO | undefined> {
+    const db = getDb();
+    const fields: string[] = [];
+    const values: any[] = [];
+    let i = 1;
+
+    if (data.nome !== undefined) {
+      fields.push(`nome = $${i++}`);
+      values.push(data.nome);
+    }
+    if (data.quantidade_boxes !== undefined) {
+      fields.push(`quantidade_boxes = $${i++}`);
+      values.push(data.quantidade_boxes);
+    }
+
+    if (fields.length === 0) return this.findById(id);
+
+    values.push(id);
+    const result = await db.query(
+      `UPDATE oficinas SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`,
+      values
+    );
+    return result.rows[0];
+  }
 }
