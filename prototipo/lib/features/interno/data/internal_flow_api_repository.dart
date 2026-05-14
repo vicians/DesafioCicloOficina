@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../../../core/api/api_helper.dart';
@@ -10,6 +11,7 @@ import 'models/internal_chat_models.dart';
 
 class InternalFlowApiRepository extends InternalFlowRepository {
   final String baseUrl;
+  Timer? _refreshTimer;
 
   String _readErrorMessage(http.Response response, String fallback) {
     try {
@@ -43,7 +45,21 @@ class InternalFlowApiRepository extends InternalFlowRepository {
     }
   }
 
-  InternalFlowApiRepository({required this.baseUrl});
+  InternalFlowApiRepository({required this.baseUrl}) {
+    _startPolling();
+  }
+
+  void _startPolling() {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      notifyListeners();
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Future<List<CatalogoServicoItem>> fetchCatalogoServicos() async {

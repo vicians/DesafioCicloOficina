@@ -52,7 +52,7 @@ class ClientFlowApiRepository extends ClientFlowRepository {
         final activeExec = execs.firstWhere(
           (e) =>
               e['cliente_id'] == clientId &&
-              ['em_andamento', 'aguardando_pecas', 'pausado', 'concluido'].contains(
+              ['em_andamento', 'em_execucao', 'aguardando', 'aguardando_pecas', 'pausado', 'concluido'].contains(
                 (e['status'] as String).toLowerCase(),
               ),
           orElse: () => null,
@@ -323,7 +323,13 @@ class ClientFlowApiRepository extends ClientFlowRepository {
       status: status,
       title: status == 'enviado'
           ? 'Alteração de orçamento pendente de aprovação'
-          : 'Orçamento para aprovação',
+          : status == 'aprovado'
+              ? 'Orçamento Aprovado'
+              : status == 'aguardando'
+                  ? 'Aguardando Aprovação'
+                  : status == 'em_execucao'
+                      ? 'Serviço em execução'
+                      : 'Orçamento para aprovação',
       mechanic: orc['funcionario_nome'] ?? 'Mecânico',
       mechanicInitials: _getInitials(orc['funcionario_nome']),
       startDate: orc['criado_em'] ?? '—',

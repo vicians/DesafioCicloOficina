@@ -294,12 +294,14 @@ class _BudgetListScreenState extends State<BudgetListScreen>
                     onConclude: _conclude,
                     onSend: _send,
                     onOpen: _openBudget,
+                    onRefresh: _reload,
                   ),
                   _BudgetListView(
                     items: _itemsForTab(allItems, true),
                     emptyMessage: 'Nenhum orçamento cancelado',
                     onApprove: null,
                     onOpen: _openBudget,
+                    onRefresh: _reload,
                   ),
                 ],
               );
@@ -481,6 +483,7 @@ class _BudgetListView extends StatelessWidget {
   final Future<void> Function(InternalBudgetItem)? onConclude;
   final Future<void> Function(InternalBudgetItem)? onSend;
   final Future<void> Function(InternalBudgetItem) onOpen;
+  final VoidCallback onRefresh;
 
   const _BudgetListView({
     required this.items,
@@ -489,6 +492,7 @@ class _BudgetListView extends StatelessWidget {
     this.onConclude,
     this.onSend,
     required this.onOpen,
+    required this.onRefresh,
   });
 
   @override
@@ -502,20 +506,25 @@ class _BudgetListView extends StatelessWidget {
       );
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: items.length,
-      separatorBuilder: (context, index) => const SizedBox(height: 8),
-      itemBuilder: (context, i) {
-        final item = items[i];
-        return _BudgetCard(
-          item: item,
-          onOpen: () => onOpen(item),
-          onApprove: onApprove == null ? null : () => onApprove!(item),
-          onConclude: onConclude == null ? null : () => onConclude!(item),
-          onSend: onSend == null ? null : () => onSend!(item),
-        );
-      },
+    return RefreshIndicator(
+      onRefresh: () async => onRefresh(),
+      color: orange,
+      child: ListView.separated(
+        padding: const EdgeInsets.all(16),
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: items.length,
+        separatorBuilder: (context, index) => const SizedBox(height: 8),
+        itemBuilder: (context, i) {
+          final item = items[i];
+          return _BudgetCard(
+            item: item,
+            onOpen: () => onOpen(item),
+            onApprove: onApprove == null ? null : () => onApprove!(item),
+            onConclude: onConclude == null ? null : () => onConclude!(item),
+            onSend: onSend == null ? null : () => onSend!(item),
+          );
+        },
+      ),
     );
   }
 }

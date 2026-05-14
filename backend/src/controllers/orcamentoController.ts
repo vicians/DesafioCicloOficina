@@ -212,8 +212,16 @@ export class OrcamentoController {
       console.error('Falha ao criar notificações internas de orçamento aprovado:', error);
     }
 
-    // Regra: Aprovação NÃO inicia a OS automaticamente.
-    // Retorna o orçamento aprovado. A oficina deve concluir o agendamento manualmente.
+    // Regra: Ao aprovar, já cria a entrada de execução para aparecer na lista de serviços
+    try {
+      await ExecucaoServicoModel.ensureByOrcamentoId(
+        orcamento.id,
+        orcamento.funcionario_id
+      );
+    } catch (error) {
+      console.error('Falha ao criar execução automática após aprovação:', error);
+    }
+
     return res.json(orcamento);
   }
 

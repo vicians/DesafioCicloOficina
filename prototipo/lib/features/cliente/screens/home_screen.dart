@@ -354,6 +354,8 @@ class _ActiveServiceCard extends StatelessWidget {
     switch (status.toLowerCase()) {
       case 'orcamento':
       case 'enviado': return 'ORÇAMENTO PENDENTE';
+      case 'aprovado':
+      case 'aguardando':
       case 'andamento':
       case 'em_execucao': return 'EM ANDAMENTO';
       case 'revisao':
@@ -368,6 +370,10 @@ class _ActiveServiceCard extends StatelessWidget {
     switch (status.toLowerCase()) {
       case 'orcamento':
       case 'enviado': return Colors.redAccent;
+      case 'aprovado':
+      case 'aguardando':
+      case 'andamento':
+      case 'em_execucao': return orange;
       case 'aguardando_retirada':
       case 'concluido': return green;
       default: return orange;
