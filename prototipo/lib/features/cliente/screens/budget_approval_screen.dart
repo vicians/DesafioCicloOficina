@@ -10,7 +10,8 @@ import 'client_screen_header.dart';
 
 class BudgetApprovalScreen extends StatefulWidget {
   final ClientFlowRepository repository;
-  const BudgetApprovalScreen({super.key, required this.repository});
+  final VoidCallback? onOpenDrawer;
+  const BudgetApprovalScreen({super.key, required this.repository, this.onOpenDrawer});
 
   @override
   State<BudgetApprovalScreen> createState() => _BudgetApprovalScreenState();
@@ -415,6 +416,9 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
     return ClientScreenHeader(
       title: 'Orçamento',
       subtitle: '${svc.id} · ${svc.car} · ${svc.plate}',
+      leading: widget.onOpenDrawer != null
+          ? ClientMenuButton(onTap: widget.onOpenDrawer!)
+          : null,
       trailing: AnimatedSwitcher(
         duration: const Duration(milliseconds: 300),
         child: StatusBadge(
