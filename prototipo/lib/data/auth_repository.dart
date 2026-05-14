@@ -41,6 +41,30 @@ class AuthRepository {
 
   AuthRepository({required this.baseUrl});
 
+  Future<AuthUser?> register(String nome, String email, String senha) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/register'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'nome': nome, 'email': email, 'senha': senha}),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+        final token = data['token'];
+        await AuthManager.saveToken(token);
+        return AuthUser.fromJson(data['usuario'], token);
+      } else {
+        final data = jsonDecode(response.body);
+        throw AuthException(data['error'] ?? 'Erro ao criar conta');
+      }
+    } on AuthException {
+      rethrow;
+    } catch (e) {
+      throw AuthException('Erro de conexão com o servidor. Verifique sua internet.');
+    }
+  }
+
   Future<AuthUser?> login(String email, String senha) async {
     try {
       final response = await http.post(

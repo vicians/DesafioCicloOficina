@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import crypto from 'crypto';
+import bcrypt from 'bcrypt';
 import { getDb } from '../config/database';
 import { JWTUtils } from '../utils/JWTUtils';
 import { PasswordUtils } from '../utils/passwordUtils';
@@ -125,6 +126,48 @@ export const login = async (req: Request, res: Response) => {
       nome: user.nome,
       email: user.email,
       tipo_id: user.tipo_id,
+    },
+  });
+};
+
+export const register = async (req: Request, res: Response) => {
+  const { nome, email, senha } = req.body;
+
+  if (!nome || !email || !senha) {
+    return res.status(400).json({ error: 'nome, e-mail e senha são obrigatórios' });
+  }
+
+  const db = getDb();
+
+  const existing = await db.query('SELECT id FROM usuarios WHERE email = $1', [email]);
+  if (existing.rowCount && existing.rowCount > 0) {
+    return res.status(409).json({ error: 'E-mail já cadastrado' });
+  }
+
+  const senha_hash = await bcrypt.hash(senha, 10);
+
+  const result = await db.query(
+    `INSERT INTO usuarios (tipo_id, nome, email, senha_hash)
+     VALUES (2, $1, $2, $3)
+     RETURNING id, tipo_id, nome, email`,
+    [nome, email, senha_hash]
+  );
+
+  const usuario = result.rows[0];
+
+  const jwt = JWTUtils.generateToken({
+    id: usuario.id,
+    email: usuario.email,
+    role: String(usuario.tipo_id),
+  });
+
+  return res.status(201).json({
+    token: jwt,
+    usuario: {
+      id: usuario.id,
+      nome: usuario.nome,
+      email: usuario.email,
+      tipo_id: usuario.tipo_id,
     },
   });
 };
