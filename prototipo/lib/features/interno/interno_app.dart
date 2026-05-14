@@ -22,6 +22,7 @@ import 'screens/login_screen.dart';
 import 'screens/internal_messages_screen.dart';
 import 'screens/catalog_services_screen.dart';
 import 'screens/users_screen.dart';
+import 'screens/workshop_settings_screen.dart';
 import '../../core/config/api_config.dart';
 import '../shared/models/notification_item.dart';
 import '../../services/firebase_messaging_service.dart';
@@ -145,6 +146,10 @@ class _InternoAppState extends State<InternoApp> {
     });
   }
 
+  void _onOpenWorkshopSettings() {
+    _navigateDrawer('workshop_settings');
+  }
+
   Widget _buildManagerDrawerScreen() {
     switch (_drawerScreen) {
       case 'stock':
@@ -166,6 +171,10 @@ class _InternoAppState extends State<InternoApp> {
         );
       case 'settings':
         return SettingsScreen(
+          onOpenDrawer: () => setState(() => _drawerOpen = true),
+        );
+      case 'workshop_settings':
+        return WorkshopSettingsScreen(
           onOpenDrawer: () => setState(() => _drawerOpen = true),
         );
       case 'alerts':
@@ -293,6 +302,7 @@ class _InternoAppState extends State<InternoApp> {
                 onOpenUsers: () => _navigateDrawer('users'),
                 onOpenReports: () => _navigateDrawer('reports'),
                 onOpenSettings: () => _navigateDrawer('settings'),
+                onOpenWorkshopSettings: _onOpenWorkshopSettings,
                 onLogoutRequest: _requestLogout,
               ),
 

@@ -11,6 +11,7 @@ class SideDrawer extends StatefulWidget {
   final VoidCallback onOpenUsers;
   final VoidCallback onOpenReports;
   final VoidCallback onOpenSettings;
+  final VoidCallback onOpenWorkshopSettings;
   final VoidCallback onLogoutRequest;
 
   const SideDrawer({
@@ -21,6 +22,7 @@ class SideDrawer extends StatefulWidget {
     required this.onOpenUsers,
     required this.onOpenReports,
     required this.onOpenSettings,
+    required this.onOpenWorkshopSettings,
     required this.onLogoutRequest,
   });
 
@@ -102,6 +104,10 @@ class _SideDrawerState extends State<SideDrawer>
                   await _ctrl.reverse();
                   widget.onOpenSettings();
                 },
+                onOpenWorkshopSettings: () async {
+                  await _ctrl.reverse();
+                  widget.onOpenWorkshopSettings();
+                },
                 onLogoutRequest: () async {
                   await _ctrl.reverse();
                   widget.onLogoutRequest();
@@ -124,6 +130,7 @@ class _DrawerPanel extends StatelessWidget {
   final Future<void> Function() onOpenUsers;
   final Future<void> Function() onOpenReports;
   final Future<void> Function() onOpenSettings;
+  final Future<void> Function() onOpenWorkshopSettings;
   final Future<void> Function() onLogoutRequest;
 
   const _DrawerPanel({
@@ -133,6 +140,7 @@ class _DrawerPanel extends StatelessWidget {
     required this.onOpenUsers,
     required this.onOpenReports,
     required this.onOpenSettings,
+    required this.onOpenWorkshopSettings,
     required this.onLogoutRequest,
   });
 
@@ -308,8 +316,14 @@ class _DrawerPanel extends StatelessWidget {
                   _DrawerItem(
                     icon: Icons.settings_outlined,
                     label: 'Configurações',
-                    description: 'Preferências do app · em breve',
+                    description: 'Preferências do app',
                     onTap: onOpenSettings,
+                  ),
+                  _DrawerItem(
+                    icon: Icons.store_outlined,
+                    label: 'Dados da Oficina',
+                    description: 'Nome e quantidade de boxes',
+                    onTap: onOpenWorkshopSettings,
                   ),
                 ],
               ),
