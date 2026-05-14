@@ -14,8 +14,10 @@ abstract class InternalFlowRepository extends ChangeNotifier {
   Future<InternalBudgetItem> updateOrcamento(InternalBudgetItem budget);
   Future<InternalBudgetItem> sendAddons(String budgetId);
   Future<InternalBudgetItem> cancelOrcamento(String budgetId);
-  Future<InternalService> approveOrcamento(String budgetId);
+  Future<InternalBudgetItem> approveOrcamento(String budgetId);
+  Future<InternalService> concludeAgendamento(String budgetId);
   Future<InternalService> updateServicoStatus(String serviceId, String status);
+  Future<InternalBudgetItem> sendBudgetToClient(String budgetId);
   Future<List<InternalChatMessage>> fetchMensagensCliente(String clientId);
   Future<InternalChatMessage> sendMensagemCliente(String clientId, String text);
 }

@@ -71,6 +71,8 @@ class SchedulingApiRepository implements SchedulingRepository {
       possuiOrcamento: map['possui_orcamento'] == true,
       possuiExecucao: map['possui_execucao'] == true,
       notasCliente: map['notas_cliente'] as String?,
+      orcamentoStatus: map['orcamento_status'] as String?,
+      orcamentoTemItens: map['orcamento_tem_itens'] == true,
     );
   }
 

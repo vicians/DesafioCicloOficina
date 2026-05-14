@@ -207,6 +207,20 @@ class InternalFlowApiRepository extends InternalFlowRepository {
   }
 
   @override
+  Future<InternalBudgetItem> sendBudgetToClient(String budgetId) async {
+    final response = await ApiHelper.patch('$baseUrl/orcamentos/$budgetId/enviar');
+
+    if (response.statusCode != 200) {
+      throw Exception(_readErrorMessage(response, 'Falha ao enviar orçamento para o cliente'));
+    }
+
+    notifyListeners();
+    return InternalBudgetItem.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  @override
   Future<InternalBudgetItem> cancelOrcamento(String budgetId) async {
     final response = await ApiHelper.patch('$baseUrl/orcamentos/$budgetId/rejeitar');
     if (response.statusCode != 200) {
@@ -220,7 +234,7 @@ class InternalFlowApiRepository extends InternalFlowRepository {
   }
 
   @override
-  Future<InternalService> approveOrcamento(String budgetId) async {
+  Future<InternalBudgetItem> approveOrcamento(String budgetId) async {
     final response = await ApiHelper.patch(
       '$baseUrl/orcamentos/$budgetId/aprovar',
       {
@@ -231,11 +245,40 @@ class InternalFlowApiRepository extends InternalFlowRepository {
     );
     if (response.statusCode == 200) {
       notifyListeners();
-      return InternalService.fromJson(
+      return InternalBudgetItem.fromJson(
         jsonDecode(response.body) as Map<String, dynamic>,
       );
     }
     throw Exception(_readErrorMessage(response, 'Falha ao aprovar orçamento'));
+  }
+
+  @override
+  Future<InternalService> concludeAgendamento(String budgetId) async {
+    // Busca o agendamento_id vinculado ao orçamento
+    final budgetRes = await ApiHelper.get('$baseUrl/orcamentos/$budgetId');
+    if (budgetRes.statusCode != 200) {
+      throw Exception('Falha ao localizar orçamento para conclusão');
+    }
+    
+    final budgetData = jsonDecode(budgetRes.body) as Map<String, dynamic>;
+    final agendamentoId = budgetData['agendamento_id'] as String?;
+    
+    if (agendamentoId == null) {
+      throw Exception('Este orçamento não possui um agendamento vinculado');
+    }
+
+    final response = await ApiHelper.patch(
+      '$baseUrl/agendamentos/$agendamentoId/confirmar-recebimento',
+    );
+
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      notifyListeners();
+      return InternalService.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>,
+      );
+    }
+    
+    throw Exception(_readErrorMessage(response, 'Falha ao concluir agendamento e iniciar OS'));
   }
 
   @override

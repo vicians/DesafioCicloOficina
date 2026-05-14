@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { OrcamentoModel } from '../models/orcamentoModel';
+import { AgendamentoModel } from '../models/agendamentoModel';
 import { ExecucaoServicoModel } from '../models/execucaoServicoModel';
 import { CatalogoServicoModel } from '../models/catalogoServicoModel';
 import { ProdutoModel } from '../models/produtoModel';
@@ -67,6 +68,11 @@ export class OrcamentoController {
     const servico = await CatalogoServicoModel.findById(servico_id);
     if (!servico) return res.status(404).json({ error: 'Serviço não encontrado no catálogo' });
 
+    const orcamentoExistente = await OrcamentoModel.findById(id);
+    if (orcamentoExistente && (orcamentoExistente.status === 'ENVIADO' || orcamentoExistente.status === 'APROVADO')) {
+      await OrcamentoModel.updateStatus(id, 'RASCUNHO');
+    }
+
     await OrcamentoModel.addServico(id, servico_id, quantidade, servico.preco);
     await OrcamentoModel.recalcularTotal(id);
 
@@ -76,6 +82,11 @@ export class OrcamentoController {
 
   static async removeServico(req: Request, res: Response) {
     const { item_id } = req.params;
+
+    const orcamentoExistente = await OrcamentoModel.findById(req.params.id);
+    if (orcamentoExistente && (orcamentoExistente.status === 'ENVIADO' || orcamentoExistente.status === 'APROVADO')) {
+      await OrcamentoModel.updateStatus(req.params.id, 'RASCUNHO');
+    }
 
     const removido = await OrcamentoModel.removeServico(item_id);
     if (!removido) return res.status(404).json({ error: 'Item de serviço não encontrado' });
@@ -100,6 +111,11 @@ export class OrcamentoController {
     const produto = await ProdutoModel.findById(produto_id);
     if (!produto) return res.status(404).json({ error: 'Produto não encontrado' });
 
+    const orcamentoExistente = await OrcamentoModel.findById(id);
+    if (orcamentoExistente && (orcamentoExistente.status === 'ENVIADO' || orcamentoExistente.status === 'APROVADO')) {
+      await OrcamentoModel.updateStatus(id, 'RASCUNHO');
+    }
+
     await OrcamentoModel.addProduto(id, produto_id, quantidade, produto.valor);
     await OrcamentoModel.recalcularTotal(id);
 
@@ -109,6 +125,11 @@ export class OrcamentoController {
 
   static async removeProduto(req: Request, res: Response) {
     const { item_id } = req.params;
+
+    const orcamentoExistente = await OrcamentoModel.findById(req.params.id);
+    if (orcamentoExistente && (orcamentoExistente.status === 'ENVIADO' || orcamentoExistente.status === 'APROVADO')) {
+      await OrcamentoModel.updateStatus(req.params.id, 'RASCUNHO');
+    }
 
     const removido = await OrcamentoModel.removeProduto(item_id);
     if (!removido) return res.status(404).json({ error: 'Item de produto não encontrado' });
@@ -130,10 +151,19 @@ export class OrcamentoController {
       });
     }
 
+    // Regra: Se o orçamento for rejeitado, o agendamento também é cancelado (RN 8)
+    if (orcamento.agendamento_id) {
+      try {
+        await AgendamentoModel.updateStatus(orcamento.agendamento_id, 'CANCELADO');
+      } catch (error) {
+        console.error('Falha ao cancelar agendamento vinculado ao orçamento rejeitado:', error);
+      }
+    }
+
     try {
       const internalUserIds = await NotificationModel.findInternalUserIds();
       const titulo = 'Orçamento recusado pelo cliente';
-      const mensagem = `Orçamento ${orcamento.id} foi recusado e precisa de revisão ou contato com o cliente.`;
+      const mensagem = `Orçamento ${orcamento.id} foi recusado e o agendamento foi cancelado automaticamente.`;
       const notifIds = await NotificationModel.createForUsers(internalUserIds, {
         tipo: 'rejected_budget',
         titulo,
@@ -168,7 +198,7 @@ export class OrcamentoController {
     try {
       const internalUserIds = await NotificationModel.findInternalUserIds();
       const titulo = 'Orçamento aprovado pelo cliente';
-      const mensagem = `Orçamento ${orcamento.id} foi aprovado e está pronto para execução.`;
+      const mensagem = `Orçamento ${orcamento.id} foi aprovado e o agendamento está pronto para conclusão na oficina.`;
       const notifIds = await NotificationModel.createForUsers(internalUserIds, {
         tipo: 'approved_budget',
         titulo,
@@ -182,14 +212,9 @@ export class OrcamentoController {
       console.error('Falha ao criar notificações internas de orçamento aprovado:', error);
     }
 
-    // Cria (ou garante) a execução de serviço vinculada ao orçamento aprovado.
-    // Retorna os dados detalhados da execução para que o app já exiba a OS gerada.
-    const execucao = await ExecucaoServicoModel.iniciarDeAprovacao(
-      orcamento.id,
-      orcamento.funcionario_id ?? null
-    );
-
-    return res.json(execucao ?? orcamento);
+    // Regra: Aprovação NÃO inicia a OS automaticamente.
+    // Retorna o orçamento aprovado. A oficina deve concluir o agendamento manualmente.
+    return res.json(orcamento);
   }
 
   static async enviarAddons(req: Request, res: Response) {
@@ -239,6 +264,37 @@ export class OrcamentoController {
     const orcamento = await OrcamentoModel.update(id, data);
     if (!orcamento) {
       return res.status(404).json({ error: 'Orçamento não encontrado' });
+    }
+
+    return res.json(orcamento);
+  }
+
+  static async enviar(req: Request, res: Response) {
+    const { id } = req.params;
+    const orcamento = await OrcamentoModel.enviar(id);
+
+    if (!orcamento) {
+      return res.status(409).json({
+        error: 'Somente orçamentos em RASCUNHO podem ser enviados para aprovação inicial',
+      });
+    }
+
+    try {
+      const titulo = 'Orçamento disponível para aprovação';
+      const mensagem = `O orçamento para o seu veículo ${orcamento.veiculo_modelo || ''} está pronto para revisão.`;
+      
+      const notif = await NotificationModel.create({
+        usuario_id: orcamento.cliente_id,
+        tipo: 'budget_sent',
+        titulo,
+        mensagem,
+        referencia_id: orcamento.id,
+        referencia_tipo: 'orcamento',
+      });
+
+      await sendPushToUsers([orcamento.cliente_id], [notif.id], titulo, mensagem);
+    } catch (error) {
+      console.error('Falha ao notificar cliente sobre orçamento enviado:', error);
     }
 
     return res.json(orcamento);

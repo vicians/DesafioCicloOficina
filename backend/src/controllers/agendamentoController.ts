@@ -127,9 +127,13 @@ export class AgendamentoController {
           agendamento_id: agendamento.id,
           cliente_id,
           funcionario_id: funcionario_id ?? null,
+          status: 'RASCUNHO',
         });
       } else {
-        const created = await AgendamentoModel.createWithApprovedInitialBudget(agendamentoData);
+        const created = await AgendamentoModel.createWithInitialBudget({
+          ...agendamentoData,
+          status: 'RASCUNHO', // Inicia como RASCUNHO para adicionar os itens
+        });
         agendamento = created.agendamento;
 
         const { CatalogoServicoModel } = await import('../models/catalogoServicoModel');
@@ -137,9 +141,13 @@ export class AgendamentoController {
           if (!item.servico_id) continue;
           const catalogo = await CatalogoServicoModel.findById(item.servico_id);
           if (!catalogo) continue;
+          // addServico vai manter em RASCUNHO
           await OrcamentoModel.addServico(created.orcamento.id, item.servico_id, item.quantidade ?? 1, catalogo.preco);
         }
         await OrcamentoModel.recalcularTotal(created.orcamento.id);
+        
+        // Agora que terminou de adicionar, se for escolha do cliente, marca como APROVADO
+        await OrcamentoModel.update(created.orcamento.id, { status: 'APROVADO' });
       }
     } catch (error: unknown) {
       const dbError = error as { code?: string; constraint?: string };
@@ -178,36 +186,39 @@ export class AgendamentoController {
       return res.status(404).json({ error: 'Agendamento não encontrado' });
     }
 
-    let orcamento = await OrcamentoModel.findByAgendamentoId(id);
+    const orcamento = await OrcamentoModel.findByAgendamentoId(id);
     if (!orcamento) {
-      orcamento = await OrcamentoModel.create({
-        agendamento_id: id,
-        cliente_id: agendamento.cliente_id,
-        funcionario_id: funcionario_id ?? agendamento.funcionario_id,
+      return res.status(400).json({ error: 'Este agendamento não possui um orçamento vinculado.' });
+    }
+
+    // REGRA 1 e 4: Se não houver serviços E não estiver aprovado, bloqueia (é uma análise pendente).
+    // Se houver serviços, permitimos a conclusão direta (Flow A).
+    const orcamentoDetalhado = await OrcamentoModel.findById(orcamento.id);
+    const temItens = (orcamentoDetalhado?.servicos?.length || 0) > 0 || (orcamentoDetalhado?.produtos?.length || 0) > 0;
+    const isAprovado = orcamento.status === 'APROVADO';
+
+    if (!temItens && !isAprovado) {
+      return res.status(400).json({ 
+        error: 'Agendamento sem serviços não pode ser concluído. Realize a análise e adicione os itens primeiro.' 
       });
     }
 
     if (orcamento.status === 'ENVIADO') {
       return res.status(409).json({
-        error: 'Este agendamento possui add-ons pendentes de aprovação do cliente',
+        error: 'Este agendamento possui orçamento pendente de aprovação do cliente',
       });
     }
 
-    if (orcamento.status === 'REJEITADO') {
+    if (orcamento.status === 'REJEITADO' || orcamento.status === 'CANCELADO') {
       return res.status(409).json({
-        error: 'Não é possível iniciar OS com orçamento rejeitado',
+        error: `Não é possível concluir agendamento com orçamento ${orcamento.status.toLowerCase()}`,
       });
     }
 
     if (orcamento.status !== 'APROVADO') {
-      const aprovado = await OrcamentoModel.aprovar(
-        orcamento.id,
-        new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      );
-      if (!aprovado) {
-        return res.status(409).json({ error: 'Não foi possível aprovar o orçamento automaticamente' });
-      }
-      orcamento = aprovado;
+      return res.status(409).json({
+        error: 'O orçamento precisa ser aprovado pelo cliente antes de concluir o agendamento',
+      });
     }
 
     await ExecucaoServicoModel.ensureByOrcamentoId(
@@ -231,10 +242,29 @@ export class AgendamentoController {
       });
     }
 
+    const user = req.user;
+    const existing = await AgendamentoModel.findById(id);
+
+    if (!existing) {
+      return res.status(404).json({ error: 'Agendamento não encontrado' });
+    }
+
+    // Regra de segurança: Cliente (role 2) só pode alterar seus próprios agendamentos
+    if (user?.role === '2' && existing.cliente_id !== user.id) {
+      return res.status(403).json({ error: 'Forbidden: Você não tem permissão para alterar este agendamento' });
+    }
+
     const agendamento = await AgendamentoModel.updateStatus(id, status);
 
-    if (!agendamento) {
-      return res.status(404).json({ error: 'Agendamento não encontrado' });
+    // Se o atendimento for cancelado, cancelamos também o orçamento
+    if (status === 'CANCELADO') {
+      const orcamento = await OrcamentoModel.findByAgendamentoId(id);
+      if (orcamento) {
+        await OrcamentoModel.update(orcamento.id, { 
+          status: 'CANCELADO',
+          observacoes: (orcamento.observacoes ?? '') + '\n[SISTEMA] Orçamento cancelado devido ao cancelamento do agendamento.'
+        });
+      }
     }
 
     return res.json(agendamento);

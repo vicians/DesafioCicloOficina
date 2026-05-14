@@ -88,6 +88,11 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
         _approved = true;
       });
       _approvedCtrl.forward();
+
+      // Recarrega a lista após 2 segundos para refletir a mudança
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) _loadService();
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -107,6 +112,11 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
       setState(() {
         _loading = false;
         _refused = true;
+      });
+      
+      // Recarrega a lista após 2 segundos
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) _loadService();
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -159,6 +169,11 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Atendimento cancelado com sucesso.')),
       );
+
+      // Recarrega a lista após 2 segundos
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) _loadService();
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -455,12 +470,15 @@ class _BudgetApprovalScreenState extends State<BudgetApprovalScreen>
       subtitle: '${svc.car} · ${svc.plate}',
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_rounded, color: textPrimary),
-        onPressed: () => setState(() {
-          _service = null;
-          _approved = false;
-          _refused = false;
-          _canceled = false;
-        }),
+        onPressed: () {
+          _loadService();
+          setState(() {
+            _service = null;
+            _approved = false;
+            _refused = false;
+            _canceled = false;
+          });
+        },
       ),
       trailing: AnimatedSwitcher(
         duration: const Duration(milliseconds: 300),
