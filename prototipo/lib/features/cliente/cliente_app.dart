@@ -174,7 +174,7 @@ class _ClienteAppState extends State<ClienteApp> {
                   builder: (_) => EditProfileScreen(
                     clientId: widget.clientId,
                     baseUrl: _kApiBaseUrl,
-                    onSaved: _loadCurrentService,
+                    onSaved: _flowRepository.invalidateProfile,
                   ),
                 ),
               ),
