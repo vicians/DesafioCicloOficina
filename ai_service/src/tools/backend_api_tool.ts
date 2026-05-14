@@ -49,6 +49,9 @@ export const backendApiTool = new DynamicStructuredTool({
         url: endpoint,
         params,
         data: body,
+        headers: {
+          'X-Internal-Token': process.env.INTERNAL_AUTH_TOKEN,
+        },
         timeout: 10000,
       });
 

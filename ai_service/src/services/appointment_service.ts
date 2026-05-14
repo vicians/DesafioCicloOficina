@@ -3,38 +3,9 @@ import { CreateOsBody } from '../schemas/ai_schemas';
 import { nextBusinessDay9am } from '../utils/date_utils';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
-const BACKEND_SERVICE_EMAIL = process.env.BACKEND_SERVICE_EMAIL;
-const BACKEND_SERVICE_PASSWORD = process.env.BACKEND_SERVICE_PASSWORD;
-
-let cachedBackendToken: string | null = null;
-let backendTokenFetchedAt = 0;
-const BACKEND_TOKEN_TTL_MS = 10 * 60 * 1000;
-
-async function getBackendAuthToken(): Promise<string> {
-  const now = Date.now();
-
-  if (cachedBackendToken && now - backendTokenFetchedAt < BACKEND_TOKEN_TTL_MS) {
-    return cachedBackendToken;
-  }
-
-  const loginResponse = await axios.post(`${BACKEND_URL}/auth/login`, {
-    email: BACKEND_SERVICE_EMAIL,
-    senha: BACKEND_SERVICE_PASSWORD,
-  });
-
-  const token = loginResponse?.data?.token;
-  if (!token) {
-    throw new Error('Falha ao autenticar no backend: token ausente em /auth/login.');
-  }
-
-  cachedBackendToken = token;
-  backendTokenFetchedAt = now;
-  return token;
-}
 
 async function getAuthHeaders() {
-  const token = await getBackendAuthToken();
-  return { Authorization: `Bearer ${token}` };
+  return { 'X-Internal-Token': process.env.INTERNAL_AUTH_TOKEN };
 }
 
 export async function createOsWorkflow(body: CreateOsBody & { services?: string[] }) {

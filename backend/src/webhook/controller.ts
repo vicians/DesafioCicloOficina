@@ -107,6 +107,8 @@ export const handleMessage = async (req: Request, res: Response) => {
     const aiResponse = await axios.post(`${AI_SERVICE_URL}/ai/analyze`, {
       message: customerText,
       number: customerNumber,
+    }, {
+      headers: { 'X-Internal-Token': process.env.INTERNAL_AUTH_TOKEN }
     });
 
     const { action, result, demand } = aiResponse.data;
@@ -125,7 +127,9 @@ export const handleMessage = async (req: Request, res: Response) => {
 
       try {
         // Chama a criação de Ordem de Serviço
-        const osResponse = await axios.post(`${AI_SERVICE_URL}/ai/create-os`, demand);
+        const osResponse = await axios.post(`${AI_SERVICE_URL}/ai/create-os`, demand, {
+          headers: { 'X-Internal-Token': process.env.INTERNAL_AUTH_TOKEN }
+        });
         const { message: osMsg, magic_link_url } = osResponse.data;
 
         // Monta a mensagem final com o link de acompanhamento
