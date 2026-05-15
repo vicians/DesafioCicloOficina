@@ -1,6 +1,7 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { createOsWorkflow } from '../services/appointment_service';
+import { formatBackendValidationError } from '../utils/backend_error';
 
 function normalizeServices(value: string | string[]): string[] {
   const rawItems = Array.isArray(value) ? value : [value];
@@ -47,7 +48,7 @@ export const appointmentTool = (phoneNumber: string, fallbackDescription: string
       });
       return JSON.stringify(result);
     } catch (error: any) {
-      return `Erro ao criar agendamento: ${error.message}`;
+      return formatBackendValidationError(error, 'Erro desconhecido ao criar agendamento');
     }
   }
 });

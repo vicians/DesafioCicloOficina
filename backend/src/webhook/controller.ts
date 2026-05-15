@@ -8,6 +8,23 @@ import { PasswordUtils } from '../utils/passwordUtils';
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:3001';
 const WA_ACCESS_TOKEN = process.env.WA_ACCESS_TOKEN;
 const WA_PHONE_NUMBER_ID = process.env.WA_PHONE_NUMBER_ID;
+const MESSAGE_ID_TTL_MS = 5 * 60 * 1000;
+
+const recentMessageIds = new Map<string, ReturnType<typeof setTimeout>>();
+
+const trackMessageId = (messageId: string): boolean => {
+  if (recentMessageIds.has(messageId)) {
+    return false;
+  }
+
+  const timeout = setTimeout(() => {
+    recentMessageIds.delete(messageId);
+  }, MESSAGE_ID_TTL_MS);
+
+  timeout.unref?.();
+  recentMessageIds.set(messageId, timeout);
+  return true;
+};
 
 /**
  * Envia uma mensagem de texto de volta para o usuário via API da Meta
@@ -63,6 +80,12 @@ export const handleMessage = async (req: Request, res: Response) => {
   }
 
   const message = body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+  const messageId: string | undefined = message?.id;
+
+  if (messageId && !trackMessageId(messageId)) {
+    console.log(`[Webhook] Dropped duplicate message ID: ${messageId}`);
+    return res.sendStatus(200);
+  }
 
   // Ignora se não houver mensagem de texto
   if (!message?.text?.body) {
