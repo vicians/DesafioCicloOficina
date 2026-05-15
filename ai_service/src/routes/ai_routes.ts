@@ -4,6 +4,7 @@ import { createOsWorkflow } from '../services/appointment_service';
 import { upsertProduto } from '../vectorstore/productVectorStore';
 import { upsertServico } from '../vectorstore/serviceVectorStore';
 import { AnalyzeRequestBody, CreateOsBody, ProdutoPayload, ServicoPayload } from '../schemas/ai_schemas';
+import { extractBackendErrorMessage, getBackendErrorStatus } from '../utils/backend_error';
 
 const router = Router();
 
@@ -91,8 +92,10 @@ router.post('/ai/create-os', async (req: Request, res: Response) => {
       ...result,
     });
   } catch (err: any) {
-    console.error('[OS] Erro no sub-agente de criação de OS:', err.message);
-    return res.status(err.response?.status ?? 500).json({ error: err.message });
+    const status = getBackendErrorStatus(err);
+    const message = extractBackendErrorMessage(err, 'Erro ao criar OS.');
+    console.error('[OS] Erro no sub-agente de criação de OS:', { status, message });
+    return res.status(status).json({ error: message });
   }
 });
 

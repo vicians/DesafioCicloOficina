@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
+import { formatBackendValidationError } from '../utils/backend_error';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
 
@@ -58,11 +59,7 @@ export const backendApiTool = new DynamicStructuredTool({
         data: response.data,
       });
     } catch (error: any) {
-      return JSON.stringify({
-        ok: false,
-        status: error?.response?.status ?? 500,
-        error: error?.response?.data?.error ?? error?.message ?? 'Erro desconhecido no backend_api',
-      });
+      return formatBackendValidationError(error, 'Erro desconhecido no backend_api');
     }
   },
 });

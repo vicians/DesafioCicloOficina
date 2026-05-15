@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { CreateOsBody } from '../schemas/ai_schemas';
 import { nextBusinessDay9am } from '../utils/date_utils';
+import { extractBackendErrorMessage } from '../utils/backend_error';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
 const BACKEND_SERVICE_EMAIL = process.env.BACKEND_SERVICE_EMAIL;
@@ -10,11 +11,20 @@ let cachedBackendToken: string | null = null;
 let backendTokenFetchedAt = 0;
 const BACKEND_TOKEN_TTL_MS = 10 * 60 * 1000;
 
+type AuthHeaders = { Authorization: string };
+type MechanicCandidate = { id: string; nome: string };
+
 async function getBackendAuthToken(): Promise<string> {
   const now = Date.now();
 
   if (cachedBackendToken && now - backendTokenFetchedAt < BACKEND_TOKEN_TTL_MS) {
     return cachedBackendToken;
+  }
+
+  if (!BACKEND_SERVICE_EMAIL || !BACKEND_SERVICE_PASSWORD) {
+    throw new Error(
+      'Configuração do ai_service incompleta: BACKEND_SERVICE_EMAIL e BACKEND_SERVICE_PASSWORD são obrigatórios para autenticar no backend.'
+    );
   }
 
   const loginResponse = await axios.post(`${BACKEND_URL}/auth/login`, {
@@ -35,6 +45,97 @@ async function getBackendAuthToken(): Promise<string> {
 async function getAuthHeaders() {
   const token = await getBackendAuthToken();
   return { Authorization: `Bearer ${token}` };
+}
+
+async function findBudgetByAppointmentId(
+  agendamentoId: string,
+  headers: AuthHeaders
+): Promise<string | null> {
+  const existingOrcamentos = await axios.get(`${BACKEND_URL}/orcamentos`, { headers });
+  const foundOrcamento = (existingOrcamentos.data ?? []).find(
+    (orcamento: any) => orcamento.agendamento_id === agendamentoId
+  );
+
+  return foundOrcamento?.id ?? null;
+}
+
+async function getOrCreateBudgetForAppointment(
+  agendamentoId: string,
+  clienteId: string,
+  mecanicoId: string | null,
+  headers: AuthHeaders
+): Promise<string> {
+  const existingId = await findBudgetByAppointmentId(agendamentoId, headers);
+  if (existingId) return existingId;
+
+  try {
+    const orcRes = await axios.post(`${BACKEND_URL}/orcamentos`, {
+      agendamento_id: agendamentoId,
+      cliente_id: clienteId,
+      funcionario_id: mecanicoId,
+    }, {
+      headers,
+    });
+    return orcRes.data.id;
+  } catch (err: any) {
+    if (err?.response?.status === 409) {
+      const fallbackId = await findBudgetByAppointmentId(agendamentoId, headers);
+      if (fallbackId) return fallbackId;
+    }
+
+    throw err;
+  }
+}
+
+function isMechanicScheduleConflict(error: any): boolean {
+  const message = extractBackendErrorMessage(error).toLowerCase();
+  return error?.response?.status === 409 && message.includes('funcionário') && message.includes('agendamento');
+}
+
+async function createAppointmentWithMechanicFallback(params: {
+  clienteId: string;
+  veiculoId: string;
+  mecanicos: MechanicCandidate[];
+  data: string;
+  hora: number;
+  notasCliente: string;
+  headers: AuthHeaders;
+}): Promise<{ agendamentoId: string; mecanicoId: string | null; mecanicoNome: string }> {
+  const candidates: Array<{ id: string | null; nome: string }> = [
+    ...params.mecanicos,
+    { id: null, nome: 'A definir' },
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      const agendRes = await axios.post(`${BACKEND_URL}/agendamentos`, {
+        cliente_id: params.clienteId,
+        veiculo_id: params.veiculoId,
+        funcionario_id: candidate.id,
+        data: params.data,
+        hora: params.hora,
+        para_avaliacao: true,
+        notas_cliente: params.notasCliente,
+      }, {
+        headers: params.headers,
+      });
+
+      return {
+        agendamentoId: agendRes.data.id,
+        mecanicoId: candidate.id,
+        mecanicoNome: candidate.nome,
+      };
+    } catch (err: any) {
+      if (candidate.id && isMechanicScheduleConflict(err)) {
+        console.warn(`[OS] Mecânico indisponível (${candidate.nome}), tentando próximo responsável.`);
+        continue;
+      }
+
+      throw err;
+    }
+  }
+
+  throw new Error('Não foi possível criar agendamento para nenhum responsável disponível.');
 }
 
 export async function createOsWorkflow(body: CreateOsBody & { services?: string[] }) {
@@ -109,22 +210,19 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
   }
 
   // ── 3. Selecionar mecânico disponível ─────────────────────────────────────
-  let mecanicoId: string | null = null;
-  let mecanicoNome: string = 'A definir';
+  let mecanicos: MechanicCandidate[] = [];
 
   try {
     const mecanicosRes = await axios.get(`${BACKEND_URL}/usuarios`, {
       params: { tipo_id: 3 },
       headers,
     });
-    const mecanicos: any[] = mecanicosRes.data ?? [];
+    mecanicos = mecanicosRes.data ?? [];
     if (mecanicos.length > 0) {
-      mecanicoId = mecanicos[0].id;
-      mecanicoNome = mecanicos[0].nome;
-      console.log(`[OS] Mecânico atribuído: ${mecanicoNome} (${mecanicoId})`);
+      console.log(`[OS] Mecânicos candidatos: ${mecanicos.map((m) => m.nome).join(', ')}`);
     }
   } catch (err: any) {
-    console.warn('[OS] Aviso: não foi possível buscar mecânicos:', err.message);
+    console.warn('[OS] Aviso: não foi possível buscar mecânicos:', extractBackendErrorMessage(err));
   }
 
   // ── 4. Criar agendamento (próximo dia útil às 09:00) ─────────────────────
@@ -132,48 +230,21 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
   const data = agendadoPara.toISOString().slice(0, 10);
   const hora = agendadoPara.getHours();
 
-  const agendRes = await axios.post(`${BACKEND_URL}/agendamentos`, {
-    cliente_id: clienteId,
-    veiculo_id: veiculoId,
-    funcionario_id: mecanicoId,
+  const appointment = await createAppointmentWithMechanicFallback({
+    clienteId,
+    veiculoId,
+    mecanicos,
     data,
     hora,
-    para_avaliacao: true,
-    notas_cliente: `[WhatsApp] ${serviceType ?? ''} — ${description}`.trim(),
-  }, {
+    notasCliente: `[WhatsApp] ${serviceType ?? ''} — ${description}`.trim(),
     headers,
   });
-  const agendamentoId = agendRes.data.id;
+  const { agendamentoId, mecanicoId, mecanicoNome } = appointment;
   console.log(`[OS] Agendamento criado: ${agendamentoId}`);
 
-  // ── 5. Criar orçamento (rascunho) ─────────────────────────────────────────
-  let orcamentoId: string;
-  try {
-    const orcRes = await axios.post(`${BACKEND_URL}/orcamentos`, {
-      agendamento_id: agendamentoId,
-      cliente_id: clienteId,
-      funcionario_id: mecanicoId,
-    }, {
-      headers,
-    });
-    orcamentoId = orcRes.data.id;
-  } catch (err: any) {
-    if (err?.response?.status === 409) {
-      const existingOrcamentos = await axios.get(`${BACKEND_URL}/orcamentos`, { headers });
-      const foundOrcamento = (existingOrcamentos.data ?? []).find(
-        (o: any) => o.agendamento_id === agendamentoId
-      );
-
-      if (!foundOrcamento?.id) {
-        throw err;
-      }
-
-      orcamentoId = foundOrcamento.id;
-    } else {
-      throw err;
-    }
-  }
-  console.log(`[OS] Orçamento criado: ${orcamentoId}`);
+  // ── 5. Reutilizar ou criar orçamento (rascunho) ───────────────────────────
+  const orcamentoId = await getOrCreateBudgetForAppointment(agendamentoId, clienteId, mecanicoId, headers);
+  console.log(`[OS] Orçamento vinculado: ${orcamentoId}`);
 
   // ── 6. Adicionar serviços identificados ───────────────────────────────────
   if (services && services.length > 0) {
@@ -198,7 +269,7 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
           });
           console.log(`[OS] Serviço adicionado: ${match.nome}`);
         } catch (err: any) {
-          console.error(`[OS] Erro ao adicionar serviço ${match.nome}:`, err.message);
+          console.error(`[OS] Erro ao adicionar serviço ${match.nome}:`, extractBackendErrorMessage(err));
         }
       }
     }
