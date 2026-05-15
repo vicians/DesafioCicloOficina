@@ -323,24 +323,112 @@ export async function checkAvailability(date: string) {
   return `Horários já ocupados em ${targetDate.toLocaleDateString('pt-BR')}: \n${occupied.join('\n')}\nOs demais horários entre 08:00 e 18:00 estão disponíveis.`;
 }
 
+type BackendCustomer = {
+  id: string;
+  nome?: string;
+  telefone?: string;
+};
+
+type BackendVehicle = {
+  placa?: string | null;
+  marca?: string | null;
+  modelo?: string | null;
+};
+
+type BackendAppointment = {
+  agendado_para?: string | Date | null;
+  notas_cliente?: string | null;
+  status?: string | null;
+  veiculo_placa?: string | null;
+  veiculo_marca?: string | null;
+  veiculo_modelo?: string | null;
+};
+
+function formatText(value: unknown, fallback: string): string {
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim();
+  }
+
+  if (typeof value === 'number') {
+    return String(value);
+  }
+
+  return fallback;
+}
+
+function formatDate(value: unknown): string {
+  const date = value instanceof Date
+    ? value
+    : typeof value === 'string'
+      ? new Date(value)
+      : null;
+
+  if (!date || Number.isNaN(date.getTime())) {
+    return 'Data nao informada';
+  }
+
+  return date.toLocaleDateString('pt-BR');
+}
+
+function formatVehicleLine(vehicle: BackendVehicle): string {
+  const plate = formatText(vehicle.placa, 'Placa nao informada');
+  const make = formatText(vehicle.marca, 'Marca nao informada');
+  const model = formatText(vehicle.modelo, 'Modelo nao informado');
+
+  return `- Placa: ${plate}; Marca: ${make}; Modelo: ${model}`;
+}
+
+function formatAppointmentLine(appointment: BackendAppointment): string {
+  const date = formatDate(appointment.agendado_para);
+  const description = formatText(appointment.notas_cliente, 'Sem descricao');
+  const status = formatText(appointment.status, '');
+  const plate = formatText(appointment.veiculo_placa, '');
+  const make = formatText(appointment.veiculo_marca, '');
+  const model = formatText(appointment.veiculo_modelo, '');
+  const vehicleName = [make, model].filter(Boolean).join(' ').trim();
+  const vehicleText = plate
+    ? ` | Veiculo: ${vehicleName || 'Marca/modelo nao informados'} | Placa: ${plate}`
+    : '';
+  const statusText = status ? ` | Status: ${status}` : '';
+
+  return `- ${date}: ${description}${vehicleText}${statusText}`;
+}
+
 export async function getCustomerHistory(number: string) {
-  console.log(`[AI] Buscando histórico para o número: ${number}`);
+  console.log(`[AI] Buscando dados do cliente, veiculos e historico para o numero: ${number}`);
   const headers = await getAuthHeaders();
-  
+
   const usuariosRes = await axios.get(`${BACKEND_URL}/usuarios`, { params: { tipo_id: 2 }, headers });
-  const cliente = (usuariosRes.data ?? []).find((u: any) => u.telefone === number);
+  const cliente = ((usuariosRes.data ?? []) as BackendCustomer[])
+    .find((u) => u.telefone === number);
 
-  if (!cliente) return "Cliente não encontrado na base de dados.";
+  if (!cliente) return "Cliente nao encontrado na base de dados.";
 
-  const agendRes = await axios.get(`${BACKEND_URL}/agendamentos/cliente/${cliente.id}`, { headers });
-  const history: any[] = agendRes.data ?? [];
+  const [agendRes, veiculosRes] = await Promise.all([
+    axios.get(`${BACKEND_URL}/agendamentos/cliente/${cliente.id}`, { headers }),
+    axios.get(`${BACKEND_URL}/veiculos/cliente/${cliente.id}`, { headers }),
+  ]);
 
-  if (history.length === 0) return "Não há histórico de atendimentos para este cliente.";
+  const history = (agendRes.data ?? []) as BackendAppointment[];
+  const vehicles = (veiculosRes.data ?? []) as BackendVehicle[];
 
-  const summary = history.map(h => {
-    const data = new Date(h.agendado_para).toLocaleDateString('pt-BR');
-    return `- ${data}: ${h.notas_cliente || 'Sem descrição'}`;
-  }).join('\n');
+  const customerName = formatText(cliente.nome, 'Nome nao informado');
+  const vehicleSummary = vehicles.length > 0
+    ? vehicles.map(formatVehicleLine).join('\n')
+    : 'Nenhum veiculo vinculado a este cliente.';
+  const historySummary = history.length > 0
+    ? history.map(formatAppointmentLine).join('\n')
+    : 'Nao ha historico de atendimentos para este cliente.';
 
-  return `Histórico de atendimentos do cliente ${cliente.nome}:\n${summary}`;
+  return [
+    `Dados cadastrais do cliente atual:`,
+    `- Nome: ${customerName}`,
+    `- Telefone: ${formatText(cliente.telefone, number)}`,
+    '',
+    'Veiculos vinculados ao cliente:',
+    vehicleSummary,
+    '',
+    'Historico de atendimentos:',
+    historySummary,
+  ].join('\n');
 }
