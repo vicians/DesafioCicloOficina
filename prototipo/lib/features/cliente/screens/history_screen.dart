@@ -10,7 +10,8 @@ import 'client_screen_header.dart';
 
 class HistoryScreen extends StatefulWidget {
   final ClientFlowRepository repository;
-  const HistoryScreen({super.key, required this.repository});
+  final VoidCallback? onOpenDrawer;
+  const HistoryScreen({super.key, required this.repository, this.onOpenDrawer});
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
@@ -69,6 +70,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ClientScreenHeader(
               title: 'Histórico',
               subtitle: '${history.length + (svc != null ? 1 : 0)} serviços registrados',
+              leading: widget.onOpenDrawer != null
+                  ? ClientMenuButton(onTap: widget.onOpenDrawer!)
+                  : null,
               trailing: svc != null ? StatusBadge(status: svc.status) : null,
               contentPadding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
             ),

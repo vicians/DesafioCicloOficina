@@ -13,6 +13,7 @@ interface CreateOsBody {
 interface AnalyzeRequestBody {
   message: string;
   number: string;
+  conversacaoId?: string;
 }
 
 // =========================================================

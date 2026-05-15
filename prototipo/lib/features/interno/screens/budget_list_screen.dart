@@ -57,7 +57,7 @@ class _BudgetListScreenState extends State<BudgetListScreen>
     if (!mounted || result == null) return;
     if (result is String) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Orçamento aprovado. OS gerada: $result')),
+        SnackBar(content: Text('Agendamento concluído. OS gerada: $result')),
       );
       return;
     }
@@ -73,7 +73,7 @@ class _BudgetListScreenState extends State<BudgetListScreen>
       builder: (context) => AlertDialog(
         title: const Text('Aprovar orçamento'),
         content: Text(
-          'Deseja aprovar ${item.id}? O item será removido de Orçamentos e virará uma OS em Serviços.',
+          'Deseja aprovar ${item.id} manualmente?',
           style: GoogleFonts.dmSans(fontSize: 14),
         ),
         actions: [
@@ -92,15 +92,45 @@ class _BudgetListScreenState extends State<BudgetListScreen>
     if (confirmed != true) return;
 
     try {
-      final created = await widget.repository.approveOrcamento(item.id);
+      await widget.repository.approveOrcamento(item.id);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Orçamento aprovado. OS gerada: ${created.id}')),
+        SnackBar(content: Text('Orçamento ${item.id} marcado como aprovado.')),
       );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Falha ao aprovar orçamento: $error')),
+      );
+    }
+  }
+
+  Future<void> _conclude(InternalBudgetItem item) async {
+    try {
+      final created = await widget.repository.concludeAgendamento(item.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Agendamento concluído. OS gerada: ${created.id}')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Falha ao concluir agendamento: $error')),
+      );
+    }
+  }
+
+  Future<void> _send(InternalBudgetItem item) async {
+    try {
+      await widget.repository.sendBudgetToClient(item.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Orçamento ${item.id} enviado para o cliente.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Falha ao enviar orçamento: $error')),
       );
     }
   }
@@ -118,10 +148,20 @@ class _BudgetListScreenState extends State<BudgetListScreen>
     List<InternalBudgetItem> items,
     bool canceled,
   ) {
-    return items
-        .where((item) => canceled ? item.isCanceled : item.isPending)
-        .where(_matchesSearch)
-        .toList();
+    return items.where((item) {
+      final matchTab = canceled ? item.isCanceled : item.isPending;
+      if (!matchTab) return false;
+
+      // REGRA: Ocultar rascunhos vazios (Agendamentos em análise) da lista de orçamentos.
+      // Eles devem ser editados via tela de Agendamentos.
+      if (item.status == 'rascunho' &&
+          item.services.isEmpty &&
+          item.products.isEmpty) {
+        return false;
+      }
+
+      return _matchesSearch(item);
+    }).toList();
   }
 
   @override
@@ -251,13 +291,17 @@ class _BudgetListScreenState extends State<BudgetListScreen>
                     items: _itemsForTab(allItems, false),
                     emptyMessage: 'Nenhum orçamento pendente',
                     onApprove: _approve,
+                    onConclude: _conclude,
+                    onSend: _send,
                     onOpen: _openBudget,
+                    onRefresh: _reload,
                   ),
                   _BudgetListView(
                     items: _itemsForTab(allItems, true),
                     emptyMessage: 'Nenhum orçamento cancelado',
                     onApprove: null,
                     onOpen: _openBudget,
+                    onRefresh: _reload,
                   ),
                 ],
               );
@@ -272,12 +316,16 @@ class _BudgetListScreenState extends State<BudgetListScreen>
 class _BudgetCard extends StatelessWidget {
   final InternalBudgetItem item;
   final VoidCallback? onApprove;
+  final VoidCallback? onConclude;
+  final VoidCallback? onSend;
   final VoidCallback onOpen;
 
   const _BudgetCard({
     required this.item,
     required this.onOpen,
     this.onApprove,
+    this.onConclude,
+    this.onSend,
   });
 
   String _statusLabel(String status) {
@@ -290,6 +338,8 @@ class _BudgetCard extends StatelessWidget {
         return 'Cancelado';
       case 'rejeitado':
         return 'Rejeitado';
+      case 'aprovado':
+        return 'Aprovado';
       default:
         return status.isEmpty
             ? 'Pendente'
@@ -330,7 +380,7 @@ class _BudgetCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: item.isCanceled ? redBg : yellowBg,
+                  color: item.isCanceled ? redBg : (item.status == 'aprovado' ? const Color(0xFFD1FAE5) : yellowBg),
                   borderRadius: BorderRadius.circular(99),
                 ),
                 child: Text(
@@ -338,7 +388,7 @@ class _BudgetCard extends StatelessWidget {
                   style: GoogleFonts.dmSans(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: item.isCanceled ? red : yellow,
+                    color: item.isCanceled ? red : (item.status == 'aprovado' ? const Color(0xFF059669) : yellow),
                   ),
                 ),
               ),
@@ -375,14 +425,50 @@ class _BudgetCard extends StatelessWidget {
           ),
           if (!item.isCanceled) ...[
             const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: onApprove,
-                icon: const Icon(Icons.check_circle_rounded, size: 18),
-                label: const Text('Aprovar e gerar OS'),
+            if (item.status == 'rascunho')
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: onSend,
+                  icon: const Icon(Icons.send_rounded, size: 16),
+                  label: const Text('Enviar para Cliente'),
+                ),
+              )
+            else if (item.status == 'enviado')
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: blueBg,
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(color: blue.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.hourglass_empty_rounded, color: blue, size: 16),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Aguardando aprovação do cliente',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: blue,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else if (item.status == 'aprovado')
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: onConclude,
+                  icon: const Icon(Icons.check_circle_rounded, size: 18),
+                  style: FilledButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
+                  label: const Text('Concluir e Abrir OS'),
+                ),
               ),
-            ),
           ],
         ],
       ),
@@ -394,13 +480,19 @@ class _BudgetListView extends StatelessWidget {
   final List<InternalBudgetItem> items;
   final String emptyMessage;
   final Future<void> Function(InternalBudgetItem)? onApprove;
+  final Future<void> Function(InternalBudgetItem)? onConclude;
+  final Future<void> Function(InternalBudgetItem)? onSend;
   final Future<void> Function(InternalBudgetItem) onOpen;
+  final VoidCallback onRefresh;
 
   const _BudgetListView({
     required this.items,
     required this.emptyMessage,
-    required this.onApprove,
+    this.onApprove,
+    this.onConclude,
+    this.onSend,
     required this.onOpen,
+    required this.onRefresh,
   });
 
   @override
@@ -414,18 +506,25 @@ class _BudgetListView extends StatelessWidget {
       );
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: items.length,
-      separatorBuilder: (context, index) => const SizedBox(height: 8),
-      itemBuilder: (context, i) {
-        final item = items[i];
-        return _BudgetCard(
-          item: item,
-          onOpen: () => onOpen(item),
-          onApprove: onApprove == null ? null : () => onApprove!(item),
-        );
-      },
+    return RefreshIndicator(
+      onRefresh: () async => onRefresh(),
+      color: orange,
+      child: ListView.separated(
+        padding: const EdgeInsets.all(16),
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: items.length,
+        separatorBuilder: (context, index) => const SizedBox(height: 8),
+        itemBuilder: (context, i) {
+          final item = items[i];
+          return _BudgetCard(
+            item: item,
+            onOpen: () => onOpen(item),
+            onApprove: onApprove == null ? null : () => onApprove!(item),
+            onConclude: onConclude == null ? null : () => onConclude!(item),
+            onSend: onSend == null ? null : () => onSend!(item),
+          );
+        },
+      ),
     );
   }
 }

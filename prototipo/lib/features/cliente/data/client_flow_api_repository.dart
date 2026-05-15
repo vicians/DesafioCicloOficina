@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../../../core/api/api_helper.dart';
 import '../../../core/config/auth_manager.dart';
@@ -15,22 +16,33 @@ class ClientFlowApiRepository extends ClientFlowRepository {
   });
 
   @override
-  Future<ServiceModel?> fetchCurrentService() async {
+  Future<List<ServiceModel>> fetchPendingBudgets() async {
     try {
-      // 1. Priorizar orçamento pendente (add-ons ENVIADO)
       final orcResp = await ApiHelper.get('$baseUrl/orcamentos');
       if (orcResp.statusCode == 200) {
         final List orcs = jsonDecode(orcResp.body);
-        final pendingOrc = orcs.firstWhere(
+        final pendingOrcs = orcs.where(
           (o) =>
               o['cliente_id'] == clientId &&
-              (o['status'] as String).toLowerCase() == 'enviado',
-          orElse: () => null,
-        );
+              ['enviado', 'rascunho', 'orcamento'].contains((o['status'] as String).toLowerCase()),
+        ).toList();
 
-        if (pendingOrc != null) {
-          return _mapOrcToServiceModel(pendingOrc);
-        }
+        return pendingOrcs.map((o) => _mapOrcToServiceModel(o)).toList();
+      }
+      return [];
+    } catch (e) {
+      debugPrint('Error fetching pending budgets: $e');
+      return [];
+    }
+  }
+
+  @override
+  Future<ServiceModel?> fetchCurrentService() async {
+    try {
+      // 1. Priorizar orçamentos pendentes
+      final pendingBudgets = await fetchPendingBudgets();
+      if (pendingBudgets.isNotEmpty) {
+        return pendingBudgets.first;
       }
 
       // 2. Sem orçamento pendente, buscar execução ativa
@@ -38,10 +50,11 @@ class ClientFlowApiRepository extends ClientFlowRepository {
       if (execResp.statusCode == 200) {
         final List execs = jsonDecode(execResp.body);
         final activeExec = execs.firstWhere(
-          (e) {
-            final status = (e['status'] as String? ?? '').toLowerCase();
-            return e['cliente_id'] == clientId && status != 'concluido' && status != 'cancelado';
-          },
+          (e) =>
+              e['cliente_id'] == clientId &&
+              ['em_andamento', 'em_execucao', 'aguardando', 'aguardando_pecas', 'pausado', 'concluido'].contains(
+                (e['status'] as String).toLowerCase(),
+              ),
           orElse: () => null,
         );
 
@@ -50,27 +63,31 @@ class ClientFlowApiRepository extends ClientFlowRepository {
         }
       }
 
-      // 3. Sem execução e sem orçamento pendente, buscar agendamento ativo
-      final agendResp = await ApiHelper.get('$baseUrl/agendamentos/cliente/$clientId');
+      // 3. Buscar agendamentos futuros
+      final agendResp = await ApiHelper.get('$baseUrl/agendamentos');
       if (agendResp.statusCode == 200) {
         final List agends = jsonDecode(agendResp.body);
-        final activeAgend = agends.firstWhere(
-          (a) {
-            final s = (a['status'] as String? ?? '').toUpperCase();
-            return s == 'PENDENTE' || s == 'CONFIRMADO';
-          },
+        final futureAgend = agends.firstWhere(
+          (a) =>
+              a['cliente_id'] == clientId &&
+              ['pendente', 'agendado', 'confirmado'].contains(
+                (a['status'] as String).toLowerCase(),
+              ),
           orElse: () => null,
         );
-        if (activeAgend != null) {
-          return _mapAgendamentoToServiceModel(activeAgend as Map<String, dynamic>);
+
+        if (futureAgend != null) {
+          return _mapAgendamentoToServiceModel(futureAgend as Map<String, dynamic>);
         }
       }
 
       return null;
     } catch (e) {
-      rethrow;
+      debugPrint('Error fetching current service: $e');
+      return null;
     }
   }
+
   @override
   Future<List<HistoryItem>> fetchServiceHistory() async {
     try {
@@ -210,6 +227,9 @@ class ClientFlowApiRepository extends ClientFlowRepository {
   }
 
   @override
+  void invalidateProfile() => notifyListeners();
+
+  @override
   Future<String> fetchProfileName() async {
     final response = await ApiHelper.get('$baseUrl/usuarios/$clientId');
     if (response.statusCode == 200) {
@@ -306,7 +326,13 @@ class ClientFlowApiRepository extends ClientFlowRepository {
       status: status,
       title: status == 'enviado'
           ? 'Alteração de orçamento pendente de aprovação'
-          : 'Orçamento para aprovação',
+          : status == 'aprovado'
+              ? 'Orçamento Aprovado'
+              : status == 'aguardando'
+                  ? 'Aguardando Aprovação'
+                  : status == 'em_execucao'
+                      ? 'Serviço em execução'
+                      : 'Orçamento para aprovação',
       mechanic: orc['funcionario_nome'] ?? 'Mecânico',
       mechanicInitials: _getInitials(orc['funcionario_nome']),
       startDate: orc['criado_em'] ?? '—',

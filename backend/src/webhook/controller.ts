@@ -107,6 +107,7 @@ export const handleMessage = async (req: Request, res: Response) => {
     const aiResponse = await axios.post(`${AI_SERVICE_URL}/ai/analyze`, {
       message: customerText,
       number: customerNumber,
+      conversacaoId
     }, {
       headers: { 'X-Internal-Token': process.env.INTERNAL_AUTH_TOKEN }
     });

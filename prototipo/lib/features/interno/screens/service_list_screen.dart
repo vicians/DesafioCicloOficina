@@ -197,12 +197,14 @@ class _ServiceListScreenState extends State<ServiceListScreen>
                     showProgress: true,
                     emptyMessage: 'Nenhum serviço ativo no momento',
                     repository: widget.repository,
+                    onRefresh: _reloadServices,
                   ),
                   _ServiceListView(
                     items: _finalizadosFrom(services),
                     showProgress: false,
                     emptyMessage: 'Nenhum serviço finalizado encontrado',
                     repository: widget.repository,
+                    onRefresh: _reloadServices,
                   ),
                 ],
               ),
@@ -389,12 +391,14 @@ class _ServiceListView extends StatelessWidget {
   final bool showProgress;
   final String emptyMessage;
   final InternalFlowRepository repository;
+  final VoidCallback onRefresh;
 
   const _ServiceListView({
     required this.items,
     required this.showProgress,
     required this.emptyMessage,
     required this.repository,
+    required this.onRefresh,
   });
 
   @override
@@ -414,14 +418,19 @@ class _ServiceListView extends StatelessWidget {
         ),
       );
     }
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: items.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 8),
-      itemBuilder: (_, i) => _ServiceCard(
-        svc: items[i],
-        showProgress: showProgress,
-        repository: repository,
+    return RefreshIndicator(
+      onRefresh: () async => onRefresh(),
+      color: orange,
+      child: ListView.separated(
+        padding: const EdgeInsets.all(16),
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: items.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 8),
+        itemBuilder: (_, i) => _ServiceCard(
+          svc: items[i],
+          showProgress: showProgress,
+          repository: repository,
+        ),
       ),
     );
   }

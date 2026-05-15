@@ -44,14 +44,18 @@ export const runMigrations = async () => {
     CREATE TABLE IF NOT EXISTS usuarios (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       tipo_id INTEGER NOT NULL REFERENCES tipos_usuario(id) ON DELETE RESTRICT,
-      cpf_cnpj VARCHAR UNIQUE NOT NULL,
+      cpf_cnpj VARCHAR UNIQUE,
       nome VARCHAR NOT NULL,
-      telefone VARCHAR UNIQUE NOT NULL,
+      telefone VARCHAR UNIQUE,
       email VARCHAR UNIQUE,
       senha_hash VARCHAR,
       criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Torna cpf_cnpj e telefone opcionais para suportar auto-cadastro de clientes
+  await db.query(`ALTER TABLE usuarios ALTER COLUMN cpf_cnpj DROP NOT NULL`).catch(() => {});
+  await db.query(`ALTER TABLE usuarios ALTER COLUMN telefone DROP NOT NULL`).catch(() => {});
 
   // ========================================
   // TABELA: veiculos
@@ -172,8 +176,13 @@ export const runMigrations = async () => {
       orcamento_id UUID NOT NULL REFERENCES orcamentos(id) ON DELETE CASCADE,
       servico_id UUID NOT NULL REFERENCES catalogo_servicos(id) ON DELETE RESTRICT,
       quantidade INTEGER NOT NULL DEFAULT 1,
-      preco_unitario INTEGER NOT NULL
+      preco_unitario INTEGER NOT NULL,
+      em_revisao BOOLEAN DEFAULT false
     )
+  `);
+
+  await db.query(`
+    ALTER TABLE itens_orcamento_servico ADD COLUMN IF NOT EXISTS em_revisao BOOLEAN DEFAULT false
   `);
 
   // ========================================
@@ -185,8 +194,13 @@ export const runMigrations = async () => {
       orcamento_id UUID NOT NULL REFERENCES orcamentos(id) ON DELETE CASCADE,
       produto_id UUID NOT NULL REFERENCES produtos(id) ON DELETE RESTRICT,
       quantidade INTEGER NOT NULL,
-      preco_unitario INTEGER NOT NULL
+      preco_unitario INTEGER NOT NULL,
+      em_revisao BOOLEAN DEFAULT false
     )
+  `);
+
+  await db.query(`
+    ALTER TABLE itens_orcamento_produto ADD COLUMN IF NOT EXISTS em_revisao BOOLEAN DEFAULT false
   `);
 
   // ========================================

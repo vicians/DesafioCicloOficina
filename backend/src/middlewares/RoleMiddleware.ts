@@ -13,7 +13,7 @@ export const authorizeRole = (allowedRoles: string[]) => {
     }
 
     if (!allowedRoles.includes(user.role)) {
-      return res.status(403).json({ error: 'Forbidden: You do not have permission to access this resource' });
+      return res.status(403).json({ error: `Forbidden: Role ${user.role} not allowed for this resource.` });
     }
 
     return next();

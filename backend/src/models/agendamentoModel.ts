@@ -19,6 +19,14 @@ export class AgendamentoModel {
           JOIN execucoes_servico e ON e.orcamento_id = o.id
           WHERE o.agendamento_id = a.id
         ) AS possui_execucao,
+        (SELECT o.status FROM orcamentos o WHERE o.agendamento_id = a.id LIMIT 1) AS orcamento_status,
+        (
+          SELECT EXISTS (SELECT 1 FROM itens_orcamento_servico ios WHERE ios.orcamento_id = o2.id) OR
+                 EXISTS (SELECT 1 FROM itens_orcamento_produto iop WHERE iop.orcamento_id = o2.id)
+          FROM orcamentos o2 
+          WHERE o2.agendamento_id = a.id 
+          LIMIT 1
+        ) AS orcamento_tem_itens,
         (SELECT nome FROM oficinas ORDER BY criado_em ASC LIMIT 1) AS oficina_nome,
         v.marca AS veiculo_marca,
         v.modelo AS veiculo_modelo,
@@ -225,7 +233,7 @@ export class AgendamentoModel {
     return result.rows[0];
   }
 
-  static async createWithApprovedInitialBudget(
+  static async createWithInitialBudget(
     data: {
       cliente_id: string;
       veiculo_id: string;
@@ -234,11 +242,12 @@ export class AgendamentoModel {
       fim: Date;
       duracao_total_minutos: number;
       notas_cliente?: string;
+      status?: string;
     }
   ): Promise<{ agendamento: AgendamentoDTO; orcamento: OrcamentoDTO }> {
     const db = getDb();
     const client = await db.connect();
-    const { cliente_id, veiculo_id, funcionario_id, inicio, fim, duracao_total_minutos, notas_cliente } = data;
+    const { cliente_id, veiculo_id, funcionario_id, inicio, fim, duracao_total_minutos, notas_cliente, status } = data;
 
     try {
       await client.query('BEGIN');
@@ -254,9 +263,9 @@ export class AgendamentoModel {
 
       const orcamentoResult = await client.query(
         `INSERT INTO orcamentos (agendamento_id, cliente_id, funcionario_id, status, valor_total, valido_ate)
-         VALUES ($1, $2, $3, 'APROVADO', 0, NOW() + INTERVAL '7 days')
+         VALUES ($1, $2, $3, $4, 0, NOW() + INTERVAL '7 days')
          RETURNING *`,
-        [agendamento.id, cliente_id, funcionario_id ?? null]
+        [agendamento.id, cliente_id, funcionario_id ?? null, status ?? 'RASCUNHO']
       );
 
       await client.query('COMMIT');

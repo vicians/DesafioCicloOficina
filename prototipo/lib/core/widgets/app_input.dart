@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../theme/colors.dart';
 
@@ -13,6 +14,7 @@ class AppInput extends StatefulWidget {
   final TextInputType? keyboardType;
   final ValueChanged<String>? onChanged;
   final bool autofocus;
+  final List<TextInputFormatter>? inputFormatters;
 
   const AppInput({
     super.key,
@@ -26,6 +28,7 @@ class AppInput extends StatefulWidget {
     this.keyboardType,
     this.onChanged,
     this.autofocus = false,
+    this.inputFormatters,
   });
 
   @override
@@ -99,6 +102,7 @@ class _AppInputState extends State<AppInput>
             keyboardType: widget.keyboardType,
             autofocus: widget.autofocus,
             onChanged: widget.onChanged,
+            inputFormatters: widget.inputFormatters,
             onTap: () => setState(() => _focused = true),
             onTapOutside: (_) => setState(() => _focused = false),
             style: GoogleFonts.dmSans(fontSize: 14, color: textPrimary),

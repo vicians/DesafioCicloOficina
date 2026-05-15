@@ -17,7 +17,7 @@ const orcamentoRouter = Router();
  *       200:
  *         description: Sucesso
  */
-orcamentoRouter.get('/', authMiddleware, authorizeRole(['1', '3']), OrcamentoController.index);
+orcamentoRouter.get('/', authMiddleware, authorizeRole(['1', '2', '3']), OrcamentoController.index);
 
 /**
  * @openapi
@@ -267,6 +267,7 @@ orcamentoRouter.patch('/:id/aprovar', authMiddleware, OrcamentoController.aprova
  */
 orcamentoRouter.patch('/:id/enviar-addons', authMiddleware, authorizeRole(['1', '3']), OrcamentoController.enviarAddons);
 orcamentoRouter.patch('/:id/rejeitar-addons', authMiddleware, OrcamentoController.rejeitarAddons);
+orcamentoRouter.patch('/:id/enviar', authMiddleware, authorizeRole(['1', '3']), OrcamentoController.enviar);
 
 /**
  * @openapi

@@ -2,42 +2,77 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/widgets/app_input.dart';
-import '../interno_app.dart';
-import '../../cliente/cliente_app.dart';
 import '../../../data/auth_repository.dart';
 import '../../../core/config/api_config.dart';
-import 'register_screen.dart';
+import '../../cliente/cliente_app.dart';
 
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+class RegisterScreen extends StatefulWidget {
+  final bool darkMode;
+  final ValueChanged<bool> onDarkModeChanged;
+
+  const RegisterScreen({
+    super.key,
+    required this.darkMode,
+    required this.onDarkModeChanged,
+  });
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _RegisterScreenState extends State<RegisterScreen> {
   bool _loading = false;
   String? _errorText;
-  bool _darkMode = false;
+  late bool _darkMode;
 
+  final _nomeCtrl = TextEditingController();
+  final _sobrenomeCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
-  final _passCtrl = TextEditingController();
+  final _senhaCtrl = TextEditingController();
+  final _confirmaSenhaCtrl = TextEditingController();
 
   late final _authRepository = AuthRepository(baseUrl: ApiConfig.baseUrl);
 
   @override
+  void initState() {
+    super.initState();
+    _darkMode = widget.darkMode;
+  }
+
+  @override
   void dispose() {
+    _nomeCtrl.dispose();
+    _sobrenomeCtrl.dispose();
     _emailCtrl.dispose();
-    _passCtrl.dispose();
+    _senhaCtrl.dispose();
+    _confirmaSenhaCtrl.dispose();
     super.dispose();
   }
 
-  void _login() async {
-    final email = _emailCtrl.text.trim();
-    final pass = _passCtrl.text.trim();
+  void _toggleDarkMode() {
+    setState(() => _darkMode = !_darkMode);
+    widget.onDarkModeChanged(_darkMode);
+  }
 
-    if (email.isEmpty || pass.isEmpty) {
-      setState(() => _errorText = 'Preencha e-mail e senha.');
+  void _register() async {
+    final nome = _nomeCtrl.text.trim();
+    final sobrenome = _sobrenomeCtrl.text.trim();
+    final email = _emailCtrl.text.trim();
+    final senha = _senhaCtrl.text;
+    final confirmaSenha = _confirmaSenhaCtrl.text;
+
+    if (nome.isEmpty || sobrenome.isEmpty || email.isEmpty || senha.isEmpty) {
+      setState(() => _errorText = 'Preencha todos os campos.');
+      return;
+    }
+
+    if (senha != confirmaSenha) {
+      setState(() => _errorText = 'As senhas não coincidem.');
+      return;
+    }
+
+    if (senha.length < 6) {
+      setState(() => _errorText = 'A senha deve ter pelo menos 6 caracteres.');
       return;
     }
 
@@ -47,21 +82,22 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      final user = await _authRepository.login(email, pass);
+      final nomeCompleto = '$nome $sobrenome';
+      final user = await _authRepository.register(nomeCompleto, email, senha);
 
       if (user == null) {
         setState(() {
           _loading = false;
-          _errorText = 'Erro desconhecido ao fazer login.';
+          _errorText = 'Erro desconhecido ao criar conta.';
         });
         return;
       }
 
-      if (user.tipoId == 2) {
-        _navigateToClienteApp(user.id);
-      } else {
-        _navigateToApp(user.tipoId == 1, user.id);
-      }
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => ClienteApp(clientId: user.id)),
+      );
     } catch (e) {
       setState(() {
         _loading = false;
@@ -70,30 +106,14 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _navigateToApp(bool isManager, String userId) {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-          builder: (_) => InternoApp(isManager: isManager, userId: userId)),
-    );
-  }
-
-  void _navigateToClienteApp(String clientId) {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => ClienteApp(clientId: clientId)),
-    );
-  }
-
-  void _toggleDarkMode() => setState(() => _darkMode = !_darkMode);
-
   @override
   Widget build(BuildContext context) {
     final bg = _darkMode ? const Color(0xFF1C2F4A) : const Color(0xFFF4F5F7);
     final cardBg = _darkMode ? const Color(0xFF2A4268) : Colors.white;
     final titleColor = _darkMode ? Colors.white : const Color(0xFF1C2F4A);
-    final footerColor =
-        _darkMode ? const Color(0x80FFFFFF) : const Color(0x80584237);
+    final subtitleColor = _darkMode
+        ? Colors.white.withValues(alpha: 0.55)
+        : const Color(0xFF584237).withValues(alpha: 0.6);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
@@ -103,15 +123,30 @@ class _LoginScreenState extends State<LoginScreen> {
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
-          automaticallyImplyLeading: false,
+          leading: GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: Container(
+              margin: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: _darkMode
+                    ? Colors.white.withValues(alpha: 0.12)
+                    : Colors.black.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                Icons.arrow_back_ios_new_rounded,
+                color: _darkMode ? Colors.white : const Color(0xFF1C2F4A),
+                size: 16,
+              ),
+            ),
+          ),
           actions: [
             GestureDetector(
               onTap: _toggleDarkMode,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
                 margin: const EdgeInsets.only(right: 16, top: 8, bottom: 8),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                 decoration: BoxDecoration(
                   color: const Color(0xFFFFF0E6),
                   borderRadius: BorderRadius.circular(9999),
@@ -148,11 +183,11 @@ class _LoginScreenState extends State<LoginScreen> {
         body: SingleChildScrollView(
           child: Column(
             children: [
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
               // Logo circular
               Container(
-                width: 96,
-                height: 96,
+                width: 80,
+                height: 80,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   boxShadow: [
@@ -170,18 +205,25 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
-              AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 300),
+              const SizedBox(height: 14),
+              Text(
+                'Criar conta',
                 style: GoogleFonts.dmSans(
                   fontSize: 24,
                   fontWeight: FontWeight.w700,
                   color: titleColor,
                   letterSpacing: -0.6,
                 ),
-                child: const Text('Tião Oficina'),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 4),
+              Text(
+                'Preencha seus dados para se cadastrar',
+                style: GoogleFonts.dmSans(
+                  fontSize: 13,
+                  color: subtitleColor,
+                ),
+              ),
+              const SizedBox(height: 20),
               // Card principal
               AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
@@ -206,6 +248,26 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 16),
                     ],
                     _FormField(
+                      label: 'Nome',
+                      darkMode: _darkMode,
+                      child: AppInput(
+                        placeholder: 'Seu nome',
+                        controller: _nomeCtrl,
+                        keyboardType: TextInputType.name,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _FormField(
+                      label: 'Sobrenome',
+                      darkMode: _darkMode,
+                      child: AppInput(
+                        placeholder: 'Seu sobrenome',
+                        controller: _sobrenomeCtrl,
+                        keyboardType: TextInputType.name,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _FormField(
                       label: 'E-mail',
                       darkMode: _darkMode,
                       child: AppInput(
@@ -220,15 +282,26 @@ class _LoginScreenState extends State<LoginScreen> {
                       darkMode: _darkMode,
                       child: AppInput(
                         placeholder: '••••••••',
-                        controller: _passCtrl,
+                        controller: _senhaCtrl,
                         obscureText: true,
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    // Botão Entrar
+                    const SizedBox(height: 8),
+                    _FormField(
+                      label: 'Confirmar senha',
+                      darkMode: _darkMode,
+                      child: AppInput(
+                        placeholder: '••••••••',
+                        controller: _confirmaSenhaCtrl,
+                        obscureText: true,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    // Botão Criar conta
                     GestureDetector(
-                      onTap: _loading ? null : _login,
-                      child: Container(
+                      onTap: _loading ? null : _register,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 120),
                         height: 56,
                         decoration: BoxDecoration(
                           color: orange,
@@ -241,88 +314,44 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ],
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            if (_loading)
-                              const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor:
-                                      AlwaysStoppedAnimation(Colors.white),
-                                ),
-                              )
-                            else ...[
-                              Text(
-                                'Entrar',
-                                style: GoogleFonts.dmSans(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              const Icon(Icons.login_rounded,
-                                  color: Colors.white, size: 18),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    // Botão Criar uma conta
-                    GestureDetector(
-                      onTap: _loading
-                          ? null
-                          : () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => RegisterScreen(
-                                    darkMode: _darkMode,
-                                    onDarkModeChanged: (val) =>
-                                        setState(() => _darkMode = val),
+                        child: Center(
+                          child: _loading
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation(
+                                        Colors.white),
+                                  ),
+                                )
+                              : Text(
+                                  'Criar conta',
+                                  style: GoogleFonts.dmSans(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
                                   ),
                                 ),
-                              ),
-                      child: Container(
-                        height: 56,
-                        decoration: BoxDecoration(
-                          color: Colors.transparent,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: orange.withValues(alpha: 0.20),
-                            width: 2,
-                          ),
-                        ),
-                        child: Center(
-                          child: Text(
-                            'Criar uma conta',
-                            style: GoogleFonts.dmSans(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                              color: orange,
-                            ),
-                          ),
                         ),
                       ),
                     ),
+                    const SizedBox(height: 16),
+                    GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      child: Text(
+                        'Já tem uma conta? Entrar',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.dmSans(
+                          fontSize: 13,
+                          color: _darkMode
+                              ? Colors.white.withValues(alpha: 0.6)
+                              : const Color(0x80584237),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
                   ],
-                ),
-              ),
-              const SizedBox(height: 32),
-              AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 300),
-                style: GoogleFonts.dmSans(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w400,
-                  color: footerColor,
-                  height: 1.7,
-                ),
-                child: const Text(
-                  '© 2024 Tião Oficina Automotive Services.\nTecnologia e precisão para o seu veículo.',
-                  textAlign: TextAlign.center,
                 ),
               ),
               const SizedBox(height: 40),

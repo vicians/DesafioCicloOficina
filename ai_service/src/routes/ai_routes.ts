@@ -62,14 +62,14 @@ router.post('/ai/servicos/sync', async (req: Request, res: Response) => {
  */
 
 router.post('/ai/analyze', async (req: Request, res: Response) => {
-  const { message, number } = req.body as AnalyzeRequestBody;
+  const { message, number, conversacaoId } = req.body as AnalyzeRequestBody;
 
   if (!message || !number) {
     return res.status(400).json({ error: 'Mensagem e número são obrigatórios.' });
   }
 
   try {
-    const result = await analyzeMessage(message, number);
+    const result = await analyzeMessage(message, number, conversacaoId);
     return res.json(result);
   } catch (error) {
     console.error('Erro no fluxo do ai_service:', error);
