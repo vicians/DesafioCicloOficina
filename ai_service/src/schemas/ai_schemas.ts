@@ -43,5 +43,41 @@ interface ServicoPayload {
   duracao_minutos: number;
 }
 
+interface AgendamentoPayload {
+  id: string;
+  cliente_id: string;
+  veiculo_placa: string;
+  veiculo_modelo?: string;
+  agendado_para: string;
+  status: string;
+  notas_cliente?: string;
+}
 
-export { ProdutoPayload, CreateOsBody, AnalyzeRequestBody, ServicoPayload, DocumentChunk };
+interface OrcamentoPayload {
+  id: string;
+  cliente_id: string;
+  status: string;
+  valor_total: number;
+  valido_ate?: string;
+  itens_descricao: string[];
+}
+
+interface ExecucaoServicoPayload {
+  id: string;
+  orcamento_id: string;
+  cliente_id: string;
+  status: string;
+  iniciado_em?: string;
+  notas_internas?: string;
+}
+
+export { 
+  ProdutoPayload, 
+  CreateOsBody, 
+  AnalyzeRequestBody, 
+  ServicoPayload, 
+  DocumentChunk,
+  AgendamentoPayload,
+  OrcamentoPayload,
+  ExecucaoServicoPayload
+};

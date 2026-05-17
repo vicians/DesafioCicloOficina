@@ -224,3 +224,24 @@ model document_embeddings {
   source    String                       @db.VarChar
   category  String                       @db.VarChar // 'policy' | 'manual'
 }
+
+model agendamento_embeddings {
+  id        String                       @id @db.Uuid
+  content   String
+  embedding Unsupported("vector(2048)")?
+  metadata  Json
+}
+
+model orcamento_embeddings {
+  id        String                       @id @db.Uuid
+  content   String
+  embedding Unsupported("vector(2048)")?
+  metadata  Json
+}
+
+model execucao_servico_embeddings {
+  id        String                       @id @db.Uuid
+  content   String
+  embedding Unsupported("vector(2048)")?
+  metadata  Json
+}

@@ -151,7 +151,7 @@ export async function analyzeMessage(message: string, number: string, conversaca
     };
   }
 
-  const tools = getTools(number, message);
+  const tools = getTools(number, message, customer?.id);
   const modelWithTools = model.bindTools(tools);
 
   const resolvedConversationId = await resolveConversationId(conversacaoId, customer?.id);
