@@ -95,6 +95,9 @@ export const handleMessage = async (req: Request, res: Response) => {
   const customerText: string = message.text.body;
   const customerNumber: string = message.from;
 
+  let isAiDone = false;
+  let processandoTimeout: ReturnType<typeof setTimeout> | undefined;
+
   try {
     console.log(`[Webhook] Recebido de ${customerNumber}: ${customerText}`);
 
@@ -127,11 +130,20 @@ export const handleMessage = async (req: Request, res: Response) => {
     }
 
     // 1. Envia a mensagem para o serviço de IA (ai_service) se não estiver pausado
+    processandoTimeout = setTimeout(async () => {
+      if (!isAiDone && !iaPausada) {
+        await sendWhatsAppMessage(customerNumber, "Estou processando sua solicitação, só um instante... ⚙️");
+      }
+    }, 4000);
+
     const aiResponse = await axios.post(`${AI_SERVICE_URL}/ai/analyze`, {
       message: customerText,
       number: customerNumber,
       conversacaoId,
     });
+
+    isAiDone = true;
+    if (processandoTimeout) clearTimeout(processandoTimeout);
 
     const { action, result, demand } = aiResponse.data;
 
@@ -181,6 +193,8 @@ export const handleMessage = async (req: Request, res: Response) => {
     }
 
   } catch (error: any) {
+    isAiDone = true;
+    if (processandoTimeout) clearTimeout(processandoTimeout);
     console.error('[Webhook] Erro na comunicação com AI_SERVICE:', error.message);
   }
 
