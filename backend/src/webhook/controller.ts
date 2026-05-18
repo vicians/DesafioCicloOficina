@@ -12,6 +12,9 @@ const MESSAGE_ID_TTL_MS = 5 * 60 * 1000;
 
 const recentMessageIds = new Map<string, ReturnType<typeof setTimeout>>();
 
+const messageBuffer = new Map<string, string[]>();
+const debounceTimers = new Map<string, NodeJS.Timeout>();
+
 const trackMessageId = (messageId: string): boolean => {
   if (recentMessageIds.has(messageId)) {
     return false;
@@ -81,6 +84,100 @@ export const send_whatsapp_typing = async (message_id: string): Promise<void> =>
 };
 
 /**
+ * Processa mensagens no buffer após debounce
+ */
+const processBufferedMessages = async (customerNumber: string, conversacaoId: string, clienteId: string, message_id?: string) => {
+  const messages = messageBuffer.get(customerNumber) || [];
+  if (messages.length === 0) return;
+
+  const combinedText = messages.join('\n');
+  
+  // Limpa os buffers
+  messageBuffer.delete(customerNumber);
+  debounceTimers.delete(customerNumber);
+
+  console.log(`[Webhook] Processando lote de mensagens para ${customerNumber}:\n${combinedText}`);
+
+  // Envia o indicador visual de digitação nativo imediatamente
+  if (message_id) {
+    send_whatsapp_typing(message_id).catch((err) => {
+      console.error('[Webhook] Falha ao acionar indicador de digitação:', err.message);
+    });
+  }
+
+  let is_ai_done = false;
+  // 1. Timeout de Fallback: Envia mensagem física se a resposta da IA demorar mais de 25 segundos
+  const processando_timeout = setTimeout(async () => {
+    if (!is_ai_done) {
+      await sendWhatsAppMessage(customerNumber, "Estou processando sua solicitação, só um instante... ⚙️");
+    }
+  }, 25000);
+
+  try {
+    const aiResponse = await axios.post(`${AI_SERVICE_URL}/ai/analyze`, {
+      message: combinedText,
+      number: customerNumber,
+      conversacaoId,
+    });
+
+    is_ai_done = true;
+    clearTimeout(processando_timeout);
+
+    const { action, result, demand } = aiResponse.data;
+
+    // 2. Trata a ação decidida pela IA
+    if (action === 'REPLY') {
+      // Resposta direta do Bot (Pistão)
+      await sendWhatsAppMessage(customerNumber, result);
+      
+      if (conversacaoId) {
+        await ConversationModel.addMessage(conversacaoId, clienteId, 'bot', result);
+      }
+
+    } else if (action === 'CREATE_OS') {
+      console.log(`[Webhook] Solicitando criação de OS para ${customerNumber}...`);
+
+      try {
+        // Chama a criação de Ordem de Serviço
+        const osResponse = await axios.post(`${AI_SERVICE_URL}/ai/create-os`, demand);
+        const { message: osMsg, magic_link_url } = osResponse.data;
+
+        // Monta a mensagem final com o link de acompanhamento
+        const finalMsg = `${osMsg}\n\nAcompanhe seu serviço por aqui: ${magic_link_url}`;
+
+        await sendWhatsAppMessage(customerNumber, finalMsg);
+        
+        if (conversacaoId) {
+          await ConversationModel.addMessage(conversacaoId, clienteId, 'bot', finalMsg);
+        }
+      } catch (osErr: any) {
+        console.error('[Webhook] Erro ao criar OS no ai_service:', osErr.response?.data ?? osErr.message);
+        const errMsg = "Ops, tive um problema ao gerar sua Ordem de Serviço. Tente novamente em instantes.";
+        await sendWhatsAppMessage(customerNumber, errMsg);
+        if (conversacaoId) {
+          await ConversationModel.addMessage(conversacaoId, clienteId, 'system', errMsg);
+        }
+      }
+
+    } else if (action === 'MANUAL_WAIT') {
+      console.log(`[Webhook] Atendimento manual para ${customerNumber}`);
+      const waitMsg = "Entendido. Vou passar seu caso para um de nossos mecânicos. Um momento, por favor!";
+      await sendWhatsAppMessage(customerNumber, waitMsg);
+      
+      if (conversacaoId) {
+        await ConversationModel.addMessage(conversacaoId, clienteId, 'bot', waitMsg);
+        await ConversationModel.updateHandoff(conversacaoId, true); // Automatic handoff triggered by bot
+      }
+    }
+
+  } catch (error: any) {
+    is_ai_done = true;
+    clearTimeout(processando_timeout);
+    console.error('[Webhook] Erro na comunicação com AI_SERVICE:', error.message);
+  }
+};
+
+/**
  * Valida o Webhook no painel da Meta (GET)
  */
 export const validateWebhook = (req: Request, res: Response) => {
@@ -123,9 +220,6 @@ export const handleMessage = async (req: Request, res: Response) => {
   const customerText: string = message.text.body;
   const customerNumber: string = message.from;
 
-  let is_ai_done = false;
-  let processando_timeout: ReturnType<typeof setTimeout> | undefined;
-
   try {
     console.log(`[Webhook] Recebido de ${customerNumber}: ${customerText}`);
 
@@ -157,80 +251,25 @@ export const handleMessage = async (req: Request, res: Response) => {
       return res.sendStatus(200);
     }
 
-    // Envia o indicador visual de digitação nativo imediatamente se a IA não estiver pausada
-    if (message_id) {
-      send_whatsapp_typing(message_id).catch((err) => {
-        console.error('[Webhook] Falha ao acionar indicador de digitação:', err.message);
-      });
+    // Buffer the message
+    if (!messageBuffer.has(customerNumber)) {
+      messageBuffer.set(customerNumber, []);
+    }
+    messageBuffer.get(customerNumber)!.push(customerText);
+
+    // Debounce timer
+    if (debounceTimers.has(customerNumber)) {
+      clearTimeout(debounceTimers.get(customerNumber)!);
     }
 
-    // 1. Timeout de Fallback: Envia mensagem física se a resposta da IA demorar mais de 25 segundos
-    processando_timeout = setTimeout(async () => {
-      if (!is_ai_done && !iaPausada) {
-        await sendWhatsAppMessage(customerNumber, "Estou processando sua solicitação, só um instante... ⚙️");
-      }
-    }, 25000);
+    const timer = setTimeout(() => {
+      processBufferedMessages(customerNumber, conversacaoId, cliente.id, message_id);
+    }, 3000);
 
-    const aiResponse = await axios.post(`${AI_SERVICE_URL}/ai/analyze`, {
-      message: customerText,
-      number: customerNumber,
-      conversacaoId,
-    });
-
-    is_ai_done = true;
-    if (processando_timeout) clearTimeout(processando_timeout);
-
-    const { action, result, demand } = aiResponse.data;
-
-    // 2. Trata a ação decidida pela IA
-    if (action === 'REPLY') {
-      // Resposta direta do Bot (Pistão)
-      await sendWhatsAppMessage(customerNumber, result);
-      
-      if (conversacaoId) {
-        await ConversationModel.addMessage(conversacaoId, cliente.id, 'bot', result);
-      }
-
-    } else if (action === 'CREATE_OS') {
-      console.log(`[Webhook] Solicitando criação de OS para ${customerNumber}...`);
-
-      try {
-        // Chama a criação de Ordem de Serviço
-        const osResponse = await axios.post(`${AI_SERVICE_URL}/ai/create-os`, demand);
-        const { message: osMsg, magic_link_url } = osResponse.data;
-
-        // Monta a mensagem final com o link de acompanhamento
-        const finalMsg = `${osMsg}\n\nAcompanhe seu serviço por aqui: ${magic_link_url}`;
-
-        await sendWhatsAppMessage(customerNumber, finalMsg);
-        
-        if (conversacaoId) {
-          await ConversationModel.addMessage(conversacaoId, cliente.id, 'bot', finalMsg);
-        }
-      } catch (osErr: any) {
-        console.error('[Webhook] Erro ao criar OS no ai_service:', osErr.response?.data ?? osErr.message);
-        const errMsg = "Ops, tive um problema ao gerar sua Ordem de Serviço. Tente novamente em instantes.";
-        await sendWhatsAppMessage(customerNumber, errMsg);
-        if (conversacaoId) {
-          await ConversationModel.addMessage(conversacaoId, cliente.id, 'system', errMsg);
-        }
-      }
-
-    } else if (action === 'MANUAL_WAIT') {
-      console.log(`[Webhook] Atendimento manual para ${customerNumber}`);
-      const waitMsg = "Entendido. Vou passar seu caso para um de nossos mecânicos. Um momento, por favor!";
-      await sendWhatsAppMessage(customerNumber, waitMsg);
-      
-      if (conversacaoId) {
-        await ConversationModel.addMessage(conversacaoId, cliente.id, 'bot', waitMsg);
-        await ConversationModel.updateHandoff(conversacaoId, true); // Automatic handoff triggered by bot
-      }
-    }
+    debounceTimers.set(customerNumber, timer);
 
   } catch (error: any) {
-    is_ai_done = true;
-    if (processando_timeout) clearTimeout(processando_timeout);
-    console.error('[Webhook] Erro na comunicação com AI_SERVICE:', error.message);
+    console.error('[Webhook] Erro no processamento principal:', error.message);
   }
 
   // Sempre retorna 200 para a Meta não reenviar a mesma mensagem
