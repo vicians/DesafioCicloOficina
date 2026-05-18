@@ -65,7 +65,7 @@ class _ScheduledServicesScreenState extends State<ScheduledServicesScreen> {
 
   List<ScheduledServiceItem> _applyFilters(List<ScheduledServiceItem> src) {
     final q = _search.trim().toLowerCase();
-    return src.where((item) {
+    final result = src.where((item) {
       final matchStatus = _statusFilter == 'todos' ||
           item.status.toLowerCase() == _statusFilter;
       if (!matchStatus) return false;
@@ -74,6 +74,18 @@ class _ScheduledServicesScreenState extends State<ScheduledServicesScreen> {
           item.veiculoDescricao.toLowerCase().contains(q) ||
           item.placa.toLowerCase().contains(q);
     }).toList();
+
+    // Abertos (pendente/confirmado/aprovado) vêm antes dos cancelados.
+    // Dentro de cada grupo, ordena por agendadoPara asc (mais próximo primeiro).
+    const openStatuses = {'pendente', 'confirmado', 'aprovado'};
+    result.sort((a, b) {
+      final aOpen = openStatuses.contains(a.status.toLowerCase());
+      final bOpen = openStatuses.contains(b.status.toLowerCase());
+      if (aOpen != bOpen) return aOpen ? -1 : 1;
+      return a.agendadoPara.compareTo(b.agendadoPara);
+    });
+
+    return result;
   }
 
   int _countByStatus(List<ScheduledServiceItem> all, String status) =>

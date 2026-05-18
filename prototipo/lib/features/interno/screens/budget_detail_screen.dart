@@ -26,12 +26,15 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
   late final TextEditingController _obsCtrl;
   bool _saving = false;
 
+  // Status local — atualizado após cada operação para refletir a resposta real do backend.
+  late String _status;
+
   List<CatalogoServicoItem> _catalogoServicos = [];
   List<ProdutoItem> _produtosCatalog = [];
   bool _loadingCatalog = true;
 
-  bool get _isCanceled => widget.budget.isCanceled;
-  bool get _isWaitingApproval => widget.budget.status == 'enviado';
+  bool get _isCanceled => _status == 'cancelado';
+  bool get _isWaitingApproval => _status == 'enviado';
   bool get _canEdit => !_isCanceled && !_isWaitingApproval;
   double get _total =>
       _services.fold(0.0, (s, e) => s + e.total) +
@@ -40,6 +43,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
   @override
   void initState() {
     super.initState();
+    _status = widget.budget.status;
     _services = List.of(widget.budget.services);
     _products = List.of(widget.budget.products);
     _obsCtrl = TextEditingController(text: widget.budget.observation);
@@ -71,12 +75,14 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
         products: _products,
         observation: _obsCtrl.text.trim(),
       );
-      await widget.repository.updateOrcamento(updated);
+      // updateOrcamento já retorna o item com o status atualizado pelo backend.
+      final refreshed = await widget.repository.updateOrcamento(updated);
+
       if (!mounted) return;
+      setState(() => _status = refreshed.status);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Orçamento salvo com sucesso!')),
       );
-      Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -487,8 +493,8 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
                 ),
               const SizedBox(height: 10),
 
-              // NOVO FLUXO: Botões dinâmicos baseado no status
-              if (widget.budget.status == 'rascunho')
+              // Botões dinâmicos baseados no _status local (atualizado após cada save).
+              if (_status == 'rascunho')
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
@@ -497,7 +503,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
                     label: const Text('Enviar para o Cliente'),
                   ),
                 )
-              else if (widget.budget.status == 'enviado')
+              else if (_status == 'enviado')
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -522,7 +528,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
                     ],
                   ),
                 )
-              else if (widget.budget.status == 'aprovado')
+              else if (_status == 'aprovado')
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
