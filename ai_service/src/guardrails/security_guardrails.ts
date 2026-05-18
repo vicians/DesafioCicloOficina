@@ -144,7 +144,7 @@ function getToolsForIntent(intent: GuardrailIntent): Set<string> {
       return new Set(['check_availability', 'backend_api']);
 
     case 'profile_and_history_check':
-      return new Set(['get_customer_history', 'backend_api']);
+      return new Set(['get_customer_history', 'backend_api', 'operational_search_tool']);
 
     case 'shop_operations':
       return new Set(['catalog_search_tool', 'backend_api']);
