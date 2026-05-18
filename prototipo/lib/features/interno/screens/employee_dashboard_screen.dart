@@ -124,7 +124,12 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
             )
             .length;
 
-        final pendingBudgets = budgets.where((b) => b.isPending).toList();
+        final pendingBudgets = budgets
+            .where((b) => b.isPending)
+            // Rascunhos sem itens são agendamentos de avaliação — não aparecem
+            // na tela de Orçamentos e não devem contar no KPI.
+            .where((b) => !(b.status == 'rascunho' && b.services.isEmpty && b.products.isEmpty))
+            .toList();
 
         // Agendamentos que cobrem hoje: [agendadoPara, agendadoPara + duracaoMinutos)
         // deve se sobrepor com [todayStart, todayEnd). Assim serviços que começaram
