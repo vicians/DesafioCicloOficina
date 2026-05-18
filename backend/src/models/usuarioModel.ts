@@ -120,5 +120,22 @@ export class UsuarioModel {
     );
     return result.rows[0] ?? null;
   }
+
+  static async findFreeMecanico(): Promise<string | null> {
+    const db = getDb();
+    const result = await db.query(
+      `SELECT id 
+       FROM usuarios 
+       WHERE tipo_id = 3
+         AND id NOT IN (
+           SELECT funcionario_id 
+           FROM execucoes_servico 
+           WHERE status NOT IN ('CONCLUIDO', 'CANCELADO') 
+             AND funcionario_id IS NOT NULL
+         )
+       LIMIT 1`
+    );
+    return result.rows[0]?.id ?? null;
+  }
 }
 

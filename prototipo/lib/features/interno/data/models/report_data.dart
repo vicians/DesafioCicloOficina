@@ -9,6 +9,7 @@ class ReportData {
   final int pending;
   final List<StatusCount> byStatus;
   final List<TopService> topServices;
+  final List<TopMechanic> topMechanics;
 
   const ReportData({
     required this.month,
@@ -21,6 +22,7 @@ class ReportData {
     required this.pending,
     required this.byStatus,
     required this.topServices,
+    required this.topMechanics,
   });
 
   factory ReportData.fromJson(Map<String, dynamic> json) {
@@ -43,6 +45,10 @@ class ReportData {
       topServices: topServicesRaw
           .cast<Map<String, dynamic>>()
           .map(TopService.fromJson)
+          .toList(),
+      topMechanics: (json['topMechanics'] as List<dynamic>? ?? [])
+          .cast<Map<String, dynamic>>()
+          .map(TopMechanic.fromJson)
           .toList(),
     );
   }
@@ -81,6 +87,26 @@ class TopService {
 
   factory TopService.fromJson(Map<String, dynamic> json) {
     return TopService(
+      name: json['name'] as String? ?? '',
+      count: (json['count'] as num?)?.toInt() ?? 0,
+      revenue: (json['revenue'] as num?)?.toDouble() ?? 0,
+    );
+  }
+}
+
+class TopMechanic {
+  final String name;
+  final int count;
+  final double revenue;
+
+  const TopMechanic({
+    required this.name,
+    required this.count,
+    required this.revenue,
+  });
+
+  factory TopMechanic.fromJson(Map<String, dynamic> json) {
+    return TopMechanic(
       name: json['name'] as String? ?? '',
       count: (json['count'] as num?)?.toInt() ?? 0,
       revenue: (json['revenue'] as num?)?.toDouble() ?? 0,

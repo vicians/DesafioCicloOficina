@@ -197,12 +197,21 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
     } catch (e) {
       if (!mounted) return;
       final msg = e.toString().replaceFirst('Exception: ', '');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Erro ao concluir: $msg'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (msg.contains('mecanicos estão ocupados')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao concluir: $msg'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }

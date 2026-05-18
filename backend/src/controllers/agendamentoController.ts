@@ -221,10 +221,17 @@ export class AgendamentoController {
       });
     }
 
-    await ExecucaoServicoModel.ensureByOrcamentoId(
-      orcamento.id,
-      funcionario_id ?? orcamento.funcionario_id ?? agendamento.funcionario_id ?? null,
-    );
+    try {
+      await ExecucaoServicoModel.ensureByOrcamentoId(
+        orcamento.id,
+        null // Força o backend a sempre buscar um mecânico livre
+      );
+    } catch (error: any) {
+      if (error.message === 'Não é possivél iniciar serviço pois todos os mecanicos estão ocupados no momento') {
+        return res.status(409).json({ error: error.message });
+      }
+      throw error;
+    }
 
     await AgendamentoModel.updateStatus(id, 'CONCLUIDO');
 
@@ -278,14 +285,21 @@ export class AgendamentoController {
    */
   static async iniciarExecucao(req: Request, res: Response) {
     const { id } = req.params;
-    const { orcamento_id, funcionario_id } = req.body;
+    const { orcamento_id } = req.body;
 
-    if (!orcamento_id || !funcionario_id) {
-      return res.status(400).json({ error: 'orcamento_id e funcionario_id são obrigatórios' });
+    if (!orcamento_id) {
+      return res.status(400).json({ error: 'orcamento_id é obrigatório' });
     }
 
-    const execucao = await AgendamentoModel.iniciarExecucao(orcamento_id, funcionario_id);
-    return res.status(201).json(execucao);
+    try {
+      const execucao = await AgendamentoModel.iniciarExecucao(orcamento_id, null); // Força mecânico livre
+      return res.status(201).json(execucao);
+    } catch (error: any) {
+      if (error.message === 'Não é possivél iniciar serviço pois todos os mecanicos estão ocupados no momento') {
+        return res.status(409).json({ error: error.message });
+      }
+      throw error;
+    }
   }
 }
 
