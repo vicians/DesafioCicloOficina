@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { CreateOsBody } from '../schemas/ai_schemas';
-import { nextBusinessDay9am } from '../utils/date_utils';
+import { resolveAppointmentDate, toDateOnlyString } from '../utils/date_utils';
 import { extractBackendErrorMessage } from '../utils/backend_error';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
@@ -139,11 +139,13 @@ async function createAppointmentWithMechanicFallback(params: {
 }
 
 export async function createOsWorkflow(body: CreateOsBody & { services?: string[] }) {
-  const { number, customerName, vehiclePlate, description, serviceType, services } = body;
+  const { number, customerName, vehiclePlate, description, serviceType, services, requestedDate } = body;
 
   if (!number || !description) {
     throw new Error('number e description são obrigatórios');
   }
+
+  const agendadoPara = resolveAppointmentDate(requestedDate);
 
   // ── 1. Localizar ou criar cliente ─────────────────────────────────────────
   console.log(`[OS] 📝 Iniciando processo de criação para: ${number}`);
@@ -225,9 +227,8 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
     console.warn('[OS] Aviso: não foi possível buscar mecânicos:', extractBackendErrorMessage(err));
   }
 
-  // ── 4. Criar agendamento (próximo dia útil às 09:00) ─────────────────────
-  const agendadoPara = nextBusinessDay9am();
-  const data = agendadoPara.toISOString().slice(0, 10);
+  // ── 4. Criar agendamento (data solicitada ou fallback às 09:00) ───────────
+  const data = toDateOnlyString(agendadoPara);
   const hora = agendadoPara.getHours();
 
   const appointment = await createAppointmentWithMechanicFallback({
