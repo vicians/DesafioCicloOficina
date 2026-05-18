@@ -112,11 +112,8 @@ function normalizeAssistantReply(content: string): string {
     const dateText = typeof data.agendado_para === 'string'
       ? ` para ${new Date(data.agendado_para).toLocaleString('pt-BR')}`
       : '';
-    const magicLinkText = typeof data.magic_link_url === 'string' && data.magic_link_url
-      ? ` Acompanhe pelo link: ${data.magic_link_url}`
-      : '';
 
-    return `Agendamento e orçamento criados com sucesso${dateText}.${magicLinkText}`.trim();
+    return `Agendamento e orçamento criados com sucesso${dateText}.`.trim();
   }
 
   return trimmed;
@@ -125,6 +122,8 @@ function normalizeAssistantReply(content: string): string {
 export async function analyzeMessage(message: string, number: string, conversacaoId?: string) {
   console.log(`\n[AI Service] 📩 Requisição recebida de: ${number}`);
   console.log(`[AI Service] 💬 Mensagem: "${message}"`);
+
+  let magicLinkUrl: string | undefined = undefined;
 
   const customer = await prisma.usuarios.findUnique({
     where: { telefone: number },
@@ -216,6 +215,14 @@ export async function analyzeMessage(message: string, number: string, conversaca
       try {
         const toolResult = await (tool as any).call(toolCall.args);
         const serializedToolResult = typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult);
+        if (toolCall.name === 'create_appointment') {
+          try {
+            const parsedResult = JSON.parse(serializedToolResult);
+            if (parsedResult && typeof parsedResult.magic_link_url === 'string') {
+              magicLinkUrl = parsedResult.magic_link_url;
+            }
+          } catch {}
+        }
         messages.push(new ToolMessage({
           tool_call_id: toolCallId,
           content: sanitizeToolResultForPrompt(serializedToolResult)
@@ -238,6 +245,7 @@ export async function analyzeMessage(message: string, number: string, conversaca
 
   return {
     result: finalContent,
-    action: 'REPLY'
+    action: 'REPLY',
+    magic_link_url: magicLinkUrl
   };
 }

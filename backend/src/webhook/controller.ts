@@ -125,30 +125,36 @@ const processBufferedMessages = async (customerNumber: string, conversacaoId: st
 
     const { action, result, demand } = aiResponse.data;
 
-    // 2. Trata a ação decidida pela IA
     if (action === 'REPLY') {
-      // Resposta direta do Bot (Pistão)
       await sendWhatsAppMessage(customerNumber, result);
-      
       if (conversacaoId) {
         await ConversationModel.addMessage(conversacaoId, clienteId, 'bot', result);
+      }
+      const magicLinkUrl = aiResponse.data.magic_link_url;
+      if (magicLinkUrl) {
+        await sendWhatsAppMessage(customerNumber, magicLinkUrl);
+        if (conversacaoId) {
+          await ConversationModel.addMessage(conversacaoId, clienteId, 'bot', magicLinkUrl);
+        }
       }
 
     } else if (action === 'CREATE_OS') {
       console.log(`[Webhook] Solicitando criação de OS para ${customerNumber}...`);
 
       try {
-        // Chama a criação de Ordem de Serviço
         const osResponse = await axios.post(`${AI_SERVICE_URL}/ai/create-os`, demand);
-        const { message: osMsg, magic_link_url } = osResponse.data;
+        const { message: osMsg, magic_link_url: magicLinkUrl } = osResponse.data;
 
-        // Monta a mensagem final com o link de acompanhamento
-        const finalMsg = `${osMsg}\n\nAcompanhe seu serviço por aqui: ${magic_link_url}`;
-
-        await sendWhatsAppMessage(customerNumber, finalMsg);
-        
+        await sendWhatsAppMessage(customerNumber, osMsg);
         if (conversacaoId) {
-          await ConversationModel.addMessage(conversacaoId, clienteId, 'bot', finalMsg);
+          await ConversationModel.addMessage(conversacaoId, clienteId, 'bot', osMsg);
+        }
+
+        if (magicLinkUrl) {
+          await sendWhatsAppMessage(customerNumber, magicLinkUrl);
+          if (conversacaoId) {
+            await ConversationModel.addMessage(conversacaoId, clienteId, 'bot', magicLinkUrl);
+          }
         }
       } catch (osErr: any) {
         console.error('[Webhook] Erro ao criar OS no ai_service:', osErr.response?.data ?? osErr.message);
