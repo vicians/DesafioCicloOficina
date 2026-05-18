@@ -264,7 +264,7 @@ export const handleMessage = async (req: Request, res: Response) => {
 
     const timer = setTimeout(() => {
       processBufferedMessages(customerNumber, conversacaoId, cliente.id, message_id);
-    }, 3000);
+    }, 4500);
 
     debounceTimers.set(customerNumber, timer);
 
