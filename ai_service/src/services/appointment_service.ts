@@ -10,9 +10,28 @@ const BACKEND_SERVICE_PASSWORD = process.env.BACKEND_SERVICE_PASSWORD;
 let cachedBackendToken: string | null = null;
 let backendTokenFetchedAt = 0;
 const BACKEND_TOKEN_TTL_MS = 10 * 60 * 1000;
+const OS_RECOVERY_LOOKBACK_BUFFER_MS = 5 * 1000;
 
 type AuthHeaders = { Authorization: string };
 type MechanicCandidate = { id: string; nome: string };
+type BackendCustomer = { id: string; nome?: string; telefone?: string | null };
+type BackendAppointmentSummary = {
+  id?: string;
+  funcionario_id?: string | null;
+  agendado_para?: string | Date | null;
+  criado_em?: string | Date | null;
+  notas_cliente?: string | null;
+  veiculo_placa?: string | null;
+};
+type OsWorkflowResult = {
+  agendamento_id: string;
+  orcamento_id: string;
+  mechanic: { id: string | null; nome: string };
+  agendado_para: string;
+  magic_link_url: string | null;
+  message: string;
+  recovered?: boolean;
+};
 
 async function getBackendAuthToken(): Promise<string> {
   const now = Date.now();
@@ -45,6 +64,68 @@ async function getBackendAuthToken(): Promise<string> {
 async function getAuthHeaders() {
   const token = await getBackendAuthToken();
   return { Authorization: `Bearer ${token}` };
+}
+
+function normalizePhone(value: string | null | undefined): string {
+  return (value ?? '').replace(/\D/g, '');
+}
+
+function phoneMatches(left: string | null | undefined, right: string | null | undefined): boolean {
+  const leftDigits = normalizePhone(left);
+  const rightDigits = normalizePhone(right);
+
+  if (!leftDigits || !rightDigits) return false;
+  if (leftDigits === rightDigits) return true;
+
+  const leftWithoutCountryCode = leftDigits.startsWith('55') ? leftDigits.slice(2) : leftDigits;
+  const rightWithoutCountryCode = rightDigits.startsWith('55') ? rightDigits.slice(2) : rightDigits;
+  return leftWithoutCountryCode === rightWithoutCountryCode;
+}
+
+function dateTimeMs(value: unknown): number {
+  const date = value instanceof Date
+    ? value
+    : typeof value === 'string'
+      ? new Date(value)
+      : null;
+
+  if (!date || Number.isNaN(date.getTime())) {
+    return 0;
+  }
+
+  return date.getTime();
+}
+
+function buildOsWorkflowResult(params: {
+  agendamentoId: string;
+  orcamentoId: string;
+  mecanicoId: string | null;
+  mecanicoNome: string;
+  agendadoPara: Date;
+  magicLinkUrl: string | null;
+  recovered?: boolean;
+}): OsWorkflowResult {
+  return {
+    agendamento_id: params.agendamentoId,
+    orcamento_id: params.orcamentoId,
+    mechanic: { id: params.mecanicoId, nome: params.mecanicoNome },
+    agendado_para: params.agendadoPara.toISOString(),
+    magic_link_url: params.magicLinkUrl,
+    message: params.magicLinkUrl
+      ? `Agendamento e Orçamento criados com sucesso! Acesse pelo link: ${params.magicLinkUrl}`
+      : 'Agendamento criado! Entre em contato para detalhes do orçamento.',
+    recovered: params.recovered,
+  };
+}
+
+async function createMagicLinkForPhone(telefone: string): Promise<string | null> {
+  try {
+    const mlRes = await axios.post(`${BACKEND_URL}/auth/magic-link`, { telefone });
+    return mlRes.data.url ?? null;
+  } catch (err: any) {
+    console.warn('[OS] Aviso: não foi possível gerar magic link:', extractBackendErrorMessage(err));
+    return null;
+  }
 }
 
 async function findBudgetByAppointmentId(
@@ -136,6 +217,67 @@ async function createAppointmentWithMechanicFallback(params: {
   }
 
   throw new Error('Não foi possível criar agendamento para nenhum responsável disponível.');
+}
+
+export async function recoverRecentOsWorkflow(
+  body: CreateOsBody & { services?: string[] },
+  startedAt: Date,
+): Promise<OsWorkflowResult | null> {
+  try {
+    if (!body.number) return null;
+
+    const headers = await getAuthHeaders();
+    const usuariosRes = await axios.get(`${BACKEND_URL}/usuarios`, {
+      params: { tipo_id: 2 },
+      headers,
+    });
+    const clientes = (usuariosRes.data ?? []) as BackendCustomer[];
+    const cliente = clientes.find((candidate) => phoneMatches(candidate.telefone, body.number));
+
+    if (!cliente) return null;
+
+    const agendamentosRes = await axios.get(`${BACKEND_URL}/agendamentos/cliente/${cliente.id}`, {
+      headers,
+    });
+    const agendamentos = (agendamentosRes.data ?? []) as BackendAppointmentSummary[];
+    const minCreatedAt = startedAt.getTime() - OS_RECOVERY_LOOKBACK_BUFFER_MS;
+    const requestedPlate = body.vehiclePlate?.trim().toUpperCase();
+    const candidates = agendamentos
+      .filter((agendamento) => dateTimeMs(agendamento.criado_em) >= minCreatedAt)
+      .filter((agendamento) => agendamento.notas_cliente?.startsWith('[WhatsApp]'))
+      .filter((agendamento) => {
+        if (!requestedPlate) return true;
+        return agendamento.veiculo_placa?.trim().toUpperCase() === requestedPlate;
+      })
+      .sort((left, right) => dateTimeMs(right.criado_em) - dateTimeMs(left.criado_em));
+
+    for (const agendamento of candidates) {
+      if (!agendamento.id || !agendamento.agendado_para) continue;
+
+      const orcamentoId = await findBudgetByAppointmentId(agendamento.id, headers);
+      if (!orcamentoId) continue;
+
+      const agendadoPara = new Date(agendamento.agendado_para);
+      if (Number.isNaN(agendadoPara.getTime())) continue;
+
+      const magicLinkUrl = await createMagicLinkForPhone(cliente.telefone ?? body.number);
+      console.warn(`[OS] Fluxo recuperado após erro: agendamento ${agendamento.id}, orçamento ${orcamentoId}`);
+
+      return buildOsWorkflowResult({
+        agendamentoId: agendamento.id,
+        orcamentoId,
+        mecanicoId: agendamento.funcionario_id ?? null,
+        mecanicoNome: agendamento.funcionario_id ? 'Responsável atribuído' : 'A definir',
+        agendadoPara,
+        magicLinkUrl,
+        recovered: true,
+      });
+    }
+  } catch (err: any) {
+    console.warn('[OS] Falha ao verificar OS persistida após erro:', extractBackendErrorMessage(err));
+  }
+
+  return null;
 }
 
 export async function createOsWorkflow(body: CreateOsBody & { services?: string[] }) {
@@ -277,24 +419,16 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
   }
 
   // ── 7. Gerar magic link ────────────────────────────────────────────────────
-  let magicLinkUrl: string | null = null;
-  try {
-    const mlRes = await axios.post(`${BACKEND_URL}/auth/magic-link`, {
-      telefone: clienteTelefone,
-    });
-    magicLinkUrl = mlRes.data.url;
-  } catch (err) {}
+  const magicLinkUrl = await createMagicLinkForPhone(clienteTelefone);
 
-  return {
-    agendamento_id: agendamentoId,
-    orcamento_id: orcamentoId,
-    mechanic: { id: mecanicoId, nome: mecanicoNome },
-    agendado_para: agendadoPara.toISOString(),
-    magic_link_url: magicLinkUrl,
-    message: magicLinkUrl
-      ? `Agendamento e Orçamento criados com sucesso! Acesse pelo link: ${magicLinkUrl}`
-      : 'Agendamento criado! Entre em contato para detalhes do orçamento.',
-  };
+  return buildOsWorkflowResult({
+    agendamentoId,
+    orcamentoId,
+    mecanicoId,
+    mecanicoNome,
+    agendadoPara,
+    magicLinkUrl,
+  });
 }
 
 export async function checkAvailability(date: string) {
@@ -323,12 +457,6 @@ export async function checkAvailability(date: string) {
 
   return `Horários já ocupados em ${targetDate.toLocaleDateString('pt-BR')}: \n${occupied.join('\n')}\nOs demais horários entre 08:00 e 18:00 estão disponíveis.`;
 }
-
-type BackendCustomer = {
-  id: string;
-  nome?: string;
-  telefone?: string;
-};
 
 type BackendVehicle = {
   placa?: string | null;
