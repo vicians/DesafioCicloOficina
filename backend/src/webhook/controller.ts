@@ -389,7 +389,7 @@ export const handleMessage = async (req: Request, res: Response) => {
       cliente = await UsuarioModel.create({
         tipo_id: 2,
         cpf_cnpj: customerNumber,
-        nome: 'New Client (WhatsApp)',
+        nome: '',
         telefone: customerNumber,
         senha_hash: defaultPassword,
       });

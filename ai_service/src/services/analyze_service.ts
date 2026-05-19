@@ -13,6 +13,7 @@ import {
   getRecentConversationMessages,
   resolveConversationId,
 } from '../repositories/conversation_repository';
+import { isGenericCustomerName } from '../utils/customer_name';
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage, BaseMessage } from '@langchain/core/messages';
 
 import dotenv from 'dotenv';
@@ -69,6 +70,41 @@ function shouldAppendCurrentMessage(
   }
 
   return getMessageText(lastMessage) !== currentMessage.trim();
+}
+
+function buildCustomerProfileContext(params: {
+  phoneNumber: string;
+  customerName?: string | null;
+  needsCustomerName: boolean;
+}): string {
+  const storedName = params.customerName?.trim() || 'NAO_INFORMADO';
+
+  return [
+    'Contexto cadastral do cliente atual:',
+    `- Telefone WhatsApp: ${params.phoneNumber}`,
+    `- Nome cadastrado: ${storedName}`,
+    `- Nome real confirmado: ${params.needsCustomerName ? 'nao' : 'sim'}`,
+    params.needsCustomerName
+      ? '- O nome real ainda precisa ser coletado. Para duvidas gerais sobre privacidade, LGPD ou seguranca dos dados, responda primeiro sem pedir o nome. Nos demais atendimentos, pergunte de forma natural e, assim que o cliente informar, use update_customer_name antes de seguir com a proxima acao.'
+      : '- O nome real ja esta confirmado. Nao peca o nome novamente a menos que o cliente queira corrigir.',
+  ].join('\n');
+}
+
+function isAwaitingCustomerName(history: ChatHistoryMessage[]): boolean {
+  const lastBotMessage = [...history]
+    .reverse()
+    .find((chatMessage) => chatMessage.tipo_remetente === 'bot')
+    ?.conteudo
+    ?.normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+  if (!lastBotMessage) return false;
+
+  return (
+    /\bnome\b/.test(lastBotMessage) &&
+    /\b(qual|informe|informar|me diga|me passa|pode me dizer|confirmar|confirmar seu)\b/.test(lastBotMessage)
+  );
 }
 
 function parseJsonText(content: string): unknown | null {
@@ -183,6 +219,17 @@ export async function analyzeMessage(message: string, number: string, conversaca
     };
   }
 
+  const resolvedConversationId = await resolveConversationId(conversacaoId, customer?.id);
+  const historyLimit = getConversationHistoryLimit();
+  const conversationHistory = await getRecentConversationMessages(
+    resolvedConversationId,
+    customer?.id,
+    historyLimit,
+  );
+  const historyMessages = mapConversationHistoryToLlmMessages(conversationHistory);
+  const needsCustomerName = !customer || isGenericCustomerName(customer.nome, number);
+  const awaitingCustomerName = needsCustomerName && isAwaitingCustomerName(conversationHistory);
+
   const guardrailModel = model.withConfig({
     runName: 'Oficina_Tiao_Input_Guardrail',
     metadata: {
@@ -191,7 +238,9 @@ export async function analyzeMessage(message: string, number: string, conversaca
     },
   });
 
-  const inputGuardrail = await evaluateInputGuardrails(message, guardrailModel as any);
+  const inputGuardrail = await evaluateInputGuardrails(message, guardrailModel as any, {
+    awaitingCustomerName,
+  });
   if (!inputGuardrail.allowed) {
     console.warn(
       `[Guardrails] Entrada bloqueada (${inputGuardrail.category}): ${inputGuardrail.reason}`,
@@ -205,8 +254,6 @@ export async function analyzeMessage(message: string, number: string, conversaca
   }
 
   const tools = getTools(number, message, customer?.id);
-  const resolvedConversationId = await resolveConversationId(conversacaoId, customer?.id);
-  const historyLimit = getConversationHistoryLimit();
 
   const modelWithTools = model.bindTools(tools).withConfig({
     runName: 'Oficina_Tiao_Agent_Loop',
@@ -216,15 +263,13 @@ export async function analyzeMessage(message: string, number: string, conversaca
       conversation_id: resolvedConversationId,
     },
   });
-  const conversationHistory = await getRecentConversationMessages(
-    resolvedConversationId,
-    customer?.id,
-    historyLimit,
-  );
-  const historyMessages = mapConversationHistoryToLlmMessages(conversationHistory);
-
   const messages: BaseMessage[] = [
     new SystemMessage(OFICINA_TIAO_SYSTEM_PROMPT),
+    new SystemMessage(buildCustomerProfileContext({
+      phoneNumber: number,
+      customerName: customer?.nome,
+      needsCustomerName,
+    })),
     ...historyMessages,
   ];
 
