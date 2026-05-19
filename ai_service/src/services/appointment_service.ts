@@ -2,6 +2,7 @@ import axios from 'axios';
 import { CreateOsBody } from '../schemas/ai_schemas';
 import { resolveAppointmentDate, toDateOnlyString } from '../utils/date_utils';
 import { extractBackendErrorMessage } from '../utils/backend_error';
+import { cleanCustomerName, isValidCustomerName } from '../utils/customer_name';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
 const OS_RECOVERY_LOOKBACK_BUFFER_MS = 5 * 1000;
@@ -253,6 +254,7 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
   }
 
   const agendadoPara = resolveAppointmentDate(requestedDate);
+  const cleanedCustomerName = customerName ? cleanCustomerName(customerName) : '';
 
   // ── 1. Localizar ou criar cliente ─────────────────────────────────────────
   console.log(`[OS] 📝 Iniciando processo de criação para: ${number}`);
@@ -265,18 +267,23 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
     headers,
   });
   const todos: any[] = usuariosRes.data ?? [];
-  const found = todos.find((u: any) => u.telefone === number);
+  const found = todos.find((u: any) => phoneMatches(u.telefone, number));
 
   if (found) {
     clienteId = found.id;
+    clienteTelefone = found.telefone ?? number;
     console.log(`[OS] Cliente encontrado: ${found.nome} (${clienteId})`);
   } else {
     console.log(`[OS] Cliente não encontrado. Criando novo registro...`);
+    if (!isValidCustomerName(cleanedCustomerName, number)) {
+      throw new Error('Nome real do cliente e obrigatorio para criar cadastro e OS via WhatsApp.');
+    }
+
     const temporaryPassword = `whatsapp_${number.replace(/\D/g, '').slice(-8)}_tmp`;
     const novoCliente = await axios.post(`${BACKEND_URL}/usuarios`, {
       tipo_id: 2,
       cpf_cnpj: number.replace(/\D/g, '').slice(0, 20),
-      nome: customerName ?? `Cliente WhatsApp ${number}`,
+      nome: cleanedCustomerName,
       telefone: number,
       senha: temporaryPassword,
     }, {
