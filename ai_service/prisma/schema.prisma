@@ -224,3 +224,61 @@ model document_embeddings {
   source    String                       @db.VarChar
   category  String                       @db.VarChar // 'policy' | 'manual'
 }
+
+model agendamento_embeddings {
+  id        String                       @id @db.Uuid
+  content   String
+  embedding Unsupported("vector(2048)")?
+  metadata  Json
+}
+
+model orcamento_embeddings {
+  id        String                       @id @db.Uuid
+  content   String
+  embedding Unsupported("vector(2048)")?
+  metadata  Json
+}
+
+model execucao_servico_embeddings {
+  id        String                       @id @db.Uuid
+  content   String
+  embedding Unsupported("vector(2048)")?
+  metadata  Json
+}
+
+model mensagem_chat_embeddings {
+  id        String                       @id @db.Uuid
+  content   String
+  embedding Unsupported("vector(2048)")?
+  metadata  Json
+}
+
+model conversacao_chat_embeddings {
+  id        String                       @id @db.Uuid
+  content   String
+  embedding Unsupported("vector(2048)")?
+  metadata  Json
+}
+
+model usuario_embeddings {
+  id        String                       @id @db.Uuid
+  content   String
+  embedding Unsupported("vector(2048)")?
+  metadata  Json
+}
+
+model oficina_embeddings {
+  id        String                       @id @db.Uuid
+  content   String
+  embedding Unsupported("vector(2048)")?
+  metadata  Json
+}
+
+model veiculo_embeddings {
+  id        String                       @id @db.Uuid
+  content   String
+  embedding Unsupported("vector(2048)")?
+  metadata  Json
+}
+
+
