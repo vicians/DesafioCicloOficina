@@ -1,50 +1,95 @@
 import axios from 'axios';
 import { CreateOsBody } from '../schemas/ai_schemas';
-import { nextBusinessDay9am } from '../utils/date_utils';
+import { resolveAppointmentDate, toDateOnlyString } from '../utils/date_utils';
 import { extractBackendErrorMessage } from '../utils/backend_error';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
-const BACKEND_SERVICE_EMAIL = process.env.BACKEND_SERVICE_EMAIL;
-const BACKEND_SERVICE_PASSWORD = process.env.BACKEND_SERVICE_PASSWORD;
 
-let cachedBackendToken: string | null = null;
-let backendTokenFetchedAt = 0;
-const BACKEND_TOKEN_TTL_MS = 10 * 60 * 1000;
-
-type AuthHeaders = { Authorization: string };
+type AuthHeaders = { Authorization?: string; 'X-Internal-Token'?: string };
 type MechanicCandidate = { id: string; nome: string };
-
-async function getBackendAuthToken(): Promise<string> {
-  const now = Date.now();
-
-  if (cachedBackendToken && now - backendTokenFetchedAt < BACKEND_TOKEN_TTL_MS) {
-    return cachedBackendToken;
-  }
-
-  if (!BACKEND_SERVICE_EMAIL || !BACKEND_SERVICE_PASSWORD) {
-    throw new Error(
-      'Configuração do ai_service incompleta: BACKEND_SERVICE_EMAIL e BACKEND_SERVICE_PASSWORD são obrigatórios para autenticar no backend.'
-    );
-  }
-
-  const loginResponse = await axios.post(`${BACKEND_URL}/auth/login`, {
-    email: BACKEND_SERVICE_EMAIL,
-    senha: BACKEND_SERVICE_PASSWORD,
-  });
-
-  const token = loginResponse?.data?.token;
-  if (!token) {
-    throw new Error('Falha ao autenticar no backend: token ausente em /auth/login.');
-  }
-
-  cachedBackendToken = token;
-  backendTokenFetchedAt = now;
-  return token;
-}
+type BackendCustomer = { id: string; nome?: string; telefone?: string | null };
+type BackendAppointmentSummary = {
+  id?: string;
+  funcionario_id?: string | null;
+  agendado_para?: string | Date | null;
+  criado_em?: string | Date | null;
+  notas_cliente?: string | null;
+  veiculo_placa?: string | null;
+};
+type OsWorkflowResult = {
+  agendamento_id: string;
+  orcamento_id: string;
+  mechanic: { id: string | null; nome: string };
+  agendado_para: string;
+  magic_link_url: string | null;
+  message: string;
+  recovered?: boolean;
+};
 
 async function getAuthHeaders() {
-  const token = await getBackendAuthToken();
-  return { Authorization: `Bearer ${token}` };
+  return { 'X-Internal-Token': process.env.INTERNAL_AUTH_TOKEN };
+}
+
+function normalizePhone(value: string | null | undefined): string {
+  return (value ?? '').replace(/\D/g, '');
+}
+
+function phoneMatches(left: string | null | undefined, right: string | null | undefined): boolean {
+  const leftDigits = normalizePhone(left);
+  const rightDigits = normalizePhone(right);
+
+  if (!leftDigits || !rightDigits) return false;
+  if (leftDigits === rightDigits) return true;
+
+  const leftWithoutCountryCode = leftDigits.startsWith('55') ? leftDigits.slice(2) : leftDigits;
+  const rightWithoutCountryCode = rightDigits.startsWith('55') ? rightDigits.slice(2) : rightDigits;
+  return leftWithoutCountryCode === rightWithoutCountryCode;
+}
+
+function dateTimeMs(value: unknown): number {
+  const date = value instanceof Date
+    ? value
+    : typeof value === 'string'
+      ? new Date(value)
+      : null;
+
+  if (!date || Number.isNaN(date.getTime())) {
+    return 0;
+  }
+
+  return date.getTime();
+}
+
+function buildOsWorkflowResult(params: {
+  agendamentoId: string;
+  orcamentoId: string;
+  mecanicoId: string | null;
+  mecanicoNome: string;
+  agendadoPara: Date;
+  magicLinkUrl: string | null;
+  recovered?: boolean;
+}): OsWorkflowResult {
+  return {
+    agendamento_id: params.agendamentoId,
+    orcamento_id: params.orcamentoId,
+    mechanic: { id: params.mecanicoId, nome: params.mecanicoNome },
+    agendado_para: params.agendadoPara.toISOString(),
+    magic_link_url: params.magicLinkUrl,
+    message: params.magicLinkUrl
+      ? `Agendamento e Orçamento criados com sucesso! Acesse pelo link: ${params.magicLinkUrl}`
+      : 'Agendamento criado! Entre em contato para detalhes do orçamento.',
+    recovered: params.recovered,
+  };
+}
+
+async function createMagicLinkForPhone(telefone: string): Promise<string | null> {
+  try {
+    const mlRes = await axios.post(`${BACKEND_URL}/auth/magic-link`, { telefone });
+    return mlRes.data.url ?? null;
+  } catch (err: any) {
+    console.warn('[OS] Aviso: não foi possível gerar magic link:', extractBackendErrorMessage(err));
+    return null;
+  }
 }
 
 async function findBudgetByAppointmentId(
@@ -138,12 +183,75 @@ async function createAppointmentWithMechanicFallback(params: {
   throw new Error('Não foi possível criar agendamento para nenhum responsável disponível.');
 }
 
+export async function recoverRecentOsWorkflow(
+  body: CreateOsBody & { services?: string[] },
+  startedAt: Date,
+): Promise<OsWorkflowResult | null> {
+  try {
+    if (!body.number) return null;
+
+    const headers = await getAuthHeaders();
+    const usuariosRes = await axios.get(`${BACKEND_URL}/usuarios`, {
+      params: { tipo_id: 2 },
+      headers,
+    });
+    const clientes = (usuariosRes.data ?? []) as BackendCustomer[];
+    const cliente = clientes.find((candidate) => phoneMatches(candidate.telefone, body.number));
+
+    if (!cliente) return null;
+
+    const agendamentosRes = await axios.get(`${BACKEND_URL}/agendamentos/cliente/${cliente.id}`, {
+      headers,
+    });
+    const agendamentos = (agendamentosRes.data ?? []) as BackendAppointmentSummary[];
+    const minCreatedAt = startedAt.getTime() - OS_RECOVERY_LOOKBACK_BUFFER_MS;
+    const requestedPlate = body.vehiclePlate?.trim().toUpperCase();
+    const candidates = agendamentos
+      .filter((agendamento) => dateTimeMs(agendamento.criado_em) >= minCreatedAt)
+      .filter((agendamento) => agendamento.notas_cliente?.startsWith('[WhatsApp]'))
+      .filter((agendamento) => {
+        if (!requestedPlate) return true;
+        return agendamento.veiculo_placa?.trim().toUpperCase() === requestedPlate;
+      })
+      .sort((left, right) => dateTimeMs(right.criado_em) - dateTimeMs(left.criado_em));
+
+    for (const agendamento of candidates) {
+      if (!agendamento.id || !agendamento.agendado_para) continue;
+
+      const orcamentoId = await findBudgetByAppointmentId(agendamento.id, headers);
+      if (!orcamentoId) continue;
+
+      const agendadoPara = new Date(agendamento.agendado_para);
+      if (Number.isNaN(agendadoPara.getTime())) continue;
+
+      const magicLinkUrl = await createMagicLinkForPhone(cliente.telefone ?? body.number);
+      console.warn(`[OS] Fluxo recuperado após erro: agendamento ${agendamento.id}, orçamento ${orcamentoId}`);
+
+      return buildOsWorkflowResult({
+        agendamentoId: agendamento.id,
+        orcamentoId,
+        mecanicoId: agendamento.funcionario_id ?? null,
+        mecanicoNome: agendamento.funcionario_id ? 'Responsável atribuído' : 'A definir',
+        agendadoPara,
+        magicLinkUrl,
+        recovered: true,
+      });
+    }
+  } catch (err: any) {
+    console.warn('[OS] Falha ao verificar OS persistida após erro:', extractBackendErrorMessage(err));
+  }
+
+  return null;
+}
+
 export async function createOsWorkflow(body: CreateOsBody & { services?: string[] }) {
-  const { number, customerName, vehiclePlate, description, serviceType, services } = body;
+  const { number, customerName, vehiclePlate, description, serviceType, services, requestedDate } = body;
 
   if (!number || !description) {
     throw new Error('number e description são obrigatórios');
   }
+
+  const agendadoPara = resolveAppointmentDate(requestedDate);
 
   // ── 1. Localizar ou criar cliente ─────────────────────────────────────────
   console.log(`[OS] 📝 Iniciando processo de criação para: ${number}`);
@@ -225,9 +333,8 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
     console.warn('[OS] Aviso: não foi possível buscar mecânicos:', extractBackendErrorMessage(err));
   }
 
-  // ── 4. Criar agendamento (próximo dia útil às 09:00) ─────────────────────
-  const agendadoPara = nextBusinessDay9am();
-  const data = agendadoPara.toISOString().slice(0, 10);
+  // ── 4. Criar agendamento (data solicitada ou fallback às 09:00) ───────────
+  const data = toDateOnlyString(agendadoPara);
   const hora = agendadoPara.getHours();
 
   const appointment = await createAppointmentWithMechanicFallback({
@@ -253,8 +360,8 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
     const catalogo: any[] = catalogoRes.data ?? [];
 
     for (const sName of services) {
-      const match = catalogo.find(s => 
-        s.nome.toLowerCase().includes(sName.toLowerCase()) || 
+      const match = catalogo.find(s =>
+        s.nome.toLowerCase().includes(sName.toLowerCase()) ||
         sName.toLowerCase().includes(s.nome.toLowerCase())
       );
 
@@ -282,7 +389,7 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
       telefone: clienteTelefone,
     });
     magicLinkUrl = mlRes.data.url;
-  } catch (err) {}
+  } catch (err) { }
 
   return {
     agendamento_id: agendamentoId,
@@ -301,13 +408,13 @@ export async function checkAvailability(date: string) {
   const headers = await getAuthHeaders();
   const res = await axios.get(`${BACKEND_URL}/agendamentos`, { headers });
   const all: any[] = res.data ?? [];
-  
+
   const targetDate = new Date(date);
   const dailySchedules = all.filter(a => {
     const d = new Date(a.agendado_para);
     return d.getFullYear() === targetDate.getFullYear() &&
-           d.getMonth() === targetDate.getMonth() &&
-           d.getDate() === targetDate.getDate();
+      d.getMonth() === targetDate.getMonth() &&
+      d.getDate() === targetDate.getDate();
   });
 
   if (dailySchedules.length === 0) {
@@ -317,17 +424,11 @@ export async function checkAvailability(date: string) {
   const occupied = dailySchedules.map(a => {
     const start = new Date(a.agendado_para);
     const end = new Date(start.getTime() + a.duracao_total_minutos * 60000);
-    return `${start.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})} - ${end.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}`;
+    return `${start.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
   });
 
   return `Horários já ocupados em ${targetDate.toLocaleDateString('pt-BR')}: \n${occupied.join('\n')}\nOs demais horários entre 08:00 e 18:00 estão disponíveis.`;
 }
-
-type BackendCustomer = {
-  id: string;
-  nome?: string;
-  telefone?: string;
-};
 
 type BackendVehicle = {
   placa?: string | null;

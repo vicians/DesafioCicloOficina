@@ -54,17 +54,16 @@ class _BudgetListScreenState extends State<BudgetListScreen>
       ),
     );
 
-    if (!mounted || result == null) return;
+    if (!mounted) return;
+
+    // Recarrega sempre ao voltar, independente do motivo do fechamento.
+    _reload();
+
     if (result is String) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Agendamento concluído. OS gerada: $result')),
       );
-      return;
     }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Orçamento atualizado com sucesso.')),
-    );
   }
 
   Future<void> _approve(InternalBudgetItem item) async {

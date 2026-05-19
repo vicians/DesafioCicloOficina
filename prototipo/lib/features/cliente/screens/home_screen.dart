@@ -200,10 +200,14 @@ class _HomeScreenState extends State<HomeScreen> {
                         style: GoogleFonts.dmSans(fontSize: 13, color: textMuted),
                       )
                     else
-                      ...history.take(3).map((h) => Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: _HistoryCard(item: h),
-                          )),
+                      // Mostra apenas finalizados nesta seção (ativos estão no card do topo)
+                      ...history
+                          .where((h) => h.status == 'concluido' || h.status == 'cancelado')
+                          .take(3)
+                          .map((h) => Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: _HistoryCard(item: h),
+                              )),
                     const SizedBox(height: 88),
                   ],
                 ),
@@ -495,6 +499,14 @@ class _HistoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isCanceled = item.status == 'cancelado';
+    final iconBg = isCanceled ? redBg : greenBg;
+    final iconColor = isCanceled ? red : green;
+    final iconData = isCanceled ? Icons.cancel_outlined : Icons.check_circle_outline_rounded;
+    final badgeBg = isCanceled ? redBg : greenBg;
+    final badgeColor = isCanceled ? red : green;
+    final badgeLabel = isCanceled ? 'Cancelado' : 'Concluído';
+
     return AppCard(
       child: Row(
         children: [
@@ -502,10 +514,10 @@ class _HistoryCard extends StatelessWidget {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: greenBg,
+              color: iconBg,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.check_rounded, color: green, size: 20),
+            child: Icon(iconData, color: iconColor, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -527,13 +539,37 @@ class _HistoryCard extends StatelessWidget {
               ],
             ),
           ),
-          Text(
-            item.total,
-            style: GoogleFonts.dmSans(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: textPrimary,
-            ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: badgeBg,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  badgeLabel,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: badgeColor,
+                  ),
+                ),
+              ),
+              if (item.total != '—') ...[
+                const SizedBox(height: 3),
+                Text(
+                  item.total,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: textPrimary,
+                  ),
+                ),
+              ],
+            ],
           ),
         ],
       ),
