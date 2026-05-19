@@ -85,7 +85,7 @@ function buildCustomerProfileContext(params: {
     `- Nome cadastrado: ${storedName}`,
     `- Nome real confirmado: ${params.needsCustomerName ? 'nao' : 'sim'}`,
     params.needsCustomerName
-      ? '- O nome real ainda precisa ser coletado. Pergunte de forma natural e, assim que o cliente informar, use update_customer_name antes de seguir com a proxima acao.'
+      ? '- O nome real ainda precisa ser coletado. Para duvidas gerais sobre privacidade, LGPD ou seguranca dos dados, responda primeiro sem pedir o nome. Nos demais atendimentos, pergunte de forma natural e, assim que o cliente informar, use update_customer_name antes de seguir com a proxima acao.'
       : '- O nome real ja esta confirmado. Nao peca o nome novamente a menos que o cliente queira corrigir.',
   ].join('\n');
 }
