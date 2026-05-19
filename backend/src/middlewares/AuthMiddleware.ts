@@ -8,6 +8,13 @@ export const authMiddleware = (
   next: NextFunction
 ) => {
   const authHeader = req.headers.authorization;
+  const internalToken = req.headers['x-internal-token'];
+
+  // Bypass para comunicação interna entre serviços
+  if (internalToken && internalToken === process.env.INTERNAL_AUTH_TOKEN) {
+    req.user = { id: 'system', email: 'system@internal', role: 'system' };
+    return next();
+  }
 
   if (!authHeader) {
     return res.status(401).json({ error: 'Unauthorized: Token is missing' });
