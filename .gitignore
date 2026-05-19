@@ -86,3 +86,6 @@ node_modules
 
 # Flutter — configuração local de IP/URL da API (não versionar)
 **/core/config/api_config.dart
+
+# Logs do nohup
+nohup.out

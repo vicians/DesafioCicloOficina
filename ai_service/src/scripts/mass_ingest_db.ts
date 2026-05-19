@@ -1,6 +1,8 @@
 import { prisma } from '../config/prisma';
 import { embeddings } from '../config/embeddings';
 import { toSql } from 'pgvector';
+import { upsertProduto } from '../vectorstore/productVectorStore';
+import { upsertServico } from '../vectorstore/serviceVectorStore';
 
 async function ingestUsuarios() {
   console.log('🔄 Ingerindo usuarios...');
@@ -144,6 +146,40 @@ async function ingestExecucoes() {
   console.log(`✅ ${execucoes.length} execuções de serviço ingeridas.`);
 }
 
+async function ingest_produtos() {
+  console.log('🔄 Ingerindo produtos...');
+  const produtos_ativos = await prisma.produtos.findMany({
+    where: { ativo: true }
+  });
+  for (const produto of produtos_ativos) {
+    await upsertProduto({
+      id: produto.id,
+      nome: produto.nome,
+      marca: produto.marca || undefined,
+      valor: produto.valor / 100,
+      quantidade_estoque: produto.quantidade_estoque
+    });
+  }
+  console.log(`✅ ${produtos_ativos.length} produtos ingeridos.`);
+}
+
+async function ingest_servicos() {
+  console.log('🔄 Ingerindo serviços...');
+  const servicos_ativos = await prisma.catalogo_servicos.findMany({
+    where: { ativo: true }
+  });
+  for (const servico of servicos_ativos) {
+    await upsertServico({
+      id: servico.id,
+      nome: servico.nome,
+      preco: servico.preco / 100,
+      descricao: servico.descricao || undefined,
+      duracao_minutos: servico.duracao_minutos
+    });
+  }
+  console.log(`✅ ${servicos_ativos.length} serviços ingeridos.`);
+}
+
 async function main() {
   try {
     console.log('🚀 Iniciando script de ingestão em massa...');
@@ -158,6 +194,8 @@ async function main() {
     await ingestAgendamentos();
     await ingestOrcamentos();
     await ingestExecucoes();
+    await ingest_produtos();
+    await ingest_servicos();
 
     console.log('🎉 Ingestão concluída com sucesso!');
     process.exit(0);
