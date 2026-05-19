@@ -4,15 +4,8 @@ import { resolveAppointmentDate, toDateOnlyString } from '../utils/date_utils';
 import { extractBackendErrorMessage } from '../utils/backend_error';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
-const BACKEND_SERVICE_EMAIL = process.env.BACKEND_SERVICE_EMAIL;
-const BACKEND_SERVICE_PASSWORD = process.env.BACKEND_SERVICE_PASSWORD;
 
-let cachedBackendToken: string | null = null;
-let backendTokenFetchedAt = 0;
-const BACKEND_TOKEN_TTL_MS = 10 * 60 * 1000;
-const OS_RECOVERY_LOOKBACK_BUFFER_MS = 5 * 1000;
-
-type AuthHeaders = { Authorization: string };
+type AuthHeaders = { Authorization?: string; 'X-Internal-Token'?: string };
 type MechanicCandidate = { id: string; nome: string };
 type BackendCustomer = { id: string; nome?: string; telefone?: string | null };
 type BackendAppointmentSummary = {
@@ -33,37 +26,8 @@ type OsWorkflowResult = {
   recovered?: boolean;
 };
 
-async function getBackendAuthToken(): Promise<string> {
-  const now = Date.now();
-
-  if (cachedBackendToken && now - backendTokenFetchedAt < BACKEND_TOKEN_TTL_MS) {
-    return cachedBackendToken;
-  }
-
-  if (!BACKEND_SERVICE_EMAIL || !BACKEND_SERVICE_PASSWORD) {
-    throw new Error(
-      'Configuração do ai_service incompleta: BACKEND_SERVICE_EMAIL e BACKEND_SERVICE_PASSWORD são obrigatórios para autenticar no backend.'
-    );
-  }
-
-  const loginResponse = await axios.post(`${BACKEND_URL}/auth/login`, {
-    email: BACKEND_SERVICE_EMAIL,
-    senha: BACKEND_SERVICE_PASSWORD,
-  });
-
-  const token = loginResponse?.data?.token;
-  if (!token) {
-    throw new Error('Falha ao autenticar no backend: token ausente em /auth/login.');
-  }
-
-  cachedBackendToken = token;
-  backendTokenFetchedAt = now;
-  return token;
-}
-
 async function getAuthHeaders() {
-  const token = await getBackendAuthToken();
-  return { Authorization: `Bearer ${token}` };
+  return { 'X-Internal-Token': process.env.INTERNAL_AUTH_TOKEN };
 }
 
 function normalizePhone(value: string | null | undefined): string {
@@ -396,8 +360,8 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
     const catalogo: any[] = catalogoRes.data ?? [];
 
     for (const sName of services) {
-      const match = catalogo.find(s => 
-        s.nome.toLowerCase().includes(sName.toLowerCase()) || 
+      const match = catalogo.find(s =>
+        s.nome.toLowerCase().includes(sName.toLowerCase()) ||
         sName.toLowerCase().includes(s.nome.toLowerCase())
       );
 
@@ -419,16 +383,24 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
   }
 
   // ── 7. Gerar magic link ────────────────────────────────────────────────────
-  const magicLinkUrl = await createMagicLinkForPhone(clienteTelefone);
+  let magicLinkUrl: string | null = null;
+  try {
+    const mlRes = await axios.post(`${BACKEND_URL}/auth/magic-link`, {
+      telefone: clienteTelefone,
+    });
+    magicLinkUrl = mlRes.data.url;
+  } catch (err) { }
 
-  return buildOsWorkflowResult({
-    agendamentoId,
-    orcamentoId,
-    mecanicoId,
-    mecanicoNome,
-    agendadoPara,
-    magicLinkUrl,
-  });
+  return {
+    agendamento_id: agendamentoId,
+    orcamento_id: orcamentoId,
+    mechanic: { id: mecanicoId, nome: mecanicoNome },
+    agendado_para: agendadoPara.toISOString(),
+    magic_link_url: magicLinkUrl,
+    message: magicLinkUrl
+      ? `Agendamento e Orçamento criados com sucesso! Acesse pelo link: ${magicLinkUrl}`
+      : 'Agendamento criado! Entre em contato para detalhes do orçamento.',
+  };
 }
 
 export async function checkAvailability(date: string) {
@@ -436,13 +408,13 @@ export async function checkAvailability(date: string) {
   const headers = await getAuthHeaders();
   const res = await axios.get(`${BACKEND_URL}/agendamentos`, { headers });
   const all: any[] = res.data ?? [];
-  
+
   const targetDate = new Date(date);
   const dailySchedules = all.filter(a => {
     const d = new Date(a.agendado_para);
     return d.getFullYear() === targetDate.getFullYear() &&
-           d.getMonth() === targetDate.getMonth() &&
-           d.getDate() === targetDate.getDate();
+      d.getMonth() === targetDate.getMonth() &&
+      d.getDate() === targetDate.getDate();
   });
 
   if (dailySchedules.length === 0) {
@@ -452,7 +424,7 @@ export async function checkAvailability(date: string) {
   const occupied = dailySchedules.map(a => {
     const start = new Date(a.agendado_para);
     const end = new Date(start.getTime() + a.duracao_total_minutos * 60000);
-    return `${start.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})} - ${end.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}`;
+    return `${start.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
   });
 
   return `Horários já ocupados em ${targetDate.toLocaleDateString('pt-BR')}: \n${occupied.join('\n')}\nOs demais horários entre 08:00 e 18:00 estão disponíveis.`;
