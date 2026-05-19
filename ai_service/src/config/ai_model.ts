@@ -1,20 +1,24 @@
-import { ChatOpenAI } from '@langchain/openai';
+import { ChatGoogle } from '@langchain/google';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-const model = new ChatOpenAI({
-  apiKey: process.env.NVIDIA_API_KEY,
-  configuration: {
-    baseURL: process.env.NVIDIA_BASE_URL,
-  },
-  modelName: process.env.AI_MODEL,
-  temperature: 0.3, // Pode ser usado para aumentar a segurança posteriormente
+const apiKey = process.env.GOOGLE_API_KEY;
+const modelName = process.env.AI_MODEL;
+
+if (!apiKey || !modelName) {
+  throw new Error('Configuração de modelo incompleta. Defina GOOGLE_API_KEY e AI_MODEL.');
+}
+
+const model = new ChatGoogle({
+  apiKey,
+  model: modelName,
+  temperature: 0.3,
   maxRetries: 1,
 });
 
 const chat_model = model.withConfig({
-  runName: "TiaoApp_AI",
+  runName: 'TiaoApp_AI',
   timeout: 15000,
 });
 
