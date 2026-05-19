@@ -4,6 +4,7 @@ import { resolveAppointmentDate, toDateOnlyString } from '../utils/date_utils';
 import { extractBackendErrorMessage } from '../utils/backend_error';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
+const OS_RECOVERY_LOOKBACK_BUFFER_MS = 5 * 1000;
 
 type AuthHeaders = { Authorization?: string; 'X-Internal-Token'?: string };
 type MechanicCandidate = { id: string; nome: string };
