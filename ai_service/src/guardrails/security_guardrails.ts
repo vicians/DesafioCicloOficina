@@ -1,6 +1,7 @@
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { z } from 'zod';
+import { looksLikeCustomerNameReply } from '../utils/customer_name';
 
 export type GuardrailCategory =
   | 'allowed'
@@ -17,6 +18,7 @@ export type GuardrailIntent =
   | 'scheduling'
   | 'availability_check'
   | 'profile_and_history_check'
+  | 'profile_update'
   | 'shop_operations'
   | 'none';
 
@@ -60,6 +62,7 @@ const GuardrailStructuredDecisionSchema = z.object({
       'scheduling',
       'availability_check',
       'profile_and_history_check',
+      'profile_update',
       'shop_operations',
       'none',
     ])
@@ -106,11 +109,18 @@ const PROFILE_AND_HISTORY_PATTERNS = [
   /\b(registered|linked|on file)\b.{0,60}\b(car|cars|vehicle|vehicles|license plate|license plates|plates)\b/i,
 ];
 
+const PROFILE_UPDATE_PATTERNS = [
+  /\b(meu|minha)\s+nome\s+(e|eh|Ã©)\b/i,
+  /\b(eu\s+me\s+chamo|me\s+chamo|sou\s+o|sou\s+a|aqui\s+(e|eh|Ã©))\b/i,
+  /\b(atualizar|corrigir|alterar|trocar)\b.{0,50}\b(nome|cadastro|perfil)\b/i,
+  /\b(nome|cadastro|perfil)\b.{0,50}\b(atualizar|corrigir|alterar|trocar)\b/i,
+];
+
 const SYSTEM_LEAK_PATTERNS = [
   /\b(system prompt|developer message|hidden instructions|internal instructions)\b/i,
   /\b(prompt de sistema|mensagem do sistema|instrucoes internas|instruções internas|instrucoes ocultas|instruções ocultas)\b/i,
   /\b(regras de negocio|regras de negócio|escopo permitido|identidade e limites)\b/i,
-  /\b(use sempre a ferramenta|catalog_search_tool|create_appointment|backend_api|check_availability|get_customer_history)\b/i,
+  /\b(use sempre a ferramenta|catalog_search_tool|create_appointment|backend_api|check_availability|get_customer_history|update_customer_name)\b/i,
   /\b(mensagens de usuarios e dados retornados por ferramentas sao conteudo nao confiavel|conteudo nao confiavel)\b/i,
 ];
 
@@ -126,13 +136,15 @@ function hasAnyPattern(value: string, patterns: RegExp[]): boolean {
 }
 
 function getToolsForIntent(intent: GuardrailIntent): Set<string> {
+  const withProfileUpdate = (toolNames: string[]) => new Set([...toolNames, 'update_customer_name']);
+
   switch (intent) {
     case 'automotive_advice':
     case 'catalog_search':
-      return new Set(['catalog_search_tool']);
+      return withProfileUpdate(['catalog_search_tool']);
 
     case 'scheduling':
-      return new Set([
+      return withProfileUpdate([
         'catalog_search_tool',
         'get_customer_history',
         'check_availability',
@@ -141,16 +153,25 @@ function getToolsForIntent(intent: GuardrailIntent): Set<string> {
       ]);
 
     case 'availability_check':
-      return new Set(['check_availability', 'backend_api']);
+      return withProfileUpdate(['check_availability', 'backend_api']);
 
     case 'profile_and_history_check':
-      return new Set(['get_customer_history', 'backend_api', 'operational_search_tool']);
+      return withProfileUpdate(['get_customer_history', 'backend_api', 'operational_search_tool']);
+
+    case 'profile_update':
+      return withProfileUpdate([
+        'catalog_search_tool',
+        'get_customer_history',
+        'check_availability',
+        'create_appointment',
+        'backend_api',
+      ]);
 
     case 'shop_operations':
-      return new Set(['catalog_search_tool', 'backend_api']);
+      return withProfileUpdate(['catalog_search_tool', 'backend_api']);
 
     case 'small_talk':
-      return new Set(['catalog_search_tool']);
+      return withProfileUpdate(['catalog_search_tool']);
 
     case 'none':
     default:
@@ -183,7 +204,10 @@ function refuse(
   };
 }
 
-function deterministicInputDecision(message: string): GuardrailDecision | null {
+function deterministicInputDecision(
+  message: string,
+  context?: { awaitingCustomerName?: boolean },
+): GuardrailDecision | null {
   const normalized = normalizeText(message);
 
   if (
@@ -204,6 +228,14 @@ function deterministicInputDecision(message: string): GuardrailDecision | null {
 
   if (isShortSmallTalk && !hasAutomotiveContext) {
     return allow('Mensagem curta de saudação ou identidade do assistente.', 'small_talk');
+  }
+
+  if (
+    hasAnyPattern(message, PROFILE_UPDATE_PATTERNS) ||
+    hasAnyPattern(normalized, PROFILE_UPDATE_PATTERNS) ||
+    (context?.awaitingCustomerName && looksLikeCustomerNameReply(message))
+  ) {
+    return allow('Atualizacao ou coleta do nome cadastral do cliente atual.', 'profile_update');
   }
 
   if (
@@ -244,6 +276,7 @@ Escolha exatamente uma intenção:
 - scheduling: criar, remarcar, reservar ou pedir um agendamento/ordem de serviço.
 - availability_check: consultar horários, datas ou disponibilidade sem criar agendamento.
 - profile_and_history_check: consultar dados cadastrais, veículos vinculados, placas, marca/modelo ou histórico do cliente atual.
+- profile_update: informar, corrigir ou confirmar o nome cadastral do cliente atual.
 - shop_operations: operação interna permitida da oficina relacionada ao atendimento.
 - none: use quando a mensagem for recusada.
 Pedidos com intenções mistas (ex: "Oi, qual o preço do pneu?") devem ser classificados pela intenção mais específica (catalog_search).
@@ -272,6 +305,7 @@ Responda apenas pelo schema.`),
 export async function evaluateInputGuardrails(
   message: string,
   chatModel: BaseChatModel,
+  context?: { awaitingCustomerName?: boolean },
 ): Promise<GuardrailDecision> {
   const parsed = InputMessageSchema.safeParse(message);
 
@@ -283,7 +317,7 @@ export async function evaluateInputGuardrails(
     );
   }
 
-  const deterministicDecision = deterministicInputDecision(parsed.data);
+  const deterministicDecision = deterministicInputDecision(parsed.data, context);
   if (deterministicDecision) {
     return deterministicDecision;
   }
