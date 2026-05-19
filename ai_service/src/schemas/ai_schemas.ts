@@ -8,6 +8,7 @@ interface CreateOsBody {
   vehiclePlate?: string;
   description: string;
   serviceType?: string;
+  requestedDate?: string;
 }
 
 interface AnalyzeRequestBody {

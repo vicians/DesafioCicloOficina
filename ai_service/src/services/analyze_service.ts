@@ -79,47 +79,103 @@ function parseJsonText(content: string): unknown | null {
   }
 }
 
-function normalizeAssistantReply(content: string): string {
+type AppointmentToolSuccess = {
+  agendamento_id: string;
+  orcamento_id: string;
+  agendado_para?: string;
+  magic_link_url?: string | null;
+  message?: string;
+};
+
+function isAppointmentToolSuccess(value: unknown): value is AppointmentToolSuccess {
+  if (!value || typeof value !== 'object') return false;
+  const data = value as Record<string, unknown>;
+
+  return typeof data.agendamento_id === 'string' && typeof data.orcamento_id === 'string';
+}
+
+function isGenericFailureReply(content: string): boolean {
+  const normalized = content.toLowerCase();
+  return (
+    normalized.includes('desculpe') ||
+    normalized.includes('não consegui') ||
+    normalized.includes('nao consegui') ||
+    normalized.includes('problema ao processar') ||
+    normalized.includes('erro técnico') ||
+    normalized.includes('erro tecnico')
+  );
+}
+
+function formatAppointmentConfirmation(data: AppointmentToolSuccess): string {
+  const baseMessage = typeof data.message === 'string' && data.message.trim()
+    ? data.message.trim()
+    : `Agendamento e orçamento criados com sucesso${
+        typeof data.agendado_para === 'string'
+          ? ` para ${new Date(data.agendado_para).toLocaleString('pt-BR')}`
+          : ''
+      }.`;
+  const magicLinkText = typeof data.magic_link_url === 'string' && data.magic_link_url
+    ? ` Acompanhe pelo link: ${data.magic_link_url}`
+    : '';
+
+  return data.magic_link_url && baseMessage.includes(data.magic_link_url)
+    ? baseMessage
+    : `${baseMessage}${magicLinkText}`.trim();
+}
+
+function appendAppointmentLinkIfMissing(content: string, fallbackAppointment?: AppointmentToolSuccess | null): string {
+  const magicLink = fallbackAppointment?.magic_link_url;
+
+  if (!magicLink || content.includes(magicLink)) {
+    return content;
+  }
+
+  return `${content.trim()} Acompanhe pelo link: ${magicLink}`.trim();
+}
+
+function normalizeAssistantReply(content: string, fallbackAppointment?: AppointmentToolSuccess | null): string {
   const trimmed = content.trim();
 
   if (!trimmed) {
+    if (fallbackAppointment) {
+      return formatAppointmentConfirmation(fallbackAppointment);
+    }
+
     return 'Não consegui concluir a solicitação agora. Pode reformular a mensagem?';
+  }
+
+  if (fallbackAppointment && isGenericFailureReply(trimmed)) {
+    return formatAppointmentConfirmation(fallbackAppointment);
   }
 
   const parsed = parseJsonText(trimmed);
   if (!parsed || typeof parsed !== 'object') {
-    return trimmed;
+    return appendAppointmentLinkIfMissing(trimmed, fallbackAppointment);
   }
 
   const data = parsed as Record<string, unknown>;
 
   if (typeof data.result === 'string' && data.result.trim()) {
-    return data.result.trim();
+    return appendAppointmentLinkIfMissing(data.result.trim(), fallbackAppointment);
   }
 
   if (typeof data.message === 'string' && data.message.trim()) {
-    return data.message.trim();
+    return appendAppointmentLinkIfMissing(data.message.trim(), fallbackAppointment);
   }
 
   if (data.ok === false && typeof data.error === 'string') {
+    if (fallbackAppointment) {
+      return formatAppointmentConfirmation(fallbackAppointment);
+    }
+
     return `Não consegui concluir a ação no sistema: ${data.error}`;
   }
 
-  if (
-    typeof data.agendamento_id === 'string' &&
-    typeof data.orcamento_id === 'string'
-  ) {
-    const dateText = typeof data.agendado_para === 'string'
-      ? ` para ${new Date(data.agendado_para).toLocaleString('pt-BR')}`
-      : '';
-    const magicLinkText = typeof data.magic_link_url === 'string' && data.magic_link_url
-      ? ` Acompanhe pelo link: ${data.magic_link_url}`
-      : '';
-
-    return `Agendamento e orçamento criados com sucesso${dateText}.${magicLinkText}`.trim();
+  if (isAppointmentToolSuccess(data)) {
+    return formatAppointmentConfirmation(data);
   }
 
-  return trimmed;
+  return appendAppointmentLinkIfMissing(trimmed, fallbackAppointment);
 }
 
 export async function analyzeMessage(message: string, number: string, conversacaoId?: string) {
@@ -177,6 +233,7 @@ export async function analyzeMessage(message: string, number: string, conversaca
 
   let iterations = 0;
   let finalResponse: any = null;
+  let lastSuccessfulAppointment: AppointmentToolSuccess | null = null;
 
   while (iterations < MAX_ITERATIONS) {
     iterations++;
@@ -216,6 +273,12 @@ export async function analyzeMessage(message: string, number: string, conversaca
       try {
         const toolResult = await (tool as any).call(toolCall.args);
         const serializedToolResult = typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult);
+        const parsedToolResult = parseJsonText(serializedToolResult);
+
+        if (toolCall.name === 'create_appointment' && isAppointmentToolSuccess(parsedToolResult)) {
+          lastSuccessfulAppointment = parsedToolResult;
+        }
+
         messages.push(new ToolMessage({
           tool_call_id: toolCallId,
           content: sanitizeToolResultForPrompt(serializedToolResult)
@@ -232,7 +295,8 @@ export async function analyzeMessage(message: string, number: string, conversaca
 
   const finalContent = validateFinalReplyGuardrails(
     normalizeAssistantReply(
-      String(finalResponse?.content || 'Desculpe, tive um problema ao processar sua solicitação no momento. Posso tentar novamente?')
+      String(finalResponse?.content ?? ''),
+      lastSuccessfulAppointment
     )
   );
 
