@@ -1,13 +1,13 @@
 {
   "name": "oficina-ai-service",
   "version": "1.0.0",
-  "description": "Serviço de IA para o sistema OmniConnect",
+  "description": "Serviço de IA para Tião Oficina",
   "main": "dist/index.js",
   "scripts": {
     "build": "prisma generate && tsc",
     "start": "node dist/index.js",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
-    "ingest": "ts-node src/scripts/ingest_docs.ts"
+    "ingest": "ts-node src/scripts/ingest_docs.ts && ts-node src/scripts/mass_ingest_db.ts"
   },
   "dependencies": {
     "@langchain/community": "^1.1.28",
