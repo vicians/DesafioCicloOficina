@@ -194,7 +194,15 @@ export async function analyzeMessage(message: string, number: string, conversaca
     };
   }
 
-  const inputGuardrail = await evaluateInputGuardrails(message, model);
+  const guardrailModel = model.withConfig({
+    runName: 'Oficina_Tiao_Input_Guardrail',
+    metadata: {
+      customer_phone: number,
+      customer_id: customer?.id ?? 'unknown',
+    },
+  });
+
+  const inputGuardrail = await evaluateInputGuardrails(message, guardrailModel as any);
   if (!inputGuardrail.allowed) {
     console.warn(
       `[Guardrails] Entrada bloqueada (${inputGuardrail.category}): ${inputGuardrail.reason}`,
@@ -208,10 +216,17 @@ export async function analyzeMessage(message: string, number: string, conversaca
   }
 
   const tools = getTools(number, message, customer?.id);
-  const modelWithTools = model.bindTools(tools);
-
   const resolvedConversationId = await resolveConversationId(conversacaoId, customer?.id);
   const historyLimit = getConversationHistoryLimit();
+
+  const modelWithTools = model.bindTools(tools).withConfig({
+    runName: 'Oficina_Tiao_Agent_Loop',
+    metadata: {
+      customer_phone: number,
+      customer_id: customer?.id ?? 'unknown',
+      conversation_id: resolvedConversationId,
+    },
+  });
   const conversationHistory = await getRecentConversationMessages(
     resolvedConversationId,
     customer?.id,
