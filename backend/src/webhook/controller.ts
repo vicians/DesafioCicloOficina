@@ -8,6 +8,23 @@ import { PasswordUtils } from '../utils/passwordUtils';
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:3001';
 const WA_ACCESS_TOKEN = process.env.WA_ACCESS_TOKEN;
 const WA_PHONE_NUMBER_ID = process.env.WA_PHONE_NUMBER_ID;
+const MESSAGE_ID_TTL_MS = 5 * 60 * 1000;
+
+const recentMessageIds = new Map<string, ReturnType<typeof setTimeout>>();
+
+const trackMessageId = (messageId: string): boolean => {
+  if (recentMessageIds.has(messageId)) {
+    return false;
+  }
+
+  const timeout = setTimeout(() => {
+    recentMessageIds.delete(messageId);
+  }, MESSAGE_ID_TTL_MS);
+
+  timeout.unref?.();
+  recentMessageIds.set(messageId, timeout);
+  return true;
+};
 
 /**
  * Envia uma mensagem de texto de volta para o usuário via API da Meta
@@ -32,6 +49,34 @@ export const sendWhatsAppMessage = async (to: string, text: string) => {
     console.log(`[WhatsApp] Mensagem enviada para ${to}`);
   } catch (error: any) {
     console.error('[WhatsApp] Erro ao enviar mensagem:', error.response?.data || error.message);
+  }
+};
+
+/**
+ * Ativa o balão de "está digitando..." e marca a mensagem como lida na API da Meta
+ */
+export const send_whatsapp_typing = async (message_id: string): Promise<void> => {
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v21.0/${WA_PHONE_NUMBER_ID}/messages`,
+      {
+        messaging_product: "whatsapp",
+        status: "read",
+        message_id: message_id,
+        typing_indicator: {
+          type: "text"
+        }
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${WA_ACCESS_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+    console.log(`[WhatsApp] Indicador de digitação ativado para a mensagem ${message_id}`);
+  } catch (error: any) {
+    console.error('[WhatsApp] Erro ao enviar indicador de digitação:', error.response?.data || error.message);
   }
 };
 
@@ -63,6 +108,12 @@ export const handleMessage = async (req: Request, res: Response) => {
   }
 
   const message = body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+  const message_id: string | undefined = message?.id;
+
+  if (message_id && !trackMessageId(message_id)) {
+    console.log(`[Webhook] Dropped duplicate message ID: ${message_id}`);
+    return res.sendStatus(200);
+  }
 
   // Ignora se não houver mensagem de texto
   if (!message?.text?.body) {
@@ -71,6 +122,9 @@ export const handleMessage = async (req: Request, res: Response) => {
 
   const customerText: string = message.text.body;
   const customerNumber: string = message.from;
+
+  let is_ai_done = false;
+  let processando_timeout: ReturnType<typeof setTimeout> | undefined;
 
   try {
     console.log(`[Webhook] Recebido de ${customerNumber}: ${customerText}`);
@@ -103,7 +157,20 @@ export const handleMessage = async (req: Request, res: Response) => {
       return res.sendStatus(200);
     }
 
-    // 1. Envia a mensagem para o serviço de IA (ai_service) se não estiver pausado
+    // Envia o indicador visual de digitação nativo imediatamente se a IA não estiver pausada
+    if (message_id) {
+      send_whatsapp_typing(message_id).catch((err) => {
+        console.error('[Webhook] Falha ao acionar indicador de digitação:', err.message);
+      });
+    }
+
+    // 1. Timeout de Fallback: Envia mensagem física se a resposta da IA demorar mais de 25 segundos
+    processando_timeout = setTimeout(async () => {
+      if (!is_ai_done && !iaPausada) {
+        await sendWhatsAppMessage(customerNumber, "Estou processando sua solicitação, só um instante... ⚙️");
+      }
+    }, 25000);
+
     const aiResponse = await axios.post(`${AI_SERVICE_URL}/ai/analyze`, {
       message: customerText,
       number: customerNumber,
@@ -111,6 +178,9 @@ export const handleMessage = async (req: Request, res: Response) => {
     }, {
       headers: { 'X-Internal-Token': process.env.INTERNAL_AUTH_TOKEN }
     });
+
+    is_ai_done = true;
+    if (processando_timeout) clearTimeout(processando_timeout);
 
     const { action, result, demand } = aiResponse.data;
 
@@ -162,6 +232,8 @@ export const handleMessage = async (req: Request, res: Response) => {
     }
 
   } catch (error: any) {
+    is_ai_done = true;
+    if (processando_timeout) clearTimeout(processando_timeout);
     console.error('[Webhook] Erro na comunicação com AI_SERVICE:', error.message);
   }
 

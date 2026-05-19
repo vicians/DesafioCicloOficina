@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
 import { OrcamentoModel } from '../models/orcamentoModel';
 import { AgendamentoModel } from '../models/agendamentoModel';
-import { ExecucaoServicoModel } from '../models/execucaoServicoModel';
 import { CatalogoServicoModel } from '../models/catalogoServicoModel';
 import { ProdutoModel } from '../models/produtoModel';
 import { NotificationModel } from '../models/notificationModel';
@@ -212,16 +211,8 @@ export class OrcamentoController {
       console.error('Falha ao criar notificações internas de orçamento aprovado:', error);
     }
 
-    // Regra: Ao aprovar, já cria a entrada de execução para aparecer na lista de serviços
-    try {
-      await ExecucaoServicoModel.ensureByOrcamentoId(
-        orcamento.id,
-        orcamento.funcionario_id
-      );
-    } catch (error) {
-      console.error('Falha ao criar execução automática após aprovação:', error);
-    }
-
+    // A execução de serviço (OS) é criada apenas quando a oficina acionar
+    // "Concluir Agendamento e Abrir OS" — não automaticamente na aprovação do cliente.
     return res.json(orcamento);
   }
 
