@@ -90,15 +90,23 @@ class SchedulingApiRepository implements SchedulingRepository {
     }
 
     final List<dynamic> orcamentos = jsonDecode(orcamentosResp.body) as List<dynamic>;
+    final budgetByAgendamento = <String, Map<String, dynamic>>{};
     final sentBudgetAgendamentoIds = <String>{};
+
     for (final raw in orcamentos.cast<Map<String, dynamic>>()) {
       final status = (raw['status'] as String? ?? '').toUpperCase();
       final agendamentoId = raw['agendamento_id'] as String?;
-      if (status == 'ENVIADO' && agendamentoId != null && agendamentoId.isNotEmpty) {
-        sentBudgetAgendamentoIds.add(agendamentoId);
+      if (agendamentoId != null && agendamentoId.isNotEmpty) {
+        // Como a API retorna ordenado por data decrescente (o mais novo primeiro),
+        // só adicionamos se ainda não existir no mapa para ignorar os cancelados/antigos.
+        if (!budgetByAgendamento.containsKey(agendamentoId)) {
+          budgetByAgendamento[agendamentoId] = raw;
+          if (status == 'ENVIADO') {
+            sentBudgetAgendamentoIds.add(agendamentoId);
+          }
+        }
       }
     }
-
     final List<dynamic> agendamentos =
         jsonDecode(agendamentosResp.body) as List<dynamic>;
     final items = agendamentos

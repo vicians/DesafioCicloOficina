@@ -14,7 +14,7 @@ async function start() {
   // portanto são idempotentes e seguras em produção.
   await runMigrations();
 
-  app.listen(PORT, () => {
+  app.listen(PORT as number, '0.0.0.0', () => {
     console.log(`Server is running on ${URL}:${PORT}`);
   });
 }

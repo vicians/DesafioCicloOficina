@@ -19,12 +19,13 @@ export class AgendamentoModel {
           JOIN execucoes_servico e ON e.orcamento_id = o.id
           WHERE o.agendamento_id = a.id
         ) AS possui_execucao,
-        (SELECT o.status FROM orcamentos o WHERE o.agendamento_id = a.id LIMIT 1) AS orcamento_status,
+        (SELECT o.status FROM orcamentos o WHERE o.agendamento_id = a.id ORDER BY o.criado_em DESC LIMIT 1) AS orcamento_status,
         (
           SELECT EXISTS (SELECT 1 FROM itens_orcamento_servico ios WHERE ios.orcamento_id = o2.id) OR
                  EXISTS (SELECT 1 FROM itens_orcamento_produto iop WHERE iop.orcamento_id = o2.id)
           FROM orcamentos o2 
           WHERE o2.agendamento_id = a.id 
+          ORDER BY o2.criado_em DESC
           LIMIT 1
         ) AS orcamento_tem_itens,
         (SELECT nome FROM oficinas ORDER BY criado_em ASC LIMIT 1) AS oficina_nome,

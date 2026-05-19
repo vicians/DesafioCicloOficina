@@ -9,12 +9,15 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'services/firebase_messaging_service.dart';
 import 'core/config/auth_manager.dart';
-
+import 'core/config/api_config.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   // Inicializar Persistência de Auth
   await AuthManager.init();
+  
+  // Testa a conexão local e aplica fallback automático se offline
+  await ApiConfig.init();
 
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
