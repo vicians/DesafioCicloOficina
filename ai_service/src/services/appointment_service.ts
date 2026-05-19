@@ -399,7 +399,7 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
     agendado_para: agendadoPara.toISOString(),
     magic_link_url: magicLinkUrl,
     message: magicLinkUrl
-      ? `Agendamento e Orçamento criados com sucesso! Acesse pelo link: ${magicLinkUrl}`
+      ? 'Agendamento e Orçamento criados com sucesso!'
       : 'Agendamento criado! Entre em contato para detalhes do orçamento.',
   };
 }

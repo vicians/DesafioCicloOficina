@@ -107,30 +107,17 @@ function isGenericFailureReply(content: string): boolean {
 }
 
 function formatAppointmentConfirmation(data: AppointmentToolSuccess): string {
-  const baseMessage = typeof data.message === 'string' && data.message.trim()
+  return typeof data.message === 'string' && data.message.trim()
     ? data.message.trim()
     : `Agendamento e orçamento criados com sucesso${
         typeof data.agendado_para === 'string'
           ? ` para ${new Date(data.agendado_para).toLocaleString('pt-BR')}`
           : ''
       }.`;
-  const magicLinkText = typeof data.magic_link_url === 'string' && data.magic_link_url
-    ? ` Acompanhe pelo link: ${data.magic_link_url}`
-    : '';
-
-  return data.magic_link_url && baseMessage.includes(data.magic_link_url)
-    ? baseMessage
-    : `${baseMessage}${magicLinkText}`.trim();
 }
 
 function appendAppointmentLinkIfMissing(content: string, fallbackAppointment?: AppointmentToolSuccess | null): string {
-  const magicLink = fallbackAppointment?.magic_link_url;
-
-  if (!magicLink || content.includes(magicLink)) {
-    return content;
-  }
-
-  return `${content.trim()} Acompanhe pelo link: ${magicLink}`.trim();
+  return content;
 }
 
 function normalizeAssistantReply(content: string, fallbackAppointment?: AppointmentToolSuccess | null): string {
@@ -181,6 +168,8 @@ function normalizeAssistantReply(content: string, fallbackAppointment?: Appointm
 export async function analyzeMessage(message: string, number: string, conversacaoId?: string) {
   console.log(`\n[AI Service] 📩 Requisição recebida de: ${number}`);
   console.log(`[AI Service] 💬 Mensagem: "${message}"`);
+
+  let magicLinkUrl: string | undefined = undefined;
 
   const customer = await prisma.usuarios.findUnique({
     where: { telefone: number },
@@ -292,8 +281,10 @@ export async function analyzeMessage(message: string, number: string, conversaca
 
         if (toolCall.name === 'create_appointment' && isAppointmentToolSuccess(parsedToolResult)) {
           lastSuccessfulAppointment = parsedToolResult;
+          if (typeof parsedToolResult.magic_link_url === 'string') {
+            magicLinkUrl = parsedToolResult.magic_link_url;
+          }
         }
-
         messages.push(new ToolMessage({
           tool_call_id: toolCallId,
           content: sanitizeToolResultForPrompt(serializedToolResult)
@@ -317,6 +308,7 @@ export async function analyzeMessage(message: string, number: string, conversaca
 
   return {
     result: finalContent,
-    action: 'REPLY'
+    action: 'REPLY',
+    magic_link_url: magicLinkUrl
   };
 }
