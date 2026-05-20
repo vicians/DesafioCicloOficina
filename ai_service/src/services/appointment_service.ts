@@ -4,13 +4,31 @@ import { resolveAppointmentDate, toDateOnlyString } from '../utils/date_utils';
 import { extractBackendErrorMessage } from '../utils/backend_error';
 import { cleanCustomerName, isValidCustomerName } from '../utils/customer_name';
 import { looksLikeBrazilianLicensePlate, normalizeLicensePlate } from '../utils/contextual_entities';
+import { prisma } from '../config/prisma';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
 const OS_RECOVERY_LOOKBACK_BUFFER_MS = 5 * 1000;
+const DEFAULT_APPOINTMENT_HTTP_TIMEOUT_MS = 10000;
+
+function getAppointmentHttpTimeoutMs(): number {
+  const parsed = Number.parseInt(process.env.APPOINTMENT_HTTP_TIMEOUT_MS ?? '', 10);
+
+  if (Number.isNaN(parsed) || parsed < 1000) {
+    return DEFAULT_APPOINTMENT_HTTP_TIMEOUT_MS;
+  }
+
+  return parsed;
+}
+
+const backendHttp = axios.create({
+  baseURL: BACKEND_URL,
+  timeout: getAppointmentHttpTimeoutMs(),
+});
 
 type AuthHeaders = { Authorization?: string; 'X-Internal-Token'?: string };
 type MechanicCandidate = { id: string; nome: string };
 type BackendCustomer = { id: string; nome?: string; telefone?: string | null };
+type DbCustomerLookup = { id: string; nome: string | null; telefone: string | null };
 type BackendAppointmentSummary = {
   id?: string;
   funcionario_id?: string | null;
@@ -35,6 +53,25 @@ async function getAuthHeaders() {
 
 function normalizePhone(value: string | null | undefined): string {
   return (value ?? '').replace(/\D/g, '');
+}
+
+async function findCustomerByPhone(phoneNumber: string): Promise<DbCustomerLookup | null> {
+  const cleanPhone = normalizePhone(phoneNumber);
+  if (!cleanPhone) return null;
+
+  const phoneWithoutCountryCode = cleanPhone.startsWith('55') ? cleanPhone.slice(2) : cleanPhone;
+  const rows = await prisma.$queryRaw<DbCustomerLookup[]>`
+    SELECT id, nome, telefone
+    FROM usuarios
+    WHERE tipo_id = 2
+      AND (
+        regexp_replace(COALESCE(telefone, ''), '\\D', '', 'g') = ${cleanPhone}
+        OR regexp_replace(COALESCE(telefone, ''), '\\D', '', 'g') = ${phoneWithoutCountryCode}
+      )
+    LIMIT 1
+  `;
+
+  return rows[0] ?? null;
 }
 
 function phoneMatches(left: string | null | undefined, right: string | null | undefined): boolean {
@@ -87,7 +124,7 @@ function buildOsWorkflowResult(params: {
 
 async function createMagicLinkForPhone(telefone: string): Promise<string | null> {
   try {
-    const mlRes = await axios.post(`${BACKEND_URL}/auth/magic-link`, { telefone });
+    const mlRes = await backendHttp.post('/auth/magic-link', { telefone });
     return mlRes.data.url ?? null;
   } catch (err: any) {
     console.warn('[OS] Aviso: não foi possível gerar magic link:', extractBackendErrorMessage(err));
@@ -99,7 +136,7 @@ async function findBudgetByAppointmentId(
   agendamentoId: string,
   headers: AuthHeaders
 ): Promise<string | null> {
-  const existingOrcamentos = await axios.get(`${BACKEND_URL}/orcamentos`, { headers });
+  const existingOrcamentos = await backendHttp.get('/orcamentos', { headers });
   const foundOrcamento = (existingOrcamentos.data ?? []).find(
     (orcamento: any) => orcamento.agendamento_id === agendamentoId
   );
@@ -117,7 +154,7 @@ async function getOrCreateBudgetForAppointment(
   if (existingId) return existingId;
 
   try {
-    const orcRes = await axios.post(`${BACKEND_URL}/orcamentos`, {
+    const orcRes = await backendHttp.post('/orcamentos', {
       agendamento_id: agendamentoId,
       cliente_id: clienteId,
       funcionario_id: mecanicoId,
@@ -156,7 +193,7 @@ async function createAppointmentWithMechanicFallback(params: {
 
   for (const candidate of candidates) {
     try {
-      const agendRes = await axios.post(`${BACKEND_URL}/agendamentos`, {
+      const agendRes = await backendHttp.post('/agendamentos', {
         cliente_id: params.clienteId,
         veiculo_id: params.veiculoId,
         funcionario_id: candidate.id,
@@ -194,7 +231,7 @@ export async function recoverRecentOsWorkflow(
     if (!body.number) return null;
 
     const headers = await getAuthHeaders();
-    const usuariosRes = await axios.get(`${BACKEND_URL}/usuarios`, {
+    const usuariosRes = await backendHttp.get('/usuarios', {
       params: { tipo_id: 2 },
       headers,
     });
@@ -203,7 +240,7 @@ export async function recoverRecentOsWorkflow(
 
     if (!cliente) return null;
 
-    const agendamentosRes = await axios.get(`${BACKEND_URL}/agendamentos/cliente/${cliente.id}`, {
+    const agendamentosRes = await backendHttp.get(`/agendamentos/cliente/${cliente.id}`, {
       headers,
     });
     const agendamentos = (agendamentosRes.data ?? []) as BackendAppointmentSummary[];
@@ -264,7 +301,7 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
   let clienteTelefone: string = number;
   const headers = await getAuthHeaders();
 
-  const usuariosRes = await axios.get(`${BACKEND_URL}/usuarios`, {
+  const usuariosRes = await backendHttp.get('/usuarios', {
     params: { tipo_id: 2 },
     headers,
   });
@@ -282,7 +319,7 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
     }
 
     const temporaryPassword = `whatsapp_${number.replace(/\D/g, '').slice(-8)}_tmp`;
-    const novoCliente = await axios.post(`${BACKEND_URL}/usuarios`, {
+    const novoCliente = await backendHttp.post('/usuarios', {
       tipo_id: 2,
       cpf_cnpj: number.replace(/\D/g, '').slice(0, 20),
       nome: cleanedCustomerName,
@@ -303,7 +340,7 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
   }
 
   const normalizedVehiclePlate = normalizeLicensePlate(vehiclePlate);
-  const veiculosRes = await axios.get(`${BACKEND_URL}/veiculos`, { headers });
+  const veiculosRes = await backendHttp.get('/veiculos', { headers });
   const veiculos: any[] = veiculosRes.data ?? [];
   const veiculoFound = veiculos.find(
     (v: any) => typeof v.placa === 'string' && normalizeLicensePlate(v.placa) === normalizedVehiclePlate
@@ -318,7 +355,7 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
     console.log(`[OS] Veículo encontrado: ${normalizedVehiclePlate} (${veiculoId})`);
   } else {
     console.log(`[OS] Veículo não encontrado. Cadastrando placa ${normalizedVehiclePlate}...`);
-    const novoVeiculo = await axios.post(`${BACKEND_URL}/veiculos`, {
+    const novoVeiculo = await backendHttp.post('/veiculos', {
       cliente_id: clienteId,
       placa: normalizedVehiclePlate,
       marca: 'Não informado',
@@ -336,7 +373,7 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
   let mecanicos: MechanicCandidate[] = [];
 
   try {
-    const mecanicosRes = await axios.get(`${BACKEND_URL}/usuarios`, {
+    const mecanicosRes = await backendHttp.get('/usuarios', {
       params: { tipo_id: 3 },
       headers,
     });
@@ -371,7 +408,7 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
   // ── 6. Adicionar serviços identificados ───────────────────────────────────
   if (services && services.length > 0) {
     console.log(`[OS] 🛠️ Adicionando serviços identificados: ${services.join(', ')}`);
-    const catalogoRes = await axios.get(`${BACKEND_URL}/servicos`, { headers });
+    const catalogoRes = await backendHttp.get('/servicos', { headers });
     const catalogo: any[] = catalogoRes.data ?? [];
 
     for (const sName of services) {
@@ -382,7 +419,7 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
 
       if (match) {
         try {
-          await axios.post(`${BACKEND_URL}/orcamentos/${orcamentoId}/servicos`, {
+          await backendHttp.post(`/orcamentos/${orcamentoId}/servicos`, {
             servico_id: match.id,
             quantidade: 1,
             preco_unitario: match.preco
@@ -400,7 +437,7 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
   // ── 7. Gerar magic link ────────────────────────────────────────────────────
   let magicLinkUrl: string | null = null;
   try {
-    const mlRes = await axios.post(`${BACKEND_URL}/auth/magic-link`, {
+    const mlRes = await backendHttp.post('/auth/magic-link', {
       telefone: clienteTelefone,
     });
     magicLinkUrl = mlRes.data.url;
@@ -421,28 +458,35 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
 export async function checkAvailability(date: string) {
   console.log(`[AI] Consultando disponibilidade para: ${date}`);
   const headers = await getAuthHeaders();
-  const res = await axios.get(`${BACKEND_URL}/agendamentos`, { headers });
-  const all: any[] = res.data ?? [];
-
-  const targetDate = new Date(date);
-  const dailySchedules = all.filter(a => {
-    const d = new Date(a.agendado_para);
-    return d.getFullYear() === targetDate.getFullYear() &&
-      d.getMonth() === targetDate.getMonth() &&
-      d.getDate() === targetDate.getDate();
+  const res = await backendHttp.get('/agendamentos/disponibilidade', {
+    params: { data: date },
+    headers,
   });
+  const unavailableHours = Array.isArray(res.data?.horas_indisponiveis)
+    ? (res.data.horas_indisponiveis as number[])
+        .filter((hour) => Number.isInteger(hour) && hour >= 0 && hour <= 23)
+        .sort((a, b) => a - b)
+    : [];
 
-  if (dailySchedules.length === 0) {
+  if (unavailableHours.length === 0) {
     return "O dia está totalmente livre. Atendemos das 08:00 às 18:00.";
   }
 
-  const occupied = dailySchedules.map(a => {
-    const start = new Date(a.agendado_para);
-    const end = new Date(start.getTime() + a.duracao_total_minutos * 60000);
-    return `${start.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
-  });
+  const availableHours = Array.from({ length: 11 }, (_, index) => index + 8)
+    .filter((hour) => !unavailableHours.includes(hour));
+  const targetDate = new Date(`${date}T00:00:00`);
+  const dateText = Number.isNaN(targetDate.getTime())
+    ? date
+    : targetDate.toLocaleDateString('pt-BR');
 
-  return `Horários já ocupados em ${targetDate.toLocaleDateString('pt-BR')}: \n${occupied.join('\n')}\nOs demais horários entre 08:00 e 18:00 estão disponíveis.`;
+  if (availableHours.length === 0) {
+    return `Nao ha horarios disponiveis em ${dateText}. Posso verificar a proxima data util para voce?`;
+  }
+
+  const availableText = availableHours
+    .map((hour) => `${String(hour).padStart(2, '0')}:00`)
+    .join(', ');
+  return `Horarios disponiveis em ${dateText}: ${availableText}.`;
 }
 
 type BackendVehicle = {
@@ -514,15 +558,13 @@ export async function getCustomerHistory(number: string) {
   console.log(`[AI] Buscando dados do cliente, veiculos e historico para o numero: ${number}`);
   const headers = await getAuthHeaders();
 
-  const usuariosRes = await axios.get(`${BACKEND_URL}/usuarios`, { params: { tipo_id: 2 }, headers });
-  const cliente = ((usuariosRes.data ?? []) as BackendCustomer[])
-    .find((u) => u.telefone === number);
+  const cliente = await findCustomerByPhone(number);
 
   if (!cliente) return "Cliente nao encontrado na base de dados.";
 
   const [agendRes, veiculosRes] = await Promise.all([
-    axios.get(`${BACKEND_URL}/agendamentos/cliente/${cliente.id}`, { headers }),
-    axios.get(`${BACKEND_URL}/veiculos/cliente/${cliente.id}`, { headers }),
+    backendHttp.get(`/agendamentos/cliente/${cliente.id}`, { headers }),
+    backendHttp.get(`/veiculos/cliente/${cliente.id}`, { headers }),
   ]);
 
   const history = (agendRes.data ?? []) as BackendAppointment[];

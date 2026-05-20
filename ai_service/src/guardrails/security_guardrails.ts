@@ -119,6 +119,19 @@ const PROFILE_AND_HISTORY_PATTERNS = [
   /\b(registered|linked|on file)\b.{0,60}\b(car|cars|vehicle|vehicles|license plate|license plates|plates)\b/i,
 ];
 
+const SCHEDULING_PATTERNS = [
+  /\b(quero|preciso|gostaria|pode|podemos|vamos)\b.{0,30}\b(agendar|agendamento|marcar|remarcar|reagendar|reservar)\b/i,
+  /\b(agendar|agendamento|marcar horario|marcar horário|remarcar|reagendar|reservar horario|reservar horário)\b/i,
+  /\b(criar|abrir|gerar)\b.{0,30}\b(agendamento|ordem de servico|ordem de serviço|os)\b/i,
+];
+
+const AVAILABILITY_PATTERNS = [
+  /\b(tem|ha|há|possui|existem)\b.{0,30}\b(horario|horários|horario disponivel|horário disponível|disponibilidade|vaga|vagas)\b/i,
+  /\b(quais|qual)\b.{0,30}\b(horarios|horários|datas|dias)\b.{0,20}\b(disponiveis|disponíveis|livres)\b/i,
+  /\b(disponibilidade|horarios disponiveis|horários disponíveis|agenda de hoje|agenda de amanha|agenda de amanhã)\b/i,
+  /\b(check|show|see)\b.{0,30}\b(availability|available slots|available times)\b/i,
+];
+
 const PROFILE_UPDATE_PATTERNS = [
   /\b(meu|minha)\s+nome\s+(e|eh|Ã©)\b/i,
   /\b(meu|minha)\s+(cpf|cpf\/cnpj|documento)\s+(e|eh)\b/i,
@@ -433,6 +446,26 @@ function deterministicInputDecision(
     return allow(
       'Dúvida permitida sobre privacidade, LGPD, segurança, termos ou uso dos dados do cliente.',
       'privacy_and_security',
+    );
+  }
+
+  if (
+    hasAnyPattern(message, AVAILABILITY_PATTERNS) ||
+    hasAnyPattern(normalized, AVAILABILITY_PATTERNS)
+  ) {
+    return allow(
+      'Consulta objetiva de horarios, datas ou disponibilidade da oficina.',
+      'availability_check',
+    );
+  }
+
+  if (
+    hasAnyPattern(message, SCHEDULING_PATTERNS) ||
+    hasAnyPattern(normalized, SCHEDULING_PATTERNS)
+  ) {
+    return allow(
+      'Solicitacao explicita de criacao ou alteracao de agendamento.',
+      'scheduling',
     );
   }
 

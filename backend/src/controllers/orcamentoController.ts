@@ -4,6 +4,7 @@ import { AgendamentoModel } from '../models/agendamentoModel';
 import { CatalogoServicoModel } from '../models/catalogoServicoModel';
 import { ProdutoModel } from '../models/produtoModel';
 import { NotificationModel } from '../models/notificationModel';
+import { UsuarioModel } from '../models/usuarioModel';
 import { sendPushToUsers } from '../services/pushService';
 
 export class OrcamentoController {
@@ -37,6 +38,18 @@ export class OrcamentoController {
 
     if (!cliente_id) {
       return res.status(400).json({ error: 'cliente_id é obrigatório' });
+    }
+
+    const cliente = await UsuarioModel.findById(cliente_id);
+    if (!cliente || cliente.tipo_id !== 2) {
+      return res.status(422).json({ error: 'cliente_id inválido: o usuário informado não é um cliente.' });
+    }
+
+    if (funcionario_id !== undefined && funcionario_id !== null && String(funcionario_id).trim() !== '') {
+      const funcionario = await UsuarioModel.findById(String(funcionario_id));
+      if (!funcionario || funcionario.tipo_id !== 3) {
+        return res.status(422).json({ error: 'funcionario_id inválido: o usuário informado não é um mecânico.' });
+      }
     }
 
     if (agendamento_id) {

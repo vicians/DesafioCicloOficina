@@ -21,14 +21,46 @@ import { AIMessage, HumanMessage, SystemMessage, ToolMessage, BaseMessage } from
 import dotenv from 'dotenv';
 dotenv.config();
 
-const MAX_ITERATIONS = 4;
 const DEFAULT_CONVERSATION_HISTORY_LIMIT = 10;
+const DEFAULT_AGENT_MAX_ITERATIONS = 3;
+const DEFAULT_AGENT_LOOP_TIMEOUT_MS = 12000;
+const DEFAULT_MODEL_TIMEOUT_MS = 15000;
 
 function getConversationHistoryLimit(): number {
   const parsed = Number.parseInt(process.env.CONVERSATION_HISTORY_LIMIT ?? '', 10);
 
   if (Number.isNaN(parsed) || parsed < 0) {
     return DEFAULT_CONVERSATION_HISTORY_LIMIT;
+  }
+
+  return parsed;
+}
+
+function getAgentMaxIterations(): number {
+  const parsed = Number.parseInt(process.env.AGENT_MAX_ITERATIONS ?? '', 10);
+
+  if (Number.isNaN(parsed) || parsed < 1) {
+    return DEFAULT_AGENT_MAX_ITERATIONS;
+  }
+
+  return Math.min(parsed, 6);
+}
+
+function getAgentLoopTimeoutMs(): number {
+  const parsed = Number.parseInt(process.env.AGENT_LOOP_TIMEOUT_MS ?? '', 10);
+
+  if (Number.isNaN(parsed) || parsed < 1000) {
+    return DEFAULT_AGENT_LOOP_TIMEOUT_MS;
+  }
+
+  return parsed;
+}
+
+function getModelTimeoutMs(): number {
+  const parsed = Number.parseInt(process.env.AI_MODEL_TIMEOUT_MS ?? '', 10);
+
+  if (Number.isNaN(parsed) || parsed < 1000) {
+    return DEFAULT_MODEL_TIMEOUT_MS;
   }
 
   return parsed;
@@ -250,6 +282,7 @@ export async function analyzeMessage(message: string, number: string, conversaca
 
   const resolvedConversationId = await resolveConversationId(conversacaoId, customer?.id);
   const historyLimit = getConversationHistoryLimit();
+  const modelTimeoutMs = getModelTimeoutMs();
   const conversationHistory = await getRecentConversationMessages(
     resolvedConversationId,
     customer?.id,
@@ -262,6 +295,7 @@ export async function analyzeMessage(message: string, number: string, conversaca
 
   const guardrailModel = model.withConfig({
     runName: 'Oficina_Tiao_Input_Guardrail',
+    timeout: modelTimeoutMs,
     metadata: {
       customer_phone: number,
       customer_id: customer?.id ?? 'unknown',
@@ -305,6 +339,7 @@ export async function analyzeMessage(message: string, number: string, conversaca
 
   const modelWithTools = model.bindTools(tools).withConfig({
     runName: 'Oficina_Tiao_Agent_Loop',
+    timeout: modelTimeoutMs,
     metadata: {
       customer_phone: number,
       customer_id: activeCustomer?.id ?? 'unknown',
@@ -330,11 +365,21 @@ export async function analyzeMessage(message: string, number: string, conversaca
   console.log(`[AI Service] 🧠 Contexto carregado: ${historyMessages.length}/${historyLimit} mensagens`);
   console.log(`[AI Service] 🤖 Iniciando raciocínio do agente...`);
 
+  const maxIterations = getAgentMaxIterations();
+  const agentLoopTimeoutMs = getAgentLoopTimeoutMs();
+  const agentLoopDeadline = Date.now() + agentLoopTimeoutMs;
   let iterations = 0;
   let finalResponse: any = null;
   let lastSuccessfulAppointment: AppointmentToolSuccess | null = null;
 
-  while (iterations < MAX_ITERATIONS) {
+  while (iterations < maxIterations) {
+    if (Date.now() >= agentLoopDeadline) {
+      console.warn(
+        `[AI Service] ⚠️ Tempo limite do loop do agente atingido (${agentLoopTimeoutMs}ms). Interrompendo para responder ao cliente.`,
+      );
+      break;
+    }
+
     iterations++;
     const response = await modelWithTools.invoke(messages);
 
@@ -391,12 +436,23 @@ export async function analyzeMessage(message: string, number: string, conversaca
           content: `Erro técnico ao executar a ferramenta. Por favor, tente novamente.`
         }));
       }
+
+      if (Date.now() >= agentLoopDeadline) {
+        console.warn(
+          `[AI Service] ⚠️ Tempo limite atingido durante execução de ferramentas no turno ${iterations}.`,
+        );
+        break;
+      }
     }
   }
 
+  const fallbackContent = lastSuccessfulAppointment
+    ? formatAppointmentConfirmation(lastSuccessfulAppointment)
+    : 'Nao consegui concluir tudo agora, mas ja processei sua solicitacao inicial. Pode me enviar novamente em uma mensagem curta para eu continuar?';
+
   const finalContent = validateFinalReplyGuardrails(
     normalizeAssistantReply(
-      String(finalResponse?.content ?? ''),
+      String(finalResponse?.content ?? fallbackContent),
       lastSuccessfulAppointment
     )
   );
