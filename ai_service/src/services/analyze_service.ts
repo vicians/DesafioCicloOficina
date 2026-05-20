@@ -14,6 +14,8 @@ import {
   resolveConversationId,
 } from '../repositories/conversation_repository';
 import { isGenericCustomerName } from '../utils/customer_name';
+import { extractContextualEntity } from '../utils/contextual_entities';
+import { persistContextualEntity } from './entity_capture_service';
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage, BaseMessage } from '@langchain/core/messages';
 
 import dotenv from 'dotenv';
@@ -30,6 +32,10 @@ function getConversationHistoryLimit(): number {
   }
 
   return parsed;
+}
+
+function onlyDigits(value: string | null | undefined): string {
+  return (value ?? '').replace(/\D/g, '');
 }
 
 function mapConversationHistoryToLlmMessages(
@@ -75,14 +81,24 @@ function shouldAppendCurrentMessage(
 function buildCustomerProfileContext(params: {
   phoneNumber: string;
   customerName?: string | null;
+  customerCpfCnpj?: string | null;
   needsCustomerName: boolean;
 }): string {
   const storedName = params.customerName?.trim() || 'NAO_INFORMADO';
+  const cpfCnpjDigits = onlyDigits(params.customerCpfCnpj);
+  const phoneDigits = onlyDigits(params.phoneNumber);
+  const phoneWithoutCountryCode = phoneDigits.startsWith('55') ? phoneDigits.slice(2) : phoneDigits;
+  const hasCpfCnpj = Boolean(
+    cpfCnpjDigits &&
+    cpfCnpjDigits !== phoneDigits &&
+    cpfCnpjDigits !== phoneWithoutCountryCode,
+  );
 
   return [
     'Contexto cadastral do cliente atual:',
     `- Telefone WhatsApp: ${params.phoneNumber}`,
     `- Nome cadastrado: ${storedName}`,
+    `- CPF/CNPJ cadastrado: ${hasCpfCnpj ? 'sim' : 'nao'}`,
     `- Nome real confirmado: ${params.needsCustomerName ? 'nao' : 'sim'}`,
     params.needsCustomerName
       ? '- O nome real ainda precisa ser coletado. Para duvidas gerais sobre privacidade, LGPD ou seguranca dos dados, responda primeiro sem pedir o nome. Nos demais atendimentos, pergunte de forma natural e, assim que o cliente informar, use update_customer_name antes de seguir com a proxima acao.'
@@ -105,6 +121,14 @@ function isAwaitingCustomerName(history: ChatHistoryMessage[]): boolean {
     /\bnome\b/.test(lastBotMessage) &&
     /\b(qual|informe|informar|me diga|me passa|pode me dizer|confirmar|confirmar seu)\b/.test(lastBotMessage)
   );
+}
+
+function getLastAssistantMessage(history: ChatHistoryMessage[]): string | null {
+  return [...history]
+    .reverse()
+    .find((chatMessage) => chatMessage.tipo_remetente === 'bot')
+    ?.conteudo
+    ?.trim() ?? null;
 }
 
 function parseJsonText(content: string): unknown | null {
@@ -212,10 +236,15 @@ export async function analyzeMessage(message: string, number: string, conversaca
   });
 
   if (customer && customer.tipo_id !== 2) {
+    console.warn(
+      `[AI Service] Numero ${number} pertence a usuario interno (tipo_id=${customer.tipo_id}); nao acionando handoff automatico.`,
+    );
+
     return {
-      result: null,
-      action: 'MANUAL_WAIT',
-      info: 'O atendimento está sendo realizado por um humano.',
+      result:
+        'Este numero esta cadastrado como usuario interno da oficina. Para testar o atendimento automatico como cliente, use um numero cadastrado como CLIENTE ou remova este telefone do usuario interno.',
+      action: 'REPLY',
+      info: 'Numero de usuario interno detectado. Handoff automatico ignorado.',
     };
   }
 
@@ -229,6 +258,7 @@ export async function analyzeMessage(message: string, number: string, conversaca
   const historyMessages = mapConversationHistoryToLlmMessages(conversationHistory);
   const needsCustomerName = !customer || isGenericCustomerName(customer.nome, number);
   const awaitingCustomerName = needsCustomerName && isAwaitingCustomerName(conversationHistory);
+  const lastAssistantMessage = getLastAssistantMessage(conversationHistory);
 
   const guardrailModel = model.withConfig({
     runName: 'Oficina_Tiao_Input_Guardrail',
@@ -240,6 +270,7 @@ export async function analyzeMessage(message: string, number: string, conversaca
 
   const inputGuardrail = await evaluateInputGuardrails(message, guardrailModel as any, {
     awaitingCustomerName,
+    lastAssistantMessage,
   });
   if (!inputGuardrail.allowed) {
     console.warn(
@@ -253,13 +284,30 @@ export async function analyzeMessage(message: string, number: string, conversaca
     };
   }
 
-  const tools = getTools(number, message, customer?.id);
+  const capturedEntity = extractContextualEntity(message, {
+    awaitingCustomerName,
+    lastAssistantMessage,
+  });
+  const capturedEntityState = await persistContextualEntity(capturedEntity, {
+    phoneNumber: number,
+    customerId: customer?.id,
+  });
+  const activeCustomer = capturedEntityState?.customer ?? customer;
+  const activeNeedsCustomerName = !activeCustomer || isGenericCustomerName(activeCustomer.nome, number);
+
+  if (capturedEntityState) {
+    console.log(
+      `[AI Service] Dado contextual capturado: ${capturedEntityState.entity.type} (${capturedEntityState.status})`,
+    );
+  }
+
+  const tools = getTools(number, message, activeCustomer?.id);
 
   const modelWithTools = model.bindTools(tools).withConfig({
     runName: 'Oficina_Tiao_Agent_Loop',
     metadata: {
       customer_phone: number,
-      customer_id: customer?.id ?? 'unknown',
+      customer_id: activeCustomer?.id ?? 'unknown',
       conversation_id: resolvedConversationId,
     },
   });
@@ -267,9 +315,11 @@ export async function analyzeMessage(message: string, number: string, conversaca
     new SystemMessage(OFICINA_TIAO_SYSTEM_PROMPT),
     new SystemMessage(buildCustomerProfileContext({
       phoneNumber: number,
-      customerName: customer?.nome,
-      needsCustomerName,
+      customerName: activeCustomer?.nome,
+      customerCpfCnpj: activeCustomer?.cpf_cnpj,
+      needsCustomerName: activeNeedsCustomerName,
     })),
+    ...(capturedEntityState ? [new SystemMessage(capturedEntityState.promptContext)] : []),
     ...historyMessages,
   ];
 

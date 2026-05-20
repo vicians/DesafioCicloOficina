@@ -3,6 +3,7 @@ import { CreateOsBody } from '../schemas/ai_schemas';
 import { resolveAppointmentDate, toDateOnlyString } from '../utils/date_utils';
 import { extractBackendErrorMessage } from '../utils/backend_error';
 import { cleanCustomerName, isValidCustomerName } from '../utils/customer_name';
+import { looksLikeBrazilianLicensePlate, normalizeLicensePlate } from '../utils/contextual_entities';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
 const OS_RECOVERY_LOOKBACK_BUFFER_MS = 5 * 1000;
@@ -207,13 +208,14 @@ export async function recoverRecentOsWorkflow(
     });
     const agendamentos = (agendamentosRes.data ?? []) as BackendAppointmentSummary[];
     const minCreatedAt = startedAt.getTime() - OS_RECOVERY_LOOKBACK_BUFFER_MS;
-    const requestedPlate = body.vehiclePlate?.trim().toUpperCase();
+    const requestedPlate = body.vehiclePlate ? normalizeLicensePlate(body.vehiclePlate) : '';
     const candidates = agendamentos
       .filter((agendamento) => dateTimeMs(agendamento.criado_em) >= minCreatedAt)
       .filter((agendamento) => agendamento.notas_cliente?.startsWith('[WhatsApp]'))
       .filter((agendamento) => {
         if (!requestedPlate) return true;
-        return agendamento.veiculo_placa?.trim().toUpperCase() === requestedPlate;
+        return typeof agendamento.veiculo_placa === 'string' &&
+          normalizeLicensePlate(agendamento.veiculo_placa) === requestedPlate;
       })
       .sort((left, right) => dateTimeMs(right.criado_em) - dateTimeMs(left.criado_em));
 
@@ -296,24 +298,29 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
   // ── 2. Localizar ou criar veículo ─────────────────────────────────────────
   let veiculoId: string;
 
-  if (!vehiclePlate) {
+  if (!vehiclePlate || !looksLikeBrazilianLicensePlate(vehiclePlate)) {
     throw new Error('Placa do veículo é obrigatória para criar a OS. Por favor, informe a placa.');
   }
 
+  const normalizedVehiclePlate = normalizeLicensePlate(vehiclePlate);
   const veiculosRes = await axios.get(`${BACKEND_URL}/veiculos`, { headers });
   const veiculos: any[] = veiculosRes.data ?? [];
   const veiculoFound = veiculos.find(
-    (v: any) => v.placa.toUpperCase() === vehiclePlate.toUpperCase()
+    (v: any) => typeof v.placa === 'string' && normalizeLicensePlate(v.placa) === normalizedVehiclePlate
   );
 
   if (veiculoFound) {
+    if (veiculoFound.cliente_id && veiculoFound.cliente_id !== clienteId) {
+      throw new Error('Esta placa ja esta vinculada a outro cadastro. Confirme a placa ou fale com o atendimento.');
+    }
+
     veiculoId = veiculoFound.id;
-    console.log(`[OS] Veículo encontrado: ${vehiclePlate} (${veiculoId})`);
+    console.log(`[OS] Veículo encontrado: ${normalizedVehiclePlate} (${veiculoId})`);
   } else {
-    console.log(`[OS] Veículo não encontrado. Cadastrando placa ${vehiclePlate}...`);
+    console.log(`[OS] Veículo não encontrado. Cadastrando placa ${normalizedVehiclePlate}...`);
     const novoVeiculo = await axios.post(`${BACKEND_URL}/veiculos`, {
       cliente_id: clienteId,
-      placa: vehiclePlate.toUpperCase(),
+      placa: normalizedVehiclePlate,
       marca: 'Não informado',
       modelo: 'Não informado',
       ano: new Date().getFullYear(),
@@ -322,7 +329,7 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
       headers,
     });
     veiculoId = novoVeiculo.data.id;
-    console.log(`[OS] Novo veículo criado: ${vehiclePlate} (${veiculoId})`);
+    console.log(`[OS] Novo veículo criado: ${normalizedVehiclePlate} (${veiculoId})`);
   }
 
   // ── 3. Selecionar mecânico disponível ─────────────────────────────────────

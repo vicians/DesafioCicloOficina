@@ -8,6 +8,7 @@ const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
 const allowedEndpointPatterns: RegExp[] = [
   /^\/usuarios$/,
   /^\/veiculos$/,
+  /^\/veiculos\/cliente\/[0-9a-fA-F-]+$/,
   /^\/agendamentos$/,
   /^\/agendamentos\/cliente\/[0-9a-fA-F-]+$/,
   /^\/orcamentos$/,
