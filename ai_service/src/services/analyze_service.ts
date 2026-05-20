@@ -3,6 +3,7 @@ import { model } from '../config/ai_model';
 import { getTools } from '../tools';
 import { OFICINA_TIAO_SYSTEM_PROMPT } from '../guardrails/system_prompt';
 import {
+  CustomerValidationState,
   evaluateInputGuardrails,
   sanitizeToolResultForPrompt,
   validateFinalReplyGuardrails,
@@ -75,18 +76,27 @@ function shouldAppendCurrentMessage(
 function buildCustomerProfileContext(params: {
   phoneNumber: string;
   customerName?: string | null;
-  needsCustomerName: boolean;
+  customerCpf?: string | null;
+  knownVehiclePlates?: string[];
+  validation?: CustomerValidationState;
 }): string {
-  const storedName = params.customerName?.trim() || 'NAO_INFORMADO';
+  const storedName = params.validation?.fullName ?? params.customerName?.trim() ?? 'NAO_INFORMADO';
+  const cpfStatus = params.validation?.cpf ? 'validado' : (params.customerCpf?.trim() ? 'informado, mas ainda nao validado como CPF' : 'NAO_INFORMADO');
+  const validatedPlate = params.validation?.licensePlate;
+  const knownPlates = params.knownVehiclePlates?.length
+    ? params.knownVehiclePlates.join(', ')
+    : 'NAO_INFORMADO';
 
   return [
     'Contexto cadastral do cliente atual:',
     `- Telefone WhatsApp: ${params.phoneNumber}`,
     `- Nome cadastrado: ${storedName}`,
-    `- Nome real confirmado: ${params.needsCustomerName ? 'nao' : 'sim'}`,
-    params.needsCustomerName
-      ? '- O nome real ainda precisa ser coletado. Para duvidas gerais sobre privacidade, LGPD ou seguranca dos dados, responda primeiro sem pedir o nome. Nos demais atendimentos, pergunte de forma natural e, assim que o cliente informar, use update_customer_name antes de seguir com a proxima acao.'
-      : '- O nome real ja esta confirmado. Nao peca o nome novamente a menos que o cliente queira corrigir.',
+    `- CPF: ${cpfStatus}`,
+    `- Placas conhecidas no cadastro: ${knownPlates}`,
+    `- Placa validada para este atendimento: ${validatedPlate ?? 'NAO_INFORMADO'}`,
+    params.validation?.isComplete
+      ? '- Validacao inicial completa: nome completo, CPF e placa ja foram confirmados. As ferramentas estao liberadas dentro do contexto da oficina.'
+      : `- Validacao inicial incompleta: faltam ${(params.validation?.missing ?? []).join(', ') || 'dados obrigatorios'}.`,
   ].join('\n');
 }
 
@@ -227,6 +237,19 @@ export async function analyzeMessage(message: string, number: string, conversaca
     historyLimit,
   );
   const historyMessages = mapConversationHistoryToLlmMessages(conversationHistory);
+  const knownVehicles = customer
+    ? await prisma.veiculos.findMany({
+        where: { cliente_id: customer.id },
+        select: { placa: true },
+      })
+    : [];
+  const knownVehiclePlates = knownVehicles
+    .map((vehicle) => vehicle.placa?.trim())
+    .filter((plate): plate is string => Boolean(plate));
+  const recentCustomerMessages = conversationHistory
+    .filter((chatMessage) => chatMessage.tipo_remetente === 'client')
+    .map((chatMessage) => chatMessage.conteudo?.trim())
+    .filter((content): content is string => Boolean(content));
   const needsCustomerName = !customer || isGenericCustomerName(customer.nome, number);
   const awaitingCustomerName = needsCustomerName && isAwaitingCustomerName(conversationHistory);
 
@@ -240,6 +263,11 @@ export async function analyzeMessage(message: string, number: string, conversaca
 
   const inputGuardrail = await evaluateInputGuardrails(message, guardrailModel as any, {
     awaitingCustomerName,
+    customerName: customer?.nome,
+    customerCpf: customer?.cpf_cnpj,
+    knownVehiclePlates,
+    recentCustomerMessages,
+    phoneNumber: number,
   });
   if (!inputGuardrail.allowed) {
     console.warn(
@@ -268,7 +296,9 @@ export async function analyzeMessage(message: string, number: string, conversaca
     new SystemMessage(buildCustomerProfileContext({
       phoneNumber: number,
       customerName: customer?.nome,
-      needsCustomerName,
+      customerCpf: customer?.cpf_cnpj,
+      knownVehiclePlates,
+      validation: inputGuardrail.validation,
     })),
     ...historyMessages,
   ];
