@@ -297,22 +297,32 @@ export class AgendamentoModel {
    */
   static async iniciarExecucao(
     orcamento_id: string,
-    funcionario_id: string
+    funcionario_id?: string | null
   ): Promise<ExecucaoServicoDTO> {
     const db = getDb();
+
+    let mecanicoId = funcionario_id;
+    if (!mecanicoId) {
+      const { UsuarioModel } = await import('./usuarioModel');
+      mecanicoId = await UsuarioModel.findFreeMecanico();
+      if (!mecanicoId) {
+        throw new Error('Não é possivél iniciar serviço pois todos os mecanicos estão ocupados no momento');
+      }
+    }
 
     // Garante idempotência: upsert via ON CONFLICT na constraint UNIQUE de orcamento_id
     const result = await db.query(
       `INSERT INTO execucoes_servico (orcamento_id, funcionario_id, status, iniciado_em)
        VALUES ($1, $2, 'EM_EXECUCAO', NOW())
        ON CONFLICT (orcamento_id)
-       DO UPDATE SET funcionario_id = EXCLUDED.funcionario_id,
+       DO UPDATE SET funcionario_id = COALESCE(execucoes_servico.funcionario_id, EXCLUDED.funcionario_id),
                      status = 'EM_EXECUCAO',
                      iniciado_em = NOW()
        RETURNING *`,
-      [orcamento_id, funcionario_id]
+      [orcamento_id, mecanicoId]
     );
     return result.rows[0];
   }
 }
+
 
