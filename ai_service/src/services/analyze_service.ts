@@ -4,6 +4,7 @@ import { getTools } from '../tools';
 import { OFICINA_TIAO_SYSTEM_PROMPT } from '../guardrails/system_prompt';
 import {
   evaluateInputGuardrails,
+  GuardrailConversationContextMessage,
   sanitizeToolResultForPrompt,
   validateFinalReplyGuardrails,
   validateToolCallGuardrails,
@@ -21,6 +22,7 @@ dotenv.config();
 
 const MAX_ITERATIONS = 4;
 const DEFAULT_CONVERSATION_HISTORY_LIMIT = 10;
+const GUARDRAIL_CONTEXT_LIMIT = 3;
 
 function getConversationHistoryLimit(): number {
   const parsed = Number.parseInt(process.env.CONVERSATION_HISTORY_LIMIT ?? '', 10);
@@ -52,6 +54,30 @@ function mapConversationHistoryToLlmMessages(
 
     return [];
   });
+}
+
+function mapConversationHistoryToGuardrailContext(
+  history: ChatHistoryMessage[],
+): GuardrailConversationContextMessage[] {
+  return history
+    .flatMap<GuardrailConversationContextMessage>((chatMessage) => {
+      const content = chatMessage.conteudo?.trim();
+
+      if (!content) {
+        return [];
+      }
+
+      if (chatMessage.tipo_remetente === 'client') {
+        return [{ role: 'user', content }];
+      }
+
+      if (chatMessage.tipo_remetente === 'bot') {
+        return [{ role: 'assistant', content }];
+      }
+
+      return [];
+    })
+    .slice(-GUARDRAIL_CONTEXT_LIMIT);
 }
 
 function getMessageText(message: BaseMessage): string {
@@ -227,6 +253,7 @@ export async function analyzeMessage(message: string, number: string, conversaca
     historyLimit,
   );
   const historyMessages = mapConversationHistoryToLlmMessages(conversationHistory);
+  const guardrailConversationContext = mapConversationHistoryToGuardrailContext(conversationHistory);
   const needsCustomerName = !customer || isGenericCustomerName(customer.nome, number);
   const awaitingCustomerName = needsCustomerName && isAwaitingCustomerName(conversationHistory);
 
@@ -240,6 +267,7 @@ export async function analyzeMessage(message: string, number: string, conversaca
 
   const inputGuardrail = await evaluateInputGuardrails(message, guardrailModel as any, {
     awaitingCustomerName,
+    conversationContext: guardrailConversationContext,
   });
   if (!inputGuardrail.allowed) {
     console.warn(
