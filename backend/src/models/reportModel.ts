@@ -12,6 +12,12 @@ export type ReportTopServiceItem = {
   revenue: number;
 };
 
+export type ReportTopMechanicItem = {
+  name: string;
+  count: number;
+  revenue: number;
+};
+
 export type InternalReportDTO = {
   month: string;
   revenue: number;
@@ -23,6 +29,7 @@ export type InternalReportDTO = {
   pending: number;
   byStatus: ReportStatusItem[];
   topServices: ReportTopServiceItem[];
+  topMechanics: ReportTopMechanicItem[];
 };
 
 type PeriodMetrics = {
@@ -105,6 +112,32 @@ export class ReportModel {
     }));
   }
 
+  private static async loadTopMechanics(start: Date, end: Date): Promise<ReportTopMechanicItem[]> {
+    const db = getDb();
+    const result = await db.query(
+      `SELECT
+         u.nome AS name,
+         COALESCE(COUNT(e.id), 0) AS count,
+         COALESCE(SUM(o.valor_total), 0) AS revenue_cents
+       FROM execucoes_servico e
+       JOIN orcamentos o ON o.id = e.orcamento_id
+       JOIN usuarios u ON u.id = e.funcionario_id
+       WHERE e.status = 'CONCLUIDO'
+         AND COALESCE(e.iniciado_em, o.criado_em) >= $1
+         AND COALESCE(e.iniciado_em, o.criado_em) < $2
+       GROUP BY u.nome
+       ORDER BY count DESC, revenue_cents DESC
+       LIMIT 5`,
+      [start, end]
+    );
+
+    return result.rows.map((row: { name: string; count: string | number; revenue_cents: string | number }) => ({
+      name: row.name,
+      count: toNumber(row.count),
+      revenue: toNumber(row.revenue_cents) / 100,
+    }));
+  }
+
   static async getInternalReport(
     start: Date,
     end: Date,
@@ -112,10 +145,11 @@ export class ReportModel {
     previousEnd: Date,
     monthLabel: string,
   ): Promise<InternalReportDTO> {
-    const [current, previous, topServices] = await Promise.all([
+    const [current, previous, topServices, topMechanics] = await Promise.all([
       this.loadPeriodMetrics(start, end),
       this.loadPeriodMetrics(previousStart, previousEnd),
       this.loadTopServices(start, end),
+      this.loadTopMechanics(start, end),
     ]);
 
     const revenue = current.revenueCents / 100;
@@ -142,6 +176,7 @@ export class ReportModel {
         { label: 'Aguardando', value: current.statusWaiting, total: statusTotal },
       ],
       topServices,
+      topMechanics,
     };
   }
 }

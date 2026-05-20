@@ -111,9 +111,16 @@ class _ScheduledServicesScreenState extends State<ScheduledServicesScreen> {
       ));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Falha ao confirmar recebimento: $e')),
-      );
+      final msg = e.toString().replaceAll('Exception: ', '');
+      if (msg.contains('mecanicos estão ocupados')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: Colors.orange),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Falha ao confirmar recebimento: $msg')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _confirmingReceipt = false);
     }
