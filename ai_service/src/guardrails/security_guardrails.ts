@@ -2,6 +2,8 @@ import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { z } from 'zod';
 import { looksLikeCustomerNameReply } from '../utils/customer_name';
+import { extractContextualEntity } from '../utils/contextual_entities';
+import { includes } from 'zod/v4';
 
 export type GuardrailCategory =
   | 'allowed'
@@ -99,8 +101,13 @@ const AUTOMOTIVE_CONTEXT_PATTERNS = [
 ];
 
 const SMALL_TALK_PATTERNS = [
-  /^(oi|ola|olá|bom dia|boa tarde|boa noite|tudo bem|e ai|e aí)[!.?\s]*$/i,
-  /^(quem e voce|quem é voce|quem é você|o que voce faz|o que você faz|ajuda|atendimento)[!.?\s]*$/i,
+  /^(oi|ola|olá|bom dia|boa tarde|boa noite|tudo bem|e ai|e aí|opa|ei|hey|alo|alô)([,\s]+tudo bem[?.!]*)[!.?\s]*$/i,
+  /^(quem e voce|quem é voce|quem é você|o que voce faz|o que você faz|ajuda|atendimento|suporte|preciso de ajuda|pode me ajudar|queria uma informacao)[!.?\s]*$/i,
+  /^(meu carro esta pronto|como esta o servico|alguma novidade do carro|meu carro ficou pronto|já posso buscar|pode me dar uma previsao|status do carro|meu carro esta no elevador)[!.?\s]*$/i,
+  /^(agendar revisao|quero marcar uma revisao|qual o valor da mao de obra|fazer um orcamento|quero agendar um horario|quanto fica para trocar o oleo|valor da suspensao|quanto custa o servico|posso deixar o carro hoje)[!.?\s]*$/i,
+  /^(meu carro nao liga|esta fazendo um barulho|luz da injecao acesa|carro falhando|vazamento de oleo|motor superaquecendo|freio chiando|carro sem forca|o carro esta morrendo)[!.?\s]*$/i,
+  /^(socorro|me ajuda|o carro parou na rua|guincho|preciso de um mecanico urgente|quebrou aqui)[!.?\s]*$/i,
+  /^(obrigado|muito obrigado|valeu|agradecido|tchau|ate logo|ate mais|até breve)[!.?\s]*$/i
 ];
 
 const PROFILE_AND_HISTORY_PATTERNS = [
@@ -144,7 +151,9 @@ function normalizeText(value: string): string {
   return value
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '')
+    .trim();
 }
 
 function hasAnyPattern(value: string, patterns: RegExp[]): boolean {
@@ -229,10 +238,11 @@ function deterministicInputDecision(
 ): GuardrailDecision | null {
   const normalized = normalizeText(message);
 
-  if (
+  const isPromptInjection =
     hasAnyPattern(message, PROMPT_INJECTION_PATTERNS) ||
-    hasAnyPattern(normalized, PROMPT_INJECTION_PATTERNS)
-  ) {
+    hasAnyPattern(normalized, PROMPT_INJECTION_PATTERNS);
+
+  if (isPromptInjection) {
     return refuse(
       'prompt_injection',
       'Tentativa de alterar instruções, identidade ou políticas do agente.',
@@ -241,6 +251,10 @@ function deterministicInputDecision(
   }
 
   const isShortSmallTalk = message.length <= 80 && hasAnyPattern(message, SMALL_TALK_PATTERNS);
+  if (isShortSmallTalk && !isPromptInjection) {
+    return allow('Mensagem curta de saudação ou identidade do assistente.', 'small_talk');
+  }
+
   const hasAutomotiveContext =
     hasAnyPattern(message, AUTOMOTIVE_CONTEXT_PATTERNS) ||
     hasAnyPattern(normalized, AUTOMOTIVE_CONTEXT_PATTERNS);
@@ -274,6 +288,13 @@ function deterministicInputDecision(
     return allow(
       'Consulta sobre dados cadastrais, veículos vinculados ou histórico do cliente atual.',
       'profile_and_history_check',
+    );
+  }
+
+  if (hasAutomotiveContext) {
+    return allow(
+      'Consulta relacionada a oficina',
+      'shop_operations',
     );
   }
 

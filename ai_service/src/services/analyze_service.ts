@@ -20,7 +20,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const MAX_ITERATIONS = 4;
-const DEFAULT_CONVERSATION_HISTORY_LIMIT = 10;
+const DEFAULT_CONVERSATION_HISTORY_LIMIT = 7;
 
 function getConversationHistoryLimit(): number {
   const parsed = Number.parseInt(process.env.CONVERSATION_HISTORY_LIMIT ?? '', 10);

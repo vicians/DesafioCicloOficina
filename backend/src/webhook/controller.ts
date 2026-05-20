@@ -377,9 +377,6 @@ export const handleMessage = async (req: Request, res: Response) => {
   const customerText: string = message.text.body;
   const customerNumber: string = message.from;
 
-  let is_ai_done = false;
-  let processando_timeout: ReturnType<typeof setTimeout> | undefined;
-
   try {
     console.log(`[Webhook] Recebido de ${customerNumber}: ${customerText}`);
 
@@ -418,40 +415,6 @@ export const handleMessage = async (req: Request, res: Response) => {
       });
     }
 
-    // 1. Timeout de Fallback: Envia mensagem física se a resposta da IA demorar mais de 25 segundos
-    processando_timeout = setTimeout(async () => {
-      if (!is_ai_done && !iaPausada) {
-        await sendWhatsAppMessage(customerNumber, "Estou processando sua solicitação, só um instante... ⚙️");
-      }
-    }, 25000);
-
-    const aiResponse = await axios.post(`${AI_SERVICE_URL}/ai/analyze`, {
-      message: customerText,
-      number: customerNumber,
-      conversacaoId,
-    });
-
-    is_ai_done = true;
-    if (processando_timeout) clearTimeout(processando_timeout);
-
-    const { action, result, demand } = aiResponse.data;
-
-    // 2. Trata a ação decidida pela IA
-    if (action === 'REPLY') {
-      // Resposta direta do Bot (Pistão)
-      await sendWhatsAppMessage(customerNumber, result);
-      
-      if (conversacaoId) {
-        await ConversationModel.addMessage(conversacaoId, cliente.id, 'bot', result);
-      }
-
-    } else if (action === 'CREATE_OS') {
-      console.log(`[Webhook] Solicitando criação de OS para ${customerNumber}...`);
-
-      try {
-        // Chama a criação de Ordem de Serviço
-        const osResponse = await axios.post(`${AI_SERVICE_URL}/ai/create-os`, demand);
-        const { message: osMsg, magic_link_url } = osResponse.data;
     // Buffer the message
     if (!messageBuffer.has(customerNumber)) {
       messageBuffer.set(customerNumber, []);
@@ -470,9 +433,7 @@ export const handleMessage = async (req: Request, res: Response) => {
     debounceTimers.set(customerNumber, timer);
 
   } catch (error: any) {
-    is_ai_done = true;
-    if (processando_timeout) clearTimeout(processando_timeout);
-    console.error('[Webhook] Erro na comunicação com AI_SERVICE:', error.message);
+    console.error('[Webhook] Erro no processamento principal:', error.message);
   }
 
   // Sempre retorna 200 para a Meta não reenviar a mesma mensagem
