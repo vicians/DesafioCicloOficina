@@ -583,28 +583,8 @@ export function validateToolCallGuardrails(
   toolArgs: unknown,
   inputDecision: GuardrailDecision,
 ): { allowed: true } | { allowed: false; toolResult: string; reason: string } {
-  if (!inputDecision.allowed || !inputDecision.allowedToolNames.has(toolName)) {
-    return {
-      allowed: false,
-      toolResult: TOOL_REFUSAL_RESULT,
-      reason: `Ferramenta ${toolName} não permitida para a intenção ${inputDecision.intent}.`,
-    };
-  }
-
-  const serializedArgs = JSON.stringify(toolArgs ?? {});
-  const normalizedArgs = normalizeText(serializedArgs);
-
-  if (
-    hasAnyPattern(serializedArgs, PROMPT_INJECTION_PATTERNS) ||
-    hasAnyPattern(normalizedArgs, PROMPT_INJECTION_PATTERNS)
-  ) {
-    return {
-      allowed: false,
-      toolResult: TOOL_REFUSAL_RESULT,
-      reason: `Argumentos da ferramenta ${toolName} contêm padrão de prompt injection.`,
-    };
-  }
-
+  // Conforme solicitado, removemos a lógica de segurança para ferramentas:
+  // Se passou pelo guardrail inicial de intenção, todas as ferramentas estão liberadas.
   return { allowed: true };
 }
 
