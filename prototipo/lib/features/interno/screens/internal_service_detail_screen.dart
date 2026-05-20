@@ -635,7 +635,7 @@ class _DataTab extends StatelessWidget {
       ('Ordem de serviço', svc.id),
       ('Veículo', svc.car),
       ('Placa', svc.plate),
-      ('Oficina', svc.mechanic),
+      ('Mecânico', svc.mechanic),
       ('Horário', svc.time),
     ];
 

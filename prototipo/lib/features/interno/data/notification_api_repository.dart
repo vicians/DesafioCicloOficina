@@ -1,19 +1,18 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../../../core/api/api_helper.dart';
 import '../../shared/models/notification_item.dart';
 import 'notification_repository.dart';
 
 class NotificationApiRepository implements NotificationRepository {
   final String baseUrl;
   final int internalUserTypeId;
-  final http.Client _client;
   String? _resolvedUsuarioId;
 
   NotificationApiRepository({
     required this.baseUrl,
     required this.internalUserTypeId,
-    http.Client? client,
-  }) : _client = client ?? http.Client();
+  });
 
   Future<String?> _resolveUsuarioId() async {
     if (_resolvedUsuarioId != null) return _resolvedUsuarioId;
@@ -21,7 +20,7 @@ class NotificationApiRepository implements NotificationRepository {
     final uri = Uri.parse('$baseUrl/usuarios').replace(
       queryParameters: {'tipo_id': internalUserTypeId.toString()},
     );
-    final response = await _client.get(uri);
+    final response = await ApiHelper.get(uri.toString());
     if (response.statusCode != 200) return null;
 
     final List<dynamic> users = jsonDecode(response.body) as List<dynamic>;
@@ -43,7 +42,7 @@ class NotificationApiRepository implements NotificationRepository {
     final uri = Uri.parse('$baseUrl/notifications').replace(
       queryParameters: {'usuario_id': usuarioId},
     );
-    final response = await _client.get(uri);
+    final response = await ApiHelper.get(uri.toString());
     if (response.statusCode != 200) return [];
 
     final List<dynamic> data = jsonDecode(response.body) as List<dynamic>;
@@ -72,12 +71,9 @@ class NotificationApiRepository implements NotificationRepository {
       throw Exception('usuario_id interno não resolvido para markAsRead');
     }
 
-    final response = await _client.patch(
-      Uri.parse('$baseUrl/notifications/$id/read').replace(
-        queryParameters: const {},
-      ),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'usuario_id': usuarioId}),
+    final response = await ApiHelper.patch(
+      '$baseUrl/notifications/$id/read',
+      {'usuario_id': usuarioId},
     );
 
     if (response.statusCode != 200) {
@@ -92,12 +88,9 @@ class NotificationApiRepository implements NotificationRepository {
       throw Exception('usuario_id interno não resolvido para markAllAsRead');
     }
 
-    final response = await _client.patch(
-      Uri.parse('$baseUrl/notifications/read-all').replace(
-        queryParameters: const {},
-      ),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'usuario_id': usuarioId}),
+    final response = await ApiHelper.patch(
+      '$baseUrl/notifications/read-all',
+      {'usuario_id': usuarioId},
     );
 
     if (response.statusCode != 204) {
@@ -112,12 +105,10 @@ class NotificationApiRepository implements NotificationRepository {
       throw Exception('usuario_id interno não resolvido para clearAll');
     }
 
-    final response = await _client.delete(
-      Uri.parse('$baseUrl/notifications').replace(
-        queryParameters: {'usuario_id': usuarioId},
-      ),
-      headers: {'Content-Type': 'application/json'},
+    final uri = Uri.parse('$baseUrl/notifications').replace(
+      queryParameters: {'usuario_id': usuarioId},
     );
+    final response = await ApiHelper.delete(uri.toString());
 
     if (response.statusCode != 204 && response.statusCode != 200) {
       throw Exception('Falha ao limpar notificações: ${response.statusCode}');

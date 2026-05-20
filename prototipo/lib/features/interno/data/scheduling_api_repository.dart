@@ -1,16 +1,15 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../../../core/api/api_helper.dart';
 import 'models/scheduled_service_item.dart';
 import 'scheduling_repository.dart';
 
 class SchedulingApiRepository implements SchedulingRepository {
   final String baseUrl;
-  final http.Client _client;
 
   SchedulingApiRepository({
     required this.baseUrl,
-    http.Client? client,
-  }) : _client = client ?? http.Client();
+  });
 
   String _normalizeStatus(String rawStatus) {
     switch (rawStatus.toUpperCase()) {
@@ -72,13 +71,15 @@ class SchedulingApiRepository implements SchedulingRepository {
       possuiOrcamento: map['possui_orcamento'] == true,
       possuiExecucao: map['possui_execucao'] == true,
       notasCliente: map['notas_cliente'] as String?,
+      orcamentoStatus: map['orcamento_status'] as String?,
+      orcamentoTemItens: map['orcamento_tem_itens'] == true,
     );
   }
 
   @override
   Future<List<ScheduledServiceItem>> fetchScheduledServices() async {
-    final agendamentosResp = await _client.get(Uri.parse('$baseUrl/agendamentos'));
-    final orcamentosResp = await _client.get(Uri.parse('$baseUrl/orcamentos'));
+    final agendamentosResp = await ApiHelper.get('$baseUrl/agendamentos');
+    final orcamentosResp = await ApiHelper.get('$baseUrl/orcamentos');
 
     if (agendamentosResp.statusCode != 200) {
       throw Exception('Falha ao buscar agendamentos: ${agendamentosResp.statusCode}');
@@ -90,11 +91,16 @@ class SchedulingApiRepository implements SchedulingRepository {
 
     final List<dynamic> orcamentos = jsonDecode(orcamentosResp.body) as List<dynamic>;
     final sentBudgetAgendamentoIds = <String>{};
+    final budgetByAgendamento = <String, Map<String, dynamic>>{};
+
     for (final raw in orcamentos.cast<Map<String, dynamic>>()) {
       final status = (raw['status'] as String? ?? '').toUpperCase();
       final agendamentoId = raw['agendamento_id'] as String?;
-      if (status == 'ENVIADO' && agendamentoId != null && agendamentoId.isNotEmpty) {
-        sentBudgetAgendamentoIds.add(agendamentoId);
+      if (agendamentoId != null && agendamentoId.isNotEmpty) {
+        budgetByAgendamento[agendamentoId] = raw;
+        if (status == 'ENVIADO') {
+          sentBudgetAgendamentoIds.add(agendamentoId);
+        }
       }
     }
 
@@ -102,8 +108,35 @@ class SchedulingApiRepository implements SchedulingRepository {
         jsonDecode(agendamentosResp.body) as List<dynamic>;
     final items = agendamentos
         .cast<Map<String, dynamic>>()
-        .where((map) => !sentBudgetAgendamentoIds.contains(map['id'] as String? ?? ''))
-        .map(_mapScheduledItem)
+        .where((map) {
+          final agendamentoId = map['id'] as String? ?? '';
+          final possuiExecucao = map['possui_execucao'] == true;
+          return !sentBudgetAgendamentoIds.contains(agendamentoId) && !possuiExecucao;
+        })
+        .map((map) {
+          final agendamentoId = map['id'] as String? ?? '';
+          final budget = budgetByAgendamento[agendamentoId];
+          
+          if (budget != null) {
+            final budgetStatus = (budget['status'] as String? ?? '').toUpperCase();
+            map['orcamento_status'] = budgetStatus.isNotEmpty ? budgetStatus : map['orcamento_status'];
+            
+            // O backend local já traz orcamento_tem_itens, mas o remoto (antigo) traz nulo.
+            if (map['orcamento_tem_itens'] == null || map['orcamento_tem_itens'] == false) {
+              final servicos = (budget['servicos'] as List?) ?? (budget['itens_servico'] as List?) ?? [];
+              final produtos = (budget['produtos'] as List?) ?? (budget['itens_produto'] as List?) ?? [];
+              final valorTotal = (budget['valor_total'] as num?)?.toInt() ?? 0;
+              
+              map['orcamento_tem_itens'] = servicos.isNotEmpty || 
+                                           produtos.isNotEmpty || 
+                                           valorTotal > 0 || 
+                                           budgetStatus == 'ENVIADO' || 
+                                           budgetStatus == 'APROVADO';
+            }
+            map['possui_orcamento'] = true;
+          }
+          return _mapScheduledItem(map);
+        })
         .toList();
 
     items.sort((a, b) => a.agendadoPara.compareTo(b.agendadoPara));
@@ -114,12 +147,11 @@ class SchedulingApiRepository implements SchedulingRepository {
   Future<String> confirmScheduleToService({
     required ScheduledServiceItem schedule,
   }) async {
-    final response = await _client.patch(
-      Uri.parse('$baseUrl/agendamentos/${schedule.id}/confirmar-recebimento'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
+    final response = await ApiHelper.patch(
+      '$baseUrl/agendamentos/${schedule.id}/confirmar-recebimento',
+      {
         'funcionario_id': schedule.funcionarioId,
-      }),
+      },
     );
 
     if (response.statusCode != 201 && response.statusCode != 200) {
@@ -138,14 +170,13 @@ class SchedulingApiRepository implements SchedulingRepository {
   Future<String> openScheduleBudget({
     required ScheduledServiceItem schedule,
   }) async {
-    final response = await _client.post(
-      Uri.parse('$baseUrl/orcamentos'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
+    final response = await ApiHelper.post(
+      '$baseUrl/orcamentos',
+      {
         'cliente_id': schedule.clienteId,
         'funcionario_id': schedule.funcionarioId,
         'agendamento_id': schedule.id,
-      }),
+      },
     );
 
     if (response.statusCode == 201 || response.statusCode == 200) {

@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../../../core/api/api_helper.dart';
 import '../../../core/config/auth_manager.dart';
 import 'client_flow_repository.dart';
 import 'models/client_models.dart';
@@ -14,97 +16,142 @@ class ClientFlowApiRepository extends ClientFlowRepository {
   });
 
   @override
-  Future<ServiceModel?> fetchCurrentService() async {
+  Future<List<ServiceModel>> fetchPendingBudgets() async {
     try {
-      // 1. Priorizar orçamento pendente (add-ons ENVIADO)
-      final orcResp = await http.get(Uri.parse('$baseUrl/orcamentos'));
+      final orcResp = await ApiHelper.get('$baseUrl/orcamentos');
       if (orcResp.statusCode == 200) {
         final List orcs = jsonDecode(orcResp.body);
-        final pendingOrc = orcs.firstWhere(
+        final pendingOrcs = orcs.where(
           (o) =>
               o['cliente_id'] == clientId &&
-              (o['status'] as String).toLowerCase() == 'enviado',
-          orElse: () => null,
-        );
+              ['enviado', 'rascunho', 'orcamento'].contains((o['status'] as String).toLowerCase()),
+        ).toList();
 
-        if (pendingOrc != null) {
-          return _mapOrcToServiceModel(pendingOrc);
-        }
+        return pendingOrcs.map((o) => _mapOrcToServiceModel(o)).toList();
+      }
+      return [];
+    } catch (e) {
+      debugPrint('Error fetching pending budgets: $e');
+      return [];
+    }
+  }
+
+  @override
+  Future<ServiceModel?> fetchCurrentService() async {
+    try {
+      // 1. Priorizar orçamentos pendentes
+      final pendingBudgets = await fetchPendingBudgets();
+      if (pendingBudgets.isNotEmpty) {
+        return pendingBudgets.first;
       }
 
-      // 2. Sem orçamento pendente, buscar execução ativa
-      final execResp = await http.get(Uri.parse('$baseUrl/execucoes'));
+      // 2. Sem orçamento pendente, buscar execução ativa (excluindo concluído e cancelado).
+      // Ordena por iniciado_em desc — proxy do serviço com conclusão mais próxima.
+      final execResp = await ApiHelper.get('$baseUrl/execucoes');
       if (execResp.statusCode == 200) {
         final List execs = jsonDecode(execResp.body);
-        final activeExec = execs.firstWhere(
-          (e) {
-            final status = (e['status'] as String? ?? '').toLowerCase();
-            return e['cliente_id'] == clientId && status != 'concluido' && status != 'cancelado';
-          },
-          orElse: () => null,
-        );
+        const activeStatuses = [
+          'em_andamento', 'em_execucao', 'aguardando',
+          'aguardando_pecas', 'pausado', 'revisao_tecnica',
+          'revisao', 'aguardando_retirada',
+        ];
+        final actives = execs
+            .where((e) =>
+                e['cliente_id'] == clientId &&
+                activeStatuses.contains((e['status'] as String).toLowerCase()))
+            .toList()
+          ..sort((a, b) {
+            final dateA = (a['iniciado_em'] ?? '') as String;
+            final dateB = (b['iniciado_em'] ?? '') as String;
+            return dateB.compareTo(dateA);
+          });
 
-        if (activeExec != null) {
-          return _mapExecToServiceModel(activeExec);
+        if (actives.isNotEmpty) {
+          return _mapExecToServiceModel(actives.first as Map<String, dynamic>);
         }
       }
 
-      // 3. Sem execução e sem orçamento pendente, buscar agendamento ativo
-      final agendResp = await http.get(
-        Uri.parse('$baseUrl/agendamentos/cliente/$clientId'),
-      );
+      // 3. Buscar agendamentos futuros
+      final agendResp = await ApiHelper.get('$baseUrl/agendamentos');
       if (agendResp.statusCode == 200) {
         final List agends = jsonDecode(agendResp.body);
-        final activeAgend = agends.firstWhere(
-          (a) {
-            final s = (a['status'] as String? ?? '').toUpperCase();
-            return s == 'PENDENTE' || s == 'CONFIRMADO';
-          },
+        final futureAgend = agends.firstWhere(
+          (a) =>
+              a['cliente_id'] == clientId &&
+              ['pendente', 'agendado', 'confirmado'].contains(
+                (a['status'] as String).toLowerCase(),
+              ),
           orElse: () => null,
         );
-        if (activeAgend != null) {
-          return _mapAgendamentoToServiceModel(activeAgend as Map<String, dynamic>);
+
+        if (futureAgend != null) {
+          return _mapAgendamentoToServiceModel(futureAgend as Map<String, dynamic>);
         }
       }
 
       return null;
     } catch (e) {
-      rethrow;
+      debugPrint('Error fetching current service: $e');
+      return null;
     }
   }
+
+  @override
+  Future<ServiceModel?> fetchServiceById(String execucaoId) async {
+    try {
+      final resp = await ApiHelper.get('$baseUrl/execucoes/$execucaoId');
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body) as Map<String, dynamic>;
+        return _mapExecToServiceModel(data);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error fetching service by id: $e');
+      return null;
+    }
+  }
+
   @override
   Future<List<HistoryItem>> fetchServiceHistory() async {
     try {
       final history = <HistoryItem>[];
 
-      final execResp = await http.get(Uri.parse('$baseUrl/execucoes'));
+      // Execuções: todos os status relevantes (ativas e finalizadas)
+      final execResp = await ApiHelper.get('$baseUrl/execucoes');
       if (execResp.statusCode == 200) {
         final List execs = jsonDecode(execResp.body);
-        final filtered = execs
-            .where((e) {
-              final s = (e['status'] as String? ?? '').toLowerCase();
-              return e['cliente_id'] == clientId && (s == 'concluido' || s == 'cancelado');
-            })
-            .toList();
-            
+        final filtered = execs.where((e) {
+          return e['cliente_id'] == clientId;
+        }).toList();
+
         filtered.sort((a, b) {
-          final dateA = a['finalizado_em'] ?? '';
-          final dateB = b['finalizado_em'] ?? '';
-          return dateB.compareTo(dateA); // Descending
+          // Ordena: primeiro por finalizado_em (desc), depois por iniciado_em (desc)
+          final dateA = (a['finalizado_em'] ?? a['iniciado_em'] ?? '') as String;
+          final dateB = (b['finalizado_em'] ?? b['iniciado_em'] ?? '') as String;
+          return dateB.compareTo(dateA);
         });
 
-        history.addAll(filtered.map<HistoryItem>((e) => HistoryItem(
-                  id: e['id'],
-                  title: (e['status'] as String? ?? '').toLowerCase() == 'cancelado'
-                      ? (e['servico_resumo'] ?? 'Atendimento cancelado')
-                      : (e['servico_resumo'] ?? 'Manutenção'),
-                  date: _formatDate(e['finalizado_em']),
-                  status: (e['status'] as String? ?? '').toLowerCase(),
-                  total: 'R\$ ${(e['valor_total'] / 100).toStringAsFixed(2).replaceAll('.', ',')}',
-                )));
+        history.addAll(filtered.map<HistoryItem>((e) {
+          final s = (e['status'] as String? ?? '').toLowerCase();
+          final isCancelado = s == 'cancelado';
+          return HistoryItem(
+            id: e['id'],
+            title: isCancelado
+                ? (e['servico_resumo'] ?? 'Atendimento cancelado')
+                : (e['servico_resumo'] ?? 'Manutenção'),
+            date: _formatDate(isCancelado
+                ? (e['finalizado_em'] as String?)
+                : (e['finalizado_em'] as String? ?? e['iniciado_em'] as String?)),
+            status: s,
+            total: e['valor_total'] != null
+                ? 'R\$ ${(e['valor_total'] / 100).toStringAsFixed(2).replaceAll('.', ',')}'
+                : '—',
+          );
+        }));
       }
 
-      final agendResp = await http.get(Uri.parse('$baseUrl/agendamentos/cliente/$clientId'));
+      // Agendamentos cancelados (sem execução vinculada)
+      final agendResp = await ApiHelper.get('$baseUrl/agendamentos/cliente/$clientId');
       if (agendResp.statusCode == 200) {
         final List agends = jsonDecode(agendResp.body);
         final canceled = agends
@@ -134,17 +181,16 @@ class ClientFlowApiRepository extends ClientFlowRepository {
 
   @override
   Future<void> createVeiculo(String marca, String modelo, String placa, int ano) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/veiculos'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
+    final response = await ApiHelper.post(
+      '$baseUrl/veiculos',
+      {
         'cliente_id': clientId,
         'marca': marca,
         'modelo': modelo,
         'placa': placa,
         'ano': ano,
         'quilometragem_atual': 0,
-      }),
+      },
     );
     if (response.statusCode != 201) {
       throw Exception('Falha ao cadastrar veículo: ${response.body}');
@@ -155,10 +201,9 @@ class ClientFlowApiRepository extends ClientFlowRepository {
   @override
   Future<void> approveBudget(String budgetId) async {
     final validUntil = DateTime.now().add(const Duration(days: 7)).toIso8601String();
-    final resp = await http.patch(
-      Uri.parse('$baseUrl/orcamentos/$budgetId/aprovar'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'valido_ate': validUntil}),
+    final resp = await ApiHelper.patch(
+      '$baseUrl/orcamentos/$budgetId/aprovar',
+      {'valido_ate': validUntil},
     );
     if (resp.statusCode != 200) {
       throw Exception('Falha ao aprovar orçamento: ${resp.body}');
@@ -168,9 +213,7 @@ class ClientFlowApiRepository extends ClientFlowRepository {
 
   @override
   Future<void> refuseBudget(String budgetId) async {
-    final resp = await http.patch(
-      Uri.parse('$baseUrl/orcamentos/$budgetId/rejeitar'),
-    );
+    final resp = await ApiHelper.patch('$baseUrl/orcamentos/$budgetId/rejeitar');
     if (resp.statusCode != 200) {
       throw Exception('Falha ao rejeitar orçamento: ${resp.body}');
     }
@@ -179,9 +222,7 @@ class ClientFlowApiRepository extends ClientFlowRepository {
 
   @override
   Future<void> rejectBudgetChange(String budgetId) async {
-    final resp = await http.patch(
-      Uri.parse('$baseUrl/orcamentos/$budgetId/rejeitar-addons'),
-    );
+    final resp = await ApiHelper.patch('$baseUrl/orcamentos/$budgetId/rejeitar-addons');
     if (resp.statusCode != 200) {
       throw Exception('Falha ao rejeitar alteração: ${resp.body}');
     }
@@ -191,25 +232,23 @@ class ClientFlowApiRepository extends ClientFlowRepository {
   @override
   Future<void> cancelService({required String budgetId, String? agendamentoId}) async {
     if (agendamentoId != null && agendamentoId.isNotEmpty) {
-      final cancelAgendamentoResp = await http.patch(
-        Uri.parse('$baseUrl/agendamentos/$agendamentoId/status'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'status': 'CANCELADO'}),
+      final cancelAgendamentoResp = await ApiHelper.patch(
+        '$baseUrl/agendamentos/$agendamentoId/status',
+        {'status': 'CANCELADO'},
       );
       if (cancelAgendamentoResp.statusCode != 200) {
         throw Exception('Falha ao cancelar agendamento: ${cancelAgendamentoResp.body}');
       }
     }
 
-    final execResp = await http.get(Uri.parse('$baseUrl/execucoes/orcamento/$budgetId'));
+    final execResp = await ApiHelper.get('$baseUrl/execucoes/orcamento/$budgetId');
     if (execResp.statusCode == 200) {
       final exec = jsonDecode(execResp.body) as Map<String, dynamic>;
       final execId = exec['id'] as String?;
       if (execId != null && execId.isNotEmpty) {
-        await http.patch(
-          Uri.parse('$baseUrl/execucoes/$execId/status'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'status': 'CANCELADO'}),
+        await ApiHelper.patch(
+          '$baseUrl/execucoes/$execId/status',
+          {'status': 'CANCELADO'},
         );
       }
     }
@@ -219,16 +258,11 @@ class ClientFlowApiRepository extends ClientFlowRepository {
   }
 
   @override
-  Future<String> fetchProfileName() async {
-    final headers = <String, String>{};
-    if (AuthManager.token != null) {
-      headers['Authorization'] = 'Bearer ${AuthManager.token}';
-    }
+  void invalidateProfile() => notifyListeners();
 
-    final response = await http.get(
-      Uri.parse('$baseUrl/usuarios/$clientId'),
-      headers: headers.isNotEmpty ? headers : null,
-    );
+  @override
+  Future<String> fetchProfileName() async {
+    final response = await ApiHelper.get('$baseUrl/usuarios/$clientId');
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       return data['nome'] ?? 'Cliente';
@@ -238,7 +272,7 @@ class ClientFlowApiRepository extends ClientFlowRepository {
 
   @override
   Future<List<Map<String, dynamic>>> fetchVehicles() async {
-    final response = await http.get(Uri.parse('$baseUrl/veiculos/cliente/$clientId'));
+    final response = await ApiHelper.get('$baseUrl/veiculos/cliente/$clientId');
     if (response.statusCode != 200) {
       throw Exception('Falha ao carregar veículos.');
     }
@@ -323,7 +357,13 @@ class ClientFlowApiRepository extends ClientFlowRepository {
       status: status,
       title: status == 'enviado'
           ? 'Alteração de orçamento pendente de aprovação'
-          : 'Orçamento para aprovação',
+          : status == 'aprovado'
+              ? 'Orçamento Aprovado'
+              : status == 'aguardando'
+                  ? 'Aguardando Aprovação'
+                  : status == 'em_execucao'
+                      ? 'Serviço em execução'
+                      : 'Orçamento para aprovação',
       mechanic: orc['funcionario_nome'] ?? 'Mecânico',
       mechanicInitials: _getInitials(orc['funcionario_nome']),
       startDate: orc['criado_em'] ?? '—',

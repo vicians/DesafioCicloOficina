@@ -179,7 +179,7 @@ void main() {
       expect(find.textContaining('Agendamento'), findsOneWidget);
     });
 
-    testWidgets('"Falar com suporte" exibe snackbar ao ser tocado', (
+    testWidgets('toque em "Falar com suporte" fecha as sub-ações', (
       tester,
     ) async {
       await pumpApp(tester);
@@ -188,7 +188,7 @@ void main() {
       await tester.tap(find.byKey(const Key('fab_support')));
       await pumpAnimation(tester);
 
-      expect(find.textContaining('Suporte'), findsOneWidget);
+      expect(find.byKey(const Key('fab_schedule')), findsNothing);
     });
   });
 }

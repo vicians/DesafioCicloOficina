@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/colors.dart';
@@ -22,6 +23,7 @@ import 'screens/login_screen.dart';
 import 'screens/internal_messages_screen.dart';
 import 'screens/catalog_services_screen.dart';
 import 'screens/users_screen.dart';
+import 'screens/workshop_settings_screen.dart';
 import '../../core/config/api_config.dart';
 import '../shared/models/notification_item.dart';
 import '../../services/firebase_messaging_service.dart';
@@ -43,8 +45,10 @@ class InternoApp extends StatefulWidget {
 class _InternoAppState extends State<InternoApp> {
   int _currentIndex = 0;
   final _schedulingRefresh = ValueNotifier<int>(0);
+  final _servicesRefresh = ValueNotifier<int>(0);
   bool _drawerOpen = false;
   bool _showLogoutConfirm = false;
+  Timer? _autoRefreshTimer;
 
   late final InternalFlowRepository _flowRepository;
   late final NotificationRepository _notificationRepository;
@@ -72,6 +76,16 @@ class _InternoAppState extends State<InternoApp> {
     _reportRepository = ReportApiRepository(baseUrl: _kApiBaseUrl);
     _loadNotifications();
     _configurePushAndDevSeed();
+    _startAutoRefresh();
+  }
+
+  void _startAutoRefresh() {
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) {
+        _schedulingRefresh.value++;
+        _servicesRefresh.value++;
+      }
+    });
   }
 
   Future<void> _configurePushAndDevSeed() async {
@@ -90,8 +104,10 @@ class _InternoAppState extends State<InternoApp> {
 
   @override
   void dispose() {
+    _autoRefreshTimer?.cancel();
     _flowRepository.dispose();
     _schedulingRefresh.dispose();
+    _servicesRefresh.dispose();
     super.dispose();
   }
 
@@ -143,6 +159,10 @@ class _InternoAppState extends State<InternoApp> {
     });
   }
 
+  void _onOpenWorkshopSettings() {
+    _navigateDrawer('workshop_settings');
+  }
+
   Widget _buildManagerDrawerScreen() {
     switch (_drawerScreen) {
       case 'stock':
@@ -166,6 +186,10 @@ class _InternoAppState extends State<InternoApp> {
         return SettingsScreen(
           onOpenDrawer: () => setState(() => _drawerOpen = true),
         );
+      case 'workshop_settings':
+        return WorkshopSettingsScreen(
+          onOpenDrawer: () => setState(() => _drawerOpen = true),
+        );
       case 'alerts':
         return InternalNotificationsScreen(
           items: _internalNotifications,
@@ -182,6 +206,8 @@ class _InternoAppState extends State<InternoApp> {
   List<Widget> get _managerScreens => [
         EmployeeDashboardScreen(
           repository: _flowRepository,
+          schedulingRepository: _schedulingRepository,
+          refreshSignal: _schedulingRefresh,
           isManager: true,
           onLogout: _requestLogout,
           onOpenDrawer: () => setState(() => _drawerOpen = true),
@@ -204,6 +230,7 @@ class _InternoAppState extends State<InternoApp> {
         ServiceListScreen(
           repository: _flowRepository,
           initialFilter: null,
+          refreshSignal: _servicesRefresh,
           onOpenDrawer: () => setState(() => _drawerOpen = true),
         ),
       ];
@@ -211,6 +238,8 @@ class _InternoAppState extends State<InternoApp> {
   List<Widget> get _employeeScreens => [
         EmployeeDashboardScreen(
           repository: _flowRepository,
+          schedulingRepository: _schedulingRepository,
+          refreshSignal: _schedulingRefresh,
           isManager: false,
           onLogout: _requestLogout,
           onOpenServices: () => setState(() => _currentIndex = 3),
@@ -220,11 +249,12 @@ class _InternoAppState extends State<InternoApp> {
           repository: _schedulingRepository,
           budgetRepository: _flowRepository,
           refreshSignal: _schedulingRefresh,
+          servicesRefreshSignal: _servicesRefresh,
           onOpenServices: () => setState(() => _currentIndex = 3),
           onOpenBudgets: () => setState(() => _currentIndex = 2),
         ),
         BudgetListScreen(repository: _flowRepository),
-        ServiceListScreen(repository: _flowRepository, initialFilter: null),
+        ServiceListScreen(repository: _flowRepository, initialFilter: null, refreshSignal: _servicesRefresh),
         InternalMessagesScreen(onUnreadCountChanged: _updateUnreadChatsCount),
         InternalNotificationsScreen(
           items: _internalNotifications,
@@ -285,6 +315,7 @@ class _InternoAppState extends State<InternoApp> {
                 onOpenUsers: () => _navigateDrawer('users'),
                 onOpenReports: () => _navigateDrawer('reports'),
                 onOpenSettings: () => _navigateDrawer('settings'),
+                onOpenWorkshopSettings: _onOpenWorkshopSettings,
                 onLogoutRequest: _requestLogout,
               ),
 

@@ -184,6 +184,18 @@ class InternalFlowMockRepository extends InternalFlowRepository {
   }
 
   @override
+  Future<InternalBudgetItem> sendBudgetToClient(String budgetId) async {
+    final index = _budgets.indexWhere((item) => item.id == budgetId);
+    if (index < 0) {
+      throw StateError('Orçamento não encontrado: $budgetId');
+    }
+
+    _budgets[index] = _budgets[index].copyWith(status: 'enviado');
+    notifyListeners();
+    return _budgets[index];
+  }
+
+  @override
   Future<InternalBudgetItem> cancelOrcamento(String budgetId) async {
     final index = _budgets.indexWhere((item) => item.id == budgetId);
     if (index < 0) {
@@ -199,15 +211,32 @@ class InternalFlowMockRepository extends InternalFlowRepository {
   }
 
   @override
-  Future<InternalService> approveOrcamento(String budgetId) async {
+  Future<InternalBudgetItem> approveOrcamento(String budgetId) async {
+    final index = _budgets.indexWhere((b) => b.id == budgetId);
+    if (index < 0) {
+      throw StateError('Orçamento não encontrado: $budgetId');
+    }
+
+    if (_budgets[index].isCanceled) {
+      throw StateError('Orçamento cancelado não pode ser aprovado: $budgetId');
+    }
+
+    _budgets[index] = _budgets[index].copyWith(status: 'aprovado');
+    notifyListeners();
+    return _budgets[index];
+  }
+
+  @override
+  Future<InternalService> concludeAgendamento(String budgetId) async {
     final index = _budgets.indexWhere((b) => b.id == budgetId);
     if (index < 0) {
       throw StateError('Orçamento não encontrado: $budgetId');
     }
 
     final budget = _budgets.removeAt(index);
-    if (budget.isCanceled) {
-      throw StateError('Orçamento cancelado não pode ser aprovado: $budgetId');
+    final hasItems = budget.services.isNotEmpty || budget.products.isNotEmpty;
+    if (budget.status != 'aprovado' && !hasItems) {
+      throw StateError('Agendamentos para análise precisam de itens antes de serem concluídos.');
     }
 
     final newService = InternalService(

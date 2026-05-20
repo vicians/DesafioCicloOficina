@@ -19,6 +19,16 @@ export class ExecucaoServicoModel {
     funcionarioId?: string | null,
   ): Promise<ExecucaoServicoDTO> {
     const db = getDb();
+    
+    let mecanicoId = funcionarioId;
+    if (!mecanicoId) {
+      const { UsuarioModel } = await import('./usuarioModel');
+      mecanicoId = await UsuarioModel.findFreeMecanico();
+      if (!mecanicoId) {
+        throw new Error('Não é possivél iniciar serviço pois todos os mecanicos estão ocupados no momento');
+      }
+    }
+
     const result = await db.query(
       `INSERT INTO execucoes_servico (orcamento_id, funcionario_id, status, iniciado_em)
        VALUES ($1, $2, 'AGUARDANDO', NOW())
@@ -26,7 +36,7 @@ export class ExecucaoServicoModel {
        DO UPDATE SET
          funcionario_id = COALESCE(execucoes_servico.funcionario_id, EXCLUDED.funcionario_id)
        RETURNING *`,
-      [orcamentoId, funcionarioId ?? null]
+      [orcamentoId, mecanicoId]
     );
     return result.rows[0];
   }
@@ -40,6 +50,7 @@ export class ExecucaoServicoModel {
         o.valor_total,
         c.nome AS cliente_nome,
         (SELECT nome FROM oficinas ORDER BY criado_em ASC LIMIT 1) AS oficina_nome,
+        mec.nome AS funcionario_nome,
         v.marca AS veiculo_marca,
         v.modelo AS veiculo_modelo,
         v.placa AS veiculo_placa,
@@ -57,6 +68,7 @@ export class ExecucaoServicoModel {
       FROM execucoes_servico e
       JOIN orcamentos o ON e.orcamento_id = o.id
       JOIN usuarios c ON o.cliente_id = c.id
+      LEFT JOIN usuarios mec ON e.funcionario_id = mec.id
       LEFT JOIN agendamentos a ON o.agendamento_id = a.id
       LEFT JOIN veiculos v ON a.veiculo_id = v.id
       ORDER BY e.iniciado_em DESC NULLS LAST
@@ -74,22 +86,25 @@ export class ExecucaoServicoModel {
         o.valor_total,
         c.nome AS cliente_nome,
         (SELECT nome FROM oficinas ORDER BY criado_em ASC LIMIT 1) AS oficina_nome,
+        mec.nome AS funcionario_nome,
         v.marca AS veiculo_marca,
         v.modelo AS veiculo_modelo,
         v.placa AS veiculo_placa,
         COALESCE(
-          (SELECT json_agg(json_build_object('id', ios.id, 'item_id', ios.servico_id, 'nome', cs.nome, 'quantidade', ios.quantidade, 'preco_unitario', ios.preco_unitario))
+          (SELECT json_agg(json_build_object('id', ios.id, 'item_id', ios.servico_id, 'nome', cs.nome, 'quantidade', ios.quantidade, 'preco_unitario', ios.preco_unitario, 'preco_total', ios.quantidade * ios.preco_unitario))
            FROM itens_orcamento_servico ios JOIN catalogo_servicos cs ON ios.servico_id = cs.id WHERE ios.orcamento_id = o.id),
           '[]'::json
-        ) AS servicos,
+        ) AS itens_servico,
         COALESCE(
-          (SELECT json_agg(json_build_object('id', iop.id, 'item_id', iop.produto_id, 'nome', p.nome, 'quantidade', iop.quantidade, 'preco_unitario', iop.preco_unitario))
+          (SELECT json_agg(json_build_object('id', iop.id, 'item_id', iop.produto_id, 'nome', p.nome, 'quantidade', iop.quantidade, 'preco_unitario', iop.preco_unitario, 'preco_total', iop.quantidade * iop.preco_unitario))
            FROM itens_orcamento_produto iop JOIN produtos p ON iop.produto_id = p.id WHERE iop.orcamento_id = o.id),
           '[]'::json
-        ) AS produtos
+        ) AS itens_produto,
+        (SELECT cs.nome FROM itens_orcamento_servico ios JOIN catalogo_servicos cs ON ios.servico_id = cs.id WHERE ios.orcamento_id = o.id LIMIT 1) AS servico_resumo
       FROM execucoes_servico e
       JOIN orcamentos o ON e.orcamento_id = o.id
       JOIN usuarios c ON o.cliente_id = c.id
+      LEFT JOIN usuarios mec ON e.funcionario_id = mec.id
       LEFT JOIN agendamentos a ON o.agendamento_id = a.id
       LEFT JOIN veiculos v ON a.veiculo_id = v.id
       WHERE e.id = $1
@@ -142,11 +157,21 @@ export class ExecucaoServicoModel {
     funcionario_id: string | null
   ): Promise<ExecucaoServicoDetalhadaDTO | null> {
     const db = getDb();
+    
+    let mecanicoId = funcionario_id;
+    if (!mecanicoId) {
+      const { UsuarioModel } = await import('./usuarioModel');
+      mecanicoId = await UsuarioModel.findFreeMecanico();
+      if (!mecanicoId) {
+        throw new Error('Não é possivél iniciar serviço pois todos os mecanicos estão ocupados no momento');
+      }
+    }
+
     await db.query(
       `INSERT INTO execucoes_servico (orcamento_id, funcionario_id, status, iniciado_em)
        VALUES ($1, $2, 'EM_EXECUCAO', NOW())
-       ON CONFLICT (orcamento_id) DO UPDATE SET status = 'EM_EXECUCAO', iniciado_em = NOW()`,
-      [orcamento_id, funcionario_id]
+       ON CONFLICT (orcamento_id) DO UPDATE SET status = 'EM_EXECUCAO', iniciado_em = NOW(), funcionario_id = COALESCE(execucoes_servico.funcionario_id, EXCLUDED.funcionario_id)`,
+      [orcamento_id, mecanicoId]
     );
     return ExecucaoServicoModel.findByOrcamentoId(orcamento_id);
   }

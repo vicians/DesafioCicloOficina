@@ -218,6 +218,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     _StatusCard(data: data),
                     const SizedBox(height: 10),
                     _TopServicesCard(data: data),
+                    const SizedBox(height: 10),
+                    _TopMechanicsCard(data: data),
                   ],
                 ),
               );
@@ -849,6 +851,108 @@ class _TopServicesCard extends StatelessWidget {
                     ),
                     child: Text(
                       '${svc.count}x',
+                      style: GoogleFonts.dmSans(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Top Mechanics Card ────────────────────────────────────────────────────────
+
+class _TopMechanicsCard extends StatelessWidget {
+  final ReportData data;
+  const _TopMechanicsCard({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    if (data.topMechanics.isEmpty) {
+      return AppCard(
+        child: Text(
+          'Nenhum mecânico realizou serviços neste período.',
+          style: GoogleFonts.dmSans(fontSize: 13, color: textSecondary),
+        ),
+      );
+    }
+
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Desempenho dos Mecânicos',
+            style: GoogleFonts.dmSans(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: textPrimary,
+            ),
+          ),
+          const SizedBox(height: 14),
+          ...List.generate(data.topMechanics.length, (i) {
+            final mechanic = data.topMechanics[i];
+            final isFirst = i == 0;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: isFirst ? yellowBg : dividerColor,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Center(
+                      child: Text(
+                        '${i + 1}',
+                        style: GoogleFonts.dmSans(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: isFirst ? yellow : textMuted,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          mechanic.name,
+                          style: GoogleFonts.dmSans(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: textPrimary,
+                          ),
+                        ),
+                        Text(
+                          'R\$ ${mechanic.revenue.toStringAsFixed(2).replaceAll('.', ',')}',
+                          style: GoogleFonts.dmSans(
+                              fontSize: 11, color: textSecondary),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: dividerColor,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '${mechanic.count} OS',
                       style: GoogleFonts.dmSans(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,

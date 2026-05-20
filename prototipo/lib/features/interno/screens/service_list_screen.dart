@@ -14,12 +14,14 @@ import 'internal_service_detail_screen.dart';
 class ServiceListScreen extends StatefulWidget {
   final String? initialFilter;
   final InternalFlowRepository repository;
+  final ValueNotifier<int>? refreshSignal;
   final VoidCallback? onOpenDrawer;
 
   const ServiceListScreen({
     super.key,
     required this.repository,
     this.initialFilter,
+    this.refreshSignal,
     this.onOpenDrawer,
   });
 
@@ -58,11 +60,13 @@ class _ServiceListScreenState extends State<ServiceListScreen>
     _tabCtrl.addListener(() => setState(() {}));
     _servicesFuture = widget.repository.fetchServicos();
     widget.repository.addListener(_reloadServices);
+    widget.refreshSignal?.addListener(_reloadServices);
   }
 
   @override
   void dispose() {
     widget.repository.removeListener(_reloadServices);
+    widget.refreshSignal?.removeListener(_reloadServices);
     _tabCtrl.dispose();
     super.dispose();
   }
@@ -193,12 +197,14 @@ class _ServiceListScreenState extends State<ServiceListScreen>
                     showProgress: true,
                     emptyMessage: 'Nenhum serviço ativo no momento',
                     repository: widget.repository,
+                    onRefresh: _reloadServices,
                   ),
                   _ServiceListView(
                     items: _finalizadosFrom(services),
                     showProgress: false,
                     emptyMessage: 'Nenhum serviço finalizado encontrado',
                     repository: widget.repository,
+                    onRefresh: _reloadServices,
                   ),
                 ],
               ),
@@ -385,12 +391,14 @@ class _ServiceListView extends StatelessWidget {
   final bool showProgress;
   final String emptyMessage;
   final InternalFlowRepository repository;
+  final VoidCallback onRefresh;
 
   const _ServiceListView({
     required this.items,
     required this.showProgress,
     required this.emptyMessage,
     required this.repository,
+    required this.onRefresh,
   });
 
   @override
@@ -410,14 +418,19 @@ class _ServiceListView extends StatelessWidget {
         ),
       );
     }
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: items.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 8),
-      itemBuilder: (_, i) => _ServiceCard(
-        svc: items[i],
-        showProgress: showProgress,
-        repository: repository,
+    return RefreshIndicator(
+      onRefresh: () async => onRefresh(),
+      color: orange,
+      child: ListView.separated(
+        padding: const EdgeInsets.all(16),
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: items.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 8),
+        itemBuilder: (_, i) => _ServiceCard(
+          svc: items[i],
+          showProgress: showProgress,
+          repository: repository,
+        ),
       ),
     );
   }

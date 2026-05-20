@@ -123,7 +123,7 @@ class InternalService {
       plate: json['veiculo_placa'] as String? ?? '---',
       service: servicoName,
       status: currentStatus,
-      mechanic: json['oficina_nome'] as String? ?? 'Tião Oficina Mecânica',
+      mechanic: json['funcionario_nome'] as String? ?? 'Não atribuído',
       time: formattedTime,
       value: ((json['valor_total'] as num?)?.toDouble() ?? 0) / 100.0,
       progress: progressVal,

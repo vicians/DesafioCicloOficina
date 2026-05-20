@@ -13,6 +13,7 @@ class ScheduledServicesScreen extends StatefulWidget {
   final SchedulingRepository repository;
   final InternalFlowRepository? budgetRepository;
   final ValueNotifier<int>? refreshSignal;
+  final ValueNotifier<int>? servicesRefreshSignal;
   final VoidCallback? onOpenDrawer;
   final VoidCallback? onOpenServices;
   final VoidCallback? onOpenBudgets;
@@ -22,6 +23,7 @@ class ScheduledServicesScreen extends StatefulWidget {
     required this.repository,
     this.budgetRepository,
     this.refreshSignal,
+    this.servicesRefreshSignal,
     this.onOpenDrawer,
     this.onOpenServices,
     this.onOpenBudgets,
@@ -63,7 +65,7 @@ class _ScheduledServicesScreenState extends State<ScheduledServicesScreen> {
 
   List<ScheduledServiceItem> _applyFilters(List<ScheduledServiceItem> src) {
     final q = _search.trim().toLowerCase();
-    return src.where((item) {
+    final result = src.where((item) {
       final matchStatus = _statusFilter == 'todos' ||
           item.status.toLowerCase() == _statusFilter;
       if (!matchStatus) return false;
@@ -72,6 +74,18 @@ class _ScheduledServicesScreenState extends State<ScheduledServicesScreen> {
           item.veiculoDescricao.toLowerCase().contains(q) ||
           item.placa.toLowerCase().contains(q);
     }).toList();
+
+    // Abertos (pendente/confirmado/aprovado) vêm antes dos cancelados.
+    // Dentro de cada grupo, ordena por agendadoPara asc (mais próximo primeiro).
+    const openStatuses = {'pendente', 'confirmado', 'aprovado'};
+    result.sort((a, b) {
+      final aOpen = openStatuses.contains(a.status.toLowerCase());
+      final bOpen = openStatuses.contains(b.status.toLowerCase());
+      if (aOpen != bOpen) return aOpen ? -1 : 1;
+      return a.agendadoPara.compareTo(b.agendadoPara);
+    });
+
+    return result;
   }
 
   int _countByStatus(List<ScheduledServiceItem> all, String status) =>
@@ -84,6 +98,8 @@ class _ScheduledServicesScreenState extends State<ScheduledServicesScreen> {
       final serviceId = await widget.repository.confirmScheduleToService(
         schedule: item,
       );
+      widget.refreshSignal?.value++;
+      widget.servicesRefreshSignal?.value++;
       await _reload();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -95,9 +111,16 @@ class _ScheduledServicesScreenState extends State<ScheduledServicesScreen> {
       ));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Falha ao confirmar recebimento: $e')),
-      );
+      final msg = e.toString().replaceAll('Exception: ', '');
+      if (msg.contains('mecanicos estão ocupados')) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: Colors.orange),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Falha ao confirmar recebimento: $msg')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _confirmingReceipt = false);
     }
@@ -601,8 +624,18 @@ class _ScheduledCard extends StatelessWidget {
                 _ActionButton(
                   icon: Icons.check_circle_outline_rounded,
                   label: 'Concluir e abrir OS',
-                  onTap: onConfirmReceipt,
+                  onTap: (item.orcamentoTemItens || item.orcamentoStatus?.toLowerCase() == 'aprovado') 
+                      ? onConfirmReceipt 
+                      : () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Agendamentos para análise precisam de itens e aprovação antes de iniciar.'),
+                              backgroundColor: orange,
+                            ),
+                          );
+                        },
                   outlined: false,
+                  disabled: !item.orcamentoTemItens && item.orcamentoStatus?.toLowerCase() != 'aprovado',
                 ),
               ],
             ),
@@ -647,41 +680,49 @@ class _ActionButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   final bool outlined;
+  final bool disabled;
 
   const _ActionButton({
     required this.icon,
     required this.label,
     required this.onTap,
     required this.outlined,
+    this.disabled = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final bgColor = outlined
+        ? Colors.transparent
+        : (disabled ? borderColor : navyDark);
+    final contentColor = outlined
+        ? textSecondary
+        : (disabled ? textMuted : Colors.white);
+    final bordColor = outlined ? borderColor : (disabled ? borderColor : navyDark);
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 9),
         decoration: BoxDecoration(
-          color: outlined ? Colors.transparent : navyDark,
+          color: bgColor,
           borderRadius: BorderRadius.circular(30),
           border: Border.all(
-            color: outlined ? borderColor : navyDark,
+            color: bordColor,
             width: 1.5,
           ),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon,
-                size: 15,
-                color: outlined ? textSecondary : Colors.white),
+            Icon(icon, size: 15, color: contentColor),
             const SizedBox(width: 6),
             Text(
               label,
               style: GoogleFonts.dmSans(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: outlined ? textSecondary : Colors.white,
+                color: contentColor,
               ),
             ),
           ],

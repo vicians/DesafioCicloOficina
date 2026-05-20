@@ -4,6 +4,8 @@ import type { ExecucaoServicoDTO } from '../../../shared/dtos/execucaoServicoDto
 import type { OrcamentoDTO } from '../../../shared/dtos/orcamentoDto';
 
 export class AgendamentoModel {
+  private static readonly WORKSHOP_TIMEZONE = 'America/Sao_Paulo';
+
   static async findAll(): Promise<any[]> {
     const db = getDb();
     const query = `
@@ -17,6 +19,14 @@ export class AgendamentoModel {
           JOIN execucoes_servico e ON e.orcamento_id = o.id
           WHERE o.agendamento_id = a.id
         ) AS possui_execucao,
+        (SELECT o.status FROM orcamentos o WHERE o.agendamento_id = a.id LIMIT 1) AS orcamento_status,
+        (
+          SELECT EXISTS (SELECT 1 FROM itens_orcamento_servico ios WHERE ios.orcamento_id = o2.id) OR
+                 EXISTS (SELECT 1 FROM itens_orcamento_produto iop WHERE iop.orcamento_id = o2.id)
+          FROM orcamentos o2 
+          WHERE o2.agendamento_id = a.id 
+          LIMIT 1
+        ) AS orcamento_tem_itens,
         (SELECT nome FROM oficinas ORDER BY criado_em ASC LIMIT 1) AS oficina_nome,
         v.marca AS veiculo_marca,
         v.modelo AS veiculo_modelo,
@@ -149,15 +159,13 @@ export class AgendamentoModel {
     duracaoMinutos: number
   ): Promise<{ inicio: Date; fim: Date }> {
     const db = getDb();
-    const tzResult = await db.query(`SHOW timezone`);
-    const tz: string = tzResult.rows[0]?.TimeZone ?? 'America/Sao_Paulo';
 
     const result = await db.query(
       `SELECT
          ($1::date + ($2::int || ':00:00')::time) AT TIME ZONE $3 AS inicio,
          ($1::date + ($2::int || ':00:00')::time) AT TIME ZONE $3
            + ($4::int * interval '1 minute') AS fim`,
-      [dataIso, hora, tz, duracaoMinutos]
+      [dataIso, hora, AgendamentoModel.WORKSHOP_TIMEZONE, duracaoMinutos]
     );
 
     return {
@@ -168,9 +176,6 @@ export class AgendamentoModel {
 
   static async findUnavailableHoursByDate(dataIso: string): Promise<number[]> {
     const db = getDb();
-
-    const tzResult = await db.query(`SHOW timezone`);
-    const tz: string = tzResult.rows[0]?.TimeZone ?? 'America/Sao_Paulo';
 
     const [quantidadeBoxesResult, slotsResult] = await Promise.all([
       db.query(`SELECT quantidade_boxes FROM oficinas LIMIT 1`),
@@ -188,7 +193,7 @@ export class AgendamentoModel {
           AND a.fim_estimado_em > slot_inicio
          GROUP BY slot_inicio
          ORDER BY slot_inicio`,
-        [dataIso, tz]
+        [dataIso, AgendamentoModel.WORKSHOP_TIMEZONE]
       ),
     ]);
 
@@ -228,7 +233,7 @@ export class AgendamentoModel {
     return result.rows[0];
   }
 
-  static async createWithApprovedInitialBudget(
+  static async createWithInitialBudget(
     data: {
       cliente_id: string;
       veiculo_id: string;
@@ -237,11 +242,12 @@ export class AgendamentoModel {
       fim: Date;
       duracao_total_minutos: number;
       notas_cliente?: string;
+      status?: string;
     }
   ): Promise<{ agendamento: AgendamentoDTO; orcamento: OrcamentoDTO }> {
     const db = getDb();
     const client = await db.connect();
-    const { cliente_id, veiculo_id, funcionario_id, inicio, fim, duracao_total_minutos, notas_cliente } = data;
+    const { cliente_id, veiculo_id, funcionario_id, inicio, fim, duracao_total_minutos, notas_cliente, status } = data;
 
     try {
       await client.query('BEGIN');
@@ -257,9 +263,9 @@ export class AgendamentoModel {
 
       const orcamentoResult = await client.query(
         `INSERT INTO orcamentos (agendamento_id, cliente_id, funcionario_id, status, valor_total, valido_ate)
-         VALUES ($1, $2, $3, 'APROVADO', 0, NOW() + INTERVAL '7 days')
+         VALUES ($1, $2, $3, $4, 0, NOW() + INTERVAL '7 days')
          RETURNING *`,
-        [agendamento.id, cliente_id, funcionario_id ?? null]
+        [agendamento.id, cliente_id, funcionario_id ?? null, status ?? 'RASCUNHO']
       );
 
       await client.query('COMMIT');
@@ -291,22 +297,32 @@ export class AgendamentoModel {
    */
   static async iniciarExecucao(
     orcamento_id: string,
-    funcionario_id: string
+    funcionario_id?: string | null
   ): Promise<ExecucaoServicoDTO> {
     const db = getDb();
+
+    let mecanicoId = funcionario_id;
+    if (!mecanicoId) {
+      const { UsuarioModel } = await import('./usuarioModel');
+      mecanicoId = await UsuarioModel.findFreeMecanico();
+      if (!mecanicoId) {
+        throw new Error('Não é possivél iniciar serviço pois todos os mecanicos estão ocupados no momento');
+      }
+    }
 
     // Garante idempotência: upsert via ON CONFLICT na constraint UNIQUE de orcamento_id
     const result = await db.query(
       `INSERT INTO execucoes_servico (orcamento_id, funcionario_id, status, iniciado_em)
        VALUES ($1, $2, 'EM_EXECUCAO', NOW())
        ON CONFLICT (orcamento_id)
-       DO UPDATE SET funcionario_id = EXCLUDED.funcionario_id,
+       DO UPDATE SET funcionario_id = COALESCE(execucoes_servico.funcionario_id, EXCLUDED.funcionario_id),
                      status = 'EM_EXECUCAO',
                      iniciado_em = NOW()
        RETURNING *`,
-      [orcamento_id, funcionario_id]
+      [orcamento_id, mecanicoId]
     );
     return result.rows[0];
   }
 }
+
 

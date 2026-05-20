@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../theme/colors.dart';
 
 /// Botão flutuante de acesso rápido (Speed Dial).
@@ -117,9 +118,16 @@ class _QuickActionFabState extends State<QuickActionFab>
                     key: const Key('fab_support'),
                     icon: Icons.chat_bubble_outline_rounded,
                     label: 'Falar com suporte',
-                    onTap: () {
+                    onTap: () async {
                       _toggle();
-                      _triggerAction(context, 'Suporte em breve disponível');
+                      final Uri url = Uri.parse('https://wa.me/5532984895095');
+                      try {
+                        await launchUrl(url, mode: LaunchMode.externalApplication);
+                      } catch (e) {
+                        if (context.mounted) {
+                          _triggerAction(context, 'Não foi possível abrir o WhatsApp');
+                        }
+                      }
                     },
                   ),
                   const SizedBox(height: 14),

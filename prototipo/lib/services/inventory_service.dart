@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../core/api/api_helper.dart';
 import '../core/config/api_config.dart';
 import '../data/mock_data.dart';
 
@@ -14,7 +15,7 @@ class InventoryService {
   /// Busca todos os produtos do backend
   static Future<List<PartItem>> getProducts() async {
     try {
-      final res = await http.get(Uri.parse('$_backendUrl/produtos')).timeout(_timeout);
+      final res = await ApiHelper.get('$_backendUrl/produtos');
       if (res.statusCode == 200) {
         final List<dynamic> data = jsonDecode(res.body);
         return data.map((json) {
@@ -41,7 +42,7 @@ class InventoryService {
   /// Deleta um produto do backend
   static Future<bool> deleteProduct(String id) async {
     try {
-      final res = await http.delete(Uri.parse('$_backendUrl/produtos/$id')).timeout(_timeout);
+      final res = await ApiHelper.delete('$_backendUrl/produtos/$id');
       return res.statusCode == 204;
     } catch (_) {
       return false;
@@ -60,20 +61,17 @@ class InventoryService {
     String? unit,
   }) async {
     try {
-      final response = await http
-          .patch(
-            Uri.parse('$_backendUrl/produtos/$id'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'nome': nome,
-              'categoria': categoria,
-              'quantidade_estoque': quantidade,
-              'min_estoque': min,
-              'unidade': unit,
-              'valor': (preco * 100).toInt(),
-            }),
-          )
-          .timeout(_timeout);
+      final response = await ApiHelper.patch(
+        '$_backendUrl/produtos/$id',
+        {
+          'nome': nome,
+          'categoria': categoria,
+          'quantidade_estoque': quantidade,
+          'min_estoque': min,
+          'unidade': unit,
+          'valor': (preco * 100).toInt(),
+        },
+      );
       // O backend chama o ai_service internamente após salvar.
       // Se o backend estiver offline, tenta sincronizar direto com o ai_service.
       if (response.statusCode == 200) return true;
@@ -115,13 +113,10 @@ class InventoryService {
       };
       if (marca != null) body['marca'] = marca;
 
-      final response = await http
-          .post(
-            Uri.parse('$_backendUrl/produtos'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(body),
-          )
-          .timeout(_timeout);
+      final response = await ApiHelper.post(
+        '$_backendUrl/produtos',
+        body,
+      );
       return response.statusCode == 201;
     } catch (_) {
       return false;
