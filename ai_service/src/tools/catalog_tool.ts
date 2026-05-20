@@ -14,7 +14,7 @@ export const catalogTool = new DynamicStructuredTool({
   description: "Consulta o catálogo de produtos, serviços e manuais técnicos da Oficina do Tião. Use para buscar preços, disponibilidade e informações técnicas automotivas.",
   schema: z.object({
     query: z.string().describe("O termo de busca ou pergunta do usuário em linguagem natural."),
-    category: z.enum(['all', 'products', 'services', 'manuals']).default('all').describe("Categoria específica de busca (opcional).")
+    category: z.enum(['products', 'services', 'manuals']).describe("Categoria de busca. OBRIGATÓRIO escolher especificamente a categoria correta: 'products' para peças/estoque/óleos/pneus, 'services' para serviços/procedimentos/mão de obra ou 'manuals' para normas/políticas/especificações técnicas da oficina.")
   }),
   func: async ({ query, category }) => {
     try {
@@ -23,15 +23,15 @@ export const catalogTool = new DynamicStructuredTool({
       // Execução paralela das buscas para performance
       const searchTasks: Promise<any>[] = [];
 
-      if (category === 'all' || category === 'products') {
+      if (category === 'products') {
         searchTasks.push(queryProdutos(query).then(res => res.length > 0 ? `📦 PRODUTOS:\n${res.join('\n')}` : null));
       }
 
-      if (category === 'all' || category === 'services') {
+      if (category === 'services') {
         searchTasks.push(queryServicos(query).then(res => res.length > 0 ? `🛠️ SERVIÇOS:\n${res.join('\n')}` : null));
       }
 
-      if (category === 'all' || category === 'manuals') {
+      if (category === 'manuals') {
         searchTasks.push(queryDocuments(query).then(res => res.length > 0 ? `📄 MANUAIS/POLÍTICAS:\n${res.map(d => `- ${d.content}`).join('\n')}` : null));
       }
 
