@@ -23,7 +23,6 @@ type PersistedOsConfirmation = {
   agendamento_id: string;
   orcamento_id: string;
   agendado_para: Date | string;
-  magic_link_url: string;
 };
 
 const trackMessageId = (messageId: string): boolean => {
@@ -66,20 +65,7 @@ const isCustomerFacingFailure = (value: unknown): boolean => {
   );
 };
 
-const createMagicLinkForCustomer = async (clienteId: string): Promise<string> => {
-  const db = getDb();
-  const token = crypto.randomBytes(32).toString('hex');
-  const expiresAt = new Date(Date.now() + MAGIC_LINK_TTL_HOURS * 60 * 60 * 1000);
 
-  await db.query(
-    `INSERT INTO magic_links (usuario_id, token, expires_at)
-     VALUES ($1, $2, $3)`,
-    [clienteId, token, expiresAt]
-  );
-
-  const baseUrl = `${process.env.BASE_URL ?? ''}${process.env.API_PORT ?? ''}`;
-  return `${baseUrl}/auth/magic-link/${token}`;
-};
 
 const findRecentlyPersistedOs = async (
   clienteId: string,
@@ -120,7 +106,6 @@ const findRecentlyPersistedOs = async (
     agendamento_id: row.agendamento_id,
     orcamento_id: row.orcamento_id,
     agendado_para: row.agendado_para,
-    magic_link_url: await createMagicLinkForCustomer(clienteId),
   };
 };
 
@@ -130,7 +115,7 @@ const buildRecoveredOsMessage = (os: PersistedOsConfirmation): string => {
     ? ''
     : ` para ${appointmentDate.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`;
 
-  return `Agendamento e orçamento criados com sucesso${dateText}.\n\nAcompanhe seu serviço por aqui: ${os.magic_link_url}`;
+  return `Agendamento e orçamento criados com sucesso${dateText}.`;
 };
 
 const recoverPersistedOsMessage = async (
@@ -265,15 +250,7 @@ const processBufferedMessages = async (
         await ConversationModel.addMessage(conversacaoId, clienteId, 'bot', replyText);
       }
 
-      if (!recoveredMsg) {
-        const magicLinkUrl = aiResponse.data.magic_link_url;
-        if (magicLinkUrl) {
-          await sendWhatsAppMessage(customerNumber, magicLinkUrl);
-          if (conversacaoId) {
-            await ConversationModel.addMessage(conversacaoId, clienteId, 'bot', magicLinkUrl);
-          }
-        }
-      }
+      // O magic link não é mais gerado ou enviado
 
     } else if (action === 'CREATE_OS') {
       console.log(`[Webhook] Solicitando criação de OS para ${customerNumber}...`);
@@ -283,18 +260,11 @@ const processBufferedMessages = async (
         const osResponse = await axios.post(`${AI_SERVICE_URL}/ai/create-os`, demand, {
           headers: { 'X-Internal-Token': process.env.INTERNAL_AUTH_TOKEN }
         });
-        const { message: osMsg, magic_link_url: magicLinkUrl } = osResponse.data;
+        const { message: osMsg } = osResponse.data;
 
         await sendWhatsAppMessage(customerNumber, osMsg);
         if (conversacaoId) {
           await ConversationModel.addMessage(conversacaoId, clienteId, 'bot', osMsg);
-        }
-
-        if (magicLinkUrl) {
-          await sendWhatsAppMessage(customerNumber, magicLinkUrl);
-          if (conversacaoId) {
-            await ConversationModel.addMessage(conversacaoId, clienteId, 'bot', magicLinkUrl);
-          }
         }
       } catch (osErr: any) {
         console.error('[Webhook] Erro ao criar OS no ai_service:', osErr.response?.data ?? osErr.message);
@@ -377,9 +347,6 @@ export const handleMessage = async (req: Request, res: Response) => {
   const customerText: string = message.text.body;
   const customerNumber: string = message.from;
 
-  let is_ai_done = false;
-  let processando_timeout: ReturnType<typeof setTimeout> | undefined;
-
   try {
     console.log(`[Webhook] Recebido de ${customerNumber}: ${customerText}`);
 
@@ -403,7 +370,7 @@ export const handleMessage = async (req: Request, res: Response) => {
     const conversacaoId: string = conversacao.id;
     const iaPausada = conversacao.ia_pausada;
 
-    // Guaranteed Persistence: Salva a mensagem recebida do cliente antes do processamento da IA
+    // Guaranteed Persistence: Salva a mensagem recebida do cliente
     await ConversationModel.addMessage(conversacaoId, cliente.id, 'client', customerText);
 
     if (iaPausada) {
@@ -411,58 +378,24 @@ export const handleMessage = async (req: Request, res: Response) => {
       return res.sendStatus(200);
     }
 
-    // Envia o indicador visual de digitação nativo imediatamente se a IA não estiver pausada
+    // Envia o indicador visual de digitação nativo
     if (message_id) {
       send_whatsapp_typing(message_id).catch((err) => {
         console.error('[Webhook] Falha ao acionar indicador de digitação:', err.message);
       });
     }
 
-    // 1. Timeout de Fallback: Envia mensagem física se a resposta da IA demorar mais de 25 segundos
-    processando_timeout = setTimeout(async () => {
-      if (!is_ai_done && !iaPausada) {
-        await sendWhatsAppMessage(customerNumber, "Estou processando sua solicitação, só um instante... ⚙️");
-      }
-    }, 25000);
-
-    const aiResponse = await axios.post(`${AI_SERVICE_URL}/ai/analyze`, {
-      message: customerText,
-      number: customerNumber,
-      conversacaoId,
-    });
-
-    is_ai_done = true;
-    if (processando_timeout) clearTimeout(processando_timeout);
-
-    const { action, result, demand } = aiResponse.data;
-
-    // 2. Trata a ação decidida pela IA
-    if (action === 'REPLY') {
-      // Resposta direta do Bot (Pistão)
-      await sendWhatsAppMessage(customerNumber, result);
-      
-      if (conversacaoId) {
-        await ConversationModel.addMessage(conversacaoId, cliente.id, 'bot', result);
-      }
-
-    } else if (action === 'CREATE_OS') {
-      console.log(`[Webhook] Solicitando criação de OS para ${customerNumber}...`);
-
-      try {
-        // Chama a criação de Ordem de Serviço
-        const osResponse = await axios.post(`${AI_SERVICE_URL}/ai/create-os`, demand);
-        const { message: osMsg, magic_link_url } = osResponse.data;
-    // Buffer the message
+    // --- Lógica de Buffer (Debounce) ---
     if (!messageBuffer.has(customerNumber)) {
       messageBuffer.set(customerNumber, []);
     }
     messageBuffer.get(customerNumber)!.push(customerText);
 
-    // Debounce timer
     if (debounceTimers.has(customerNumber)) {
       clearTimeout(debounceTimers.get(customerNumber)!);
     }
 
+    // Aguarda 4.5s após a última mensagem do cliente para processar o lote
     const timer = setTimeout(() => {
       processBufferedMessages(customerNumber, conversacaoId, cliente.id, requestStartedAt, message_id);
     }, 4500);
@@ -470,9 +403,7 @@ export const handleMessage = async (req: Request, res: Response) => {
     debounceTimers.set(customerNumber, timer);
 
   } catch (error: any) {
-    is_ai_done = true;
-    if (processando_timeout) clearTimeout(processando_timeout);
-    console.error('[Webhook] Erro na comunicação com AI_SERVICE:', error.message);
+    console.error('[Webhook] Erro no fluxo de recebimento (handleMessage):', error.message);
   }
 
   // Sempre retorna 200 para a Meta não reenviar a mesma mensagem
