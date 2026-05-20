@@ -143,7 +143,6 @@ type AppointmentToolSuccess = {
   agendamento_id: string;
   orcamento_id: string;
   agendado_para?: string;
-  magic_link_url?: string | null;
   message?: string;
 };
 
@@ -228,8 +227,6 @@ function normalizeAssistantReply(content: string, fallbackAppointment?: Appointm
 export async function analyzeMessage(message: string, number: string, conversacaoId?: string) {
   console.log(`\n[AI Service] 📩 Requisição recebida de: ${number}`);
   console.log(`[AI Service] 💬 Mensagem: "${message}"`);
-
-  let magicLinkUrl: string | undefined = undefined;
 
   const customer = await prisma.usuarios.findUnique({
     where: { telefone: number },
@@ -377,9 +374,6 @@ export async function analyzeMessage(message: string, number: string, conversaca
 
         if (toolCall.name === 'create_appointment' && isAppointmentToolSuccess(parsedToolResult)) {
           lastSuccessfulAppointment = parsedToolResult;
-          if (typeof parsedToolResult.magic_link_url === 'string') {
-            magicLinkUrl = parsedToolResult.magic_link_url;
-          }
         }
         messages.push(new ToolMessage({
           tool_call_id: toolCallId,
@@ -405,6 +399,5 @@ export async function analyzeMessage(message: string, number: string, conversaca
   return {
     result: finalContent,
     action: 'REPLY',
-    magic_link_url: magicLinkUrl
   };
 }

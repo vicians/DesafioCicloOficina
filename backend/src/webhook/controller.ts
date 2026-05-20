@@ -23,7 +23,6 @@ type PersistedOsConfirmation = {
   agendamento_id: string;
   orcamento_id: string;
   agendado_para: Date | string;
-  magic_link_url: string;
 };
 
 const trackMessageId = (messageId: string): boolean => {
@@ -66,20 +65,7 @@ const isCustomerFacingFailure = (value: unknown): boolean => {
   );
 };
 
-const createMagicLinkForCustomer = async (clienteId: string): Promise<string> => {
-  const db = getDb();
-  const token = crypto.randomBytes(32).toString('hex');
-  const expiresAt = new Date(Date.now() + MAGIC_LINK_TTL_HOURS * 60 * 60 * 1000);
 
-  await db.query(
-    `INSERT INTO magic_links (usuario_id, token, expires_at)
-     VALUES ($1, $2, $3)`,
-    [clienteId, token, expiresAt]
-  );
-
-  const baseUrl = `${process.env.BASE_URL ?? ''}${process.env.API_PORT ?? ''}`;
-  return `${baseUrl}/auth/magic-link/${token}`;
-};
 
 const findRecentlyPersistedOs = async (
   clienteId: string,
@@ -120,7 +106,6 @@ const findRecentlyPersistedOs = async (
     agendamento_id: row.agendamento_id,
     orcamento_id: row.orcamento_id,
     agendado_para: row.agendado_para,
-    magic_link_url: await createMagicLinkForCustomer(clienteId),
   };
 };
 
@@ -130,7 +115,7 @@ const buildRecoveredOsMessage = (os: PersistedOsConfirmation): string => {
     ? ''
     : ` para ${appointmentDate.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`;
 
-  return `Agendamento e orçamento criados com sucesso${dateText}.\n\nAcompanhe seu serviço por aqui: ${os.magic_link_url}`;
+  return `Agendamento e orçamento criados com sucesso${dateText}.`;
 };
 
 const recoverPersistedOsMessage = async (
@@ -265,15 +250,7 @@ const processBufferedMessages = async (
         await ConversationModel.addMessage(conversacaoId, clienteId, 'bot', replyText);
       }
 
-      if (!recoveredMsg) {
-        const magicLinkUrl = aiResponse.data.magic_link_url;
-        if (magicLinkUrl) {
-          await sendWhatsAppMessage(customerNumber, magicLinkUrl);
-          if (conversacaoId) {
-            await ConversationModel.addMessage(conversacaoId, clienteId, 'bot', magicLinkUrl);
-          }
-        }
-      }
+      // O magic link não é mais gerado ou enviado
 
     } else if (action === 'CREATE_OS') {
       console.log(`[Webhook] Solicitando criação de OS para ${customerNumber}...`);
@@ -283,18 +260,11 @@ const processBufferedMessages = async (
         const osResponse = await axios.post(`${AI_SERVICE_URL}/ai/create-os`, demand, {
           headers: { 'X-Internal-Token': process.env.INTERNAL_AUTH_TOKEN }
         });
-        const { message: osMsg, magic_link_url: magicLinkUrl } = osResponse.data;
+        const { message: osMsg } = osResponse.data;
 
         await sendWhatsAppMessage(customerNumber, osMsg);
         if (conversacaoId) {
           await ConversationModel.addMessage(conversacaoId, clienteId, 'bot', osMsg);
-        }
-
-        if (magicLinkUrl) {
-          await sendWhatsAppMessage(customerNumber, magicLinkUrl);
-          if (conversacaoId) {
-            await ConversationModel.addMessage(conversacaoId, clienteId, 'bot', magicLinkUrl);
-          }
         }
       } catch (osErr: any) {
         console.error('[Webhook] Erro ao criar OS no ai_service:', osErr.response?.data ?? osErr.message);

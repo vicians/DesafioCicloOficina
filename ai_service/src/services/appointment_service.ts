@@ -24,7 +24,6 @@ type OsWorkflowResult = {
   orcamento_id: string;
   mechanic: { id: string | null; nome: string };
   agendado_para: string;
-  magic_link_url: string | null;
   message: string;
   recovered?: boolean;
 };
@@ -69,7 +68,6 @@ function buildOsWorkflowResult(params: {
   mecanicoId: string | null;
   mecanicoNome: string;
   agendadoPara: Date;
-  magicLinkUrl: string | null;
   recovered?: boolean;
 }): OsWorkflowResult {
   return {
@@ -77,23 +75,12 @@ function buildOsWorkflowResult(params: {
     orcamento_id: params.orcamentoId,
     mechanic: { id: params.mecanicoId, nome: params.mecanicoNome },
     agendado_para: params.agendadoPara.toISOString(),
-    magic_link_url: params.magicLinkUrl,
-    message: params.magicLinkUrl
-      ? `Agendamento e Orçamento criados com sucesso! Acesse pelo link: ${params.magicLinkUrl}`
-      : 'Agendamento criado! Entre em contato para detalhes do orçamento.',
+    message: 'Agendamento criado! Entre em contato para detalhes do orçamento.',
     recovered: params.recovered,
   };
 }
 
-async function createMagicLinkForPhone(telefone: string): Promise<string | null> {
-  try {
-    const mlRes = await axios.post(`${BACKEND_URL}/auth/magic-link`, { telefone });
-    return mlRes.data.url ?? null;
-  } catch (err: any) {
-    console.warn('[OS] Aviso: não foi possível gerar magic link:', extractBackendErrorMessage(err));
-    return null;
-  }
-}
+
 
 async function findBudgetByAppointmentId(
   agendamentoId: string,
@@ -228,7 +215,6 @@ export async function recoverRecentOsWorkflow(
       const agendadoPara = new Date(agendamento.agendado_para);
       if (Number.isNaN(agendadoPara.getTime())) continue;
 
-      const magicLinkUrl = await createMagicLinkForPhone(cliente.telefone ?? body.number);
       console.warn(`[OS] Fluxo recuperado após erro: agendamento ${agendamento.id}, orçamento ${orcamentoId}`);
 
       return buildOsWorkflowResult({
@@ -237,7 +223,6 @@ export async function recoverRecentOsWorkflow(
         mecanicoId: agendamento.funcionario_id ?? null,
         mecanicoNome: agendamento.funcionario_id ? 'Responsável atribuído' : 'A definir',
         agendadoPara,
-        magicLinkUrl,
         recovered: true,
       });
     }
@@ -397,24 +382,12 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
     }
   }
 
-  // ── 7. Gerar magic link ────────────────────────────────────────────────────
-  let magicLinkUrl: string | null = null;
-  try {
-    const mlRes = await axios.post(`${BACKEND_URL}/auth/magic-link`, {
-      telefone: clienteTelefone,
-    });
-    magicLinkUrl = mlRes.data.url;
-  } catch (err) { }
-
   return {
     agendamento_id: agendamentoId,
     orcamento_id: orcamentoId,
     mechanic: { id: mecanicoId, nome: mecanicoNome },
     agendado_para: agendadoPara.toISOString(),
-    magic_link_url: magicLinkUrl,
-    message: magicLinkUrl
-      ? 'Agendamento e Orçamento criados com sucesso!'
-      : 'Agendamento criado! Entre em contato para detalhes do orçamento.',
+    message: 'Agendamento e Orçamento criados com sucesso!',
   };
 }
 
