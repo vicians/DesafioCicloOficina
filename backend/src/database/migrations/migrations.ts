@@ -14,6 +14,17 @@ export const runMigrations = async () => {
   // Adicionar a extensão para gerar UUID se não existir
   await db.query(`CREATE EXTENSION IF NOT EXISTS "pgcrypto";`);
 
+  try {
+    await db.query(`CREATE EXTENSION IF NOT EXISTS vector;`);
+  } catch (error: any) {
+    console.error('\x1b[31m%s\x1b[0m', 'ERRO CRÍTICO: Não foi possível habilitar a extensão "vector" no PostgreSQL.');
+    console.error('\x1b[33m%s\x1b[0m', 'A extensão "pgvector" é obrigatória para o funcionamento dos serviços de IA/Embeddings.');
+    console.error('\x1b[33m%s\x1b[0m', 'Por favor, certifique-se de ter instalado o pgvector no seu PostgreSQL.');
+    console.error('\x1b[33m%s\x1b[0m', 'Guia de instalação: https://github.com/pgvector/pgvector');
+    console.error('Detalhe do erro original:', error.message || error);
+    throw new Error('pgvector não instalado no servidor PostgreSQL');
+  }
+
   // ========================================
   // TABELA: oficinas
   // ========================================
@@ -176,8 +187,13 @@ export const runMigrations = async () => {
       orcamento_id UUID NOT NULL REFERENCES orcamentos(id) ON DELETE CASCADE,
       servico_id UUID NOT NULL REFERENCES catalogo_servicos(id) ON DELETE RESTRICT,
       quantidade INTEGER NOT NULL DEFAULT 1,
-      preco_unitario INTEGER NOT NULL
+      preco_unitario INTEGER NOT NULL,
+      em_revisao BOOLEAN DEFAULT false
     )
+  `);
+
+  await db.query(`
+    ALTER TABLE itens_orcamento_servico ADD COLUMN IF NOT EXISTS em_revisao BOOLEAN DEFAULT false
   `);
 
   // ========================================
@@ -189,8 +205,13 @@ export const runMigrations = async () => {
       orcamento_id UUID NOT NULL REFERENCES orcamentos(id) ON DELETE CASCADE,
       produto_id UUID NOT NULL REFERENCES produtos(id) ON DELETE RESTRICT,
       quantidade INTEGER NOT NULL,
-      preco_unitario INTEGER NOT NULL
+      preco_unitario INTEGER NOT NULL,
+      em_revisao BOOLEAN DEFAULT false
     )
+  `);
+
+  await db.query(`
+    ALTER TABLE itens_orcamento_produto ADD COLUMN IF NOT EXISTS em_revisao BOOLEAN DEFAULT false
   `);
 
   // ========================================
@@ -325,6 +346,107 @@ export const runMigrations = async () => {
   await db.query(`ALTER TABLE produtos ADD COLUMN IF NOT EXISTS categoria VARCHAR`);
   await db.query(`ALTER TABLE produtos ADD COLUMN IF NOT EXISTS min_estoque INTEGER DEFAULT 10`);
   await db.query(`ALTER TABLE produtos ADD COLUMN IF NOT EXISTS unidade VARCHAR DEFAULT 'unid.'`);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS produto_embeddings (
+      id UUID PRIMARY KEY,
+      content TEXT NOT NULL,
+      embedding vector(2048),
+      metadata JSONB NOT NULL
+    )
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS servico_embeddings (
+      id UUID PRIMARY KEY,
+      content TEXT NOT NULL,
+      embedding vector(2048),
+      metadata JSONB NOT NULL
+    )
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS document_embeddings (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      content TEXT NOT NULL,
+      embedding vector(2048),
+      metadata JSONB NOT NULL,
+      source VARCHAR NOT NULL,
+      category VARCHAR NOT NULL
+    )
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS agendamento_embeddings (
+      id UUID PRIMARY KEY,
+      content TEXT NOT NULL,
+      embedding vector(2048),
+      metadata JSONB NOT NULL
+    )
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS orcamento_embeddings (
+      id UUID PRIMARY KEY,
+      content TEXT NOT NULL,
+      embedding vector(2048),
+      metadata JSONB NOT NULL
+    )
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS execucao_servico_embeddings (
+      id UUID PRIMARY KEY,
+      content TEXT NOT NULL,
+      embedding vector(2048),
+      metadata JSONB NOT NULL
+    )
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS mensagem_chat_embeddings (
+      id UUID PRIMARY KEY,
+      content TEXT NOT NULL,
+      embedding vector(2048),
+      metadata JSONB NOT NULL
+    )
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS conversacao_chat_embeddings (
+      id UUID PRIMARY KEY,
+      content TEXT NOT NULL,
+      embedding vector(2048),
+      metadata JSONB NOT NULL
+    )
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS usuario_embeddings (
+      id UUID PRIMARY KEY,
+      content TEXT NOT NULL,
+      embedding vector(2048),
+      metadata JSONB NOT NULL
+    )
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS oficina_embeddings (
+      id UUID PRIMARY KEY,
+      content TEXT NOT NULL,
+      embedding vector(2048),
+      metadata JSONB NOT NULL
+    )
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS veiculo_embeddings (
+      id UUID PRIMARY KEY,
+      content TEXT NOT NULL,
+      embedding vector(2048),
+      metadata JSONB NOT NULL
+    )
+  `);
 
   console.log('Migrations concluídas com sucesso!');
 };

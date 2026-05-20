@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/colors.dart';
@@ -22,6 +23,7 @@ import 'screens/login_screen.dart';
 import 'screens/internal_messages_screen.dart';
 import 'screens/catalog_services_screen.dart';
 import 'screens/users_screen.dart';
+import 'screens/workshop_settings_screen.dart';
 import '../../core/config/api_config.dart';
 import '../shared/models/notification_item.dart';
 import '../../services/firebase_messaging_service.dart';
@@ -46,6 +48,7 @@ class _InternoAppState extends State<InternoApp> {
   final _servicesRefresh = ValueNotifier<int>(0);
   bool _drawerOpen = false;
   bool _showLogoutConfirm = false;
+  Timer? _autoRefreshTimer;
 
   late final InternalFlowRepository _flowRepository;
   late final NotificationRepository _notificationRepository;
@@ -73,6 +76,16 @@ class _InternoAppState extends State<InternoApp> {
     _reportRepository = ReportApiRepository(baseUrl: _kApiBaseUrl);
     _loadNotifications();
     _configurePushAndDevSeed();
+    _startAutoRefresh();
+  }
+
+  void _startAutoRefresh() {
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) {
+        _schedulingRefresh.value++;
+        _servicesRefresh.value++;
+      }
+    });
   }
 
   Future<void> _configurePushAndDevSeed() async {
@@ -91,6 +104,7 @@ class _InternoAppState extends State<InternoApp> {
 
   @override
   void dispose() {
+    _autoRefreshTimer?.cancel();
     _flowRepository.dispose();
     _schedulingRefresh.dispose();
     _servicesRefresh.dispose();
@@ -145,6 +159,10 @@ class _InternoAppState extends State<InternoApp> {
     });
   }
 
+  void _onOpenWorkshopSettings() {
+    _navigateDrawer('workshop_settings');
+  }
+
   Widget _buildManagerDrawerScreen() {
     switch (_drawerScreen) {
       case 'stock':
@@ -166,6 +184,10 @@ class _InternoAppState extends State<InternoApp> {
         );
       case 'settings':
         return SettingsScreen(
+          onOpenDrawer: () => setState(() => _drawerOpen = true),
+        );
+      case 'workshop_settings':
+        return WorkshopSettingsScreen(
           onOpenDrawer: () => setState(() => _drawerOpen = true),
         );
       case 'alerts':
@@ -293,6 +315,7 @@ class _InternoAppState extends State<InternoApp> {
                 onOpenUsers: () => _navigateDrawer('users'),
                 onOpenReports: () => _navigateDrawer('reports'),
                 onOpenSettings: () => _navigateDrawer('settings'),
+                onOpenWorkshopSettings: _onOpenWorkshopSettings,
                 onLogoutRequest: _requestLogout,
               ),
 

@@ -131,7 +131,7 @@ agendamentoRouter.get('/cliente/:clienteId', authMiddleware, AgendamentoControll
  *       200:
  *         description: Atualizado com sucesso
  */
-agendamentoRouter.patch('/:id/status', authMiddleware, authorizeRole(['1', '3']), AgendamentoController.updateStatus);
+agendamentoRouter.patch('/:id/status', authMiddleware, authorizeRole(['1', '2', '3']), AgendamentoController.updateStatus);
 
 /**
  * @openapi

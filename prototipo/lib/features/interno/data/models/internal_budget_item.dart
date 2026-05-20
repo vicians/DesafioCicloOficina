@@ -43,6 +43,7 @@ class InternalBudgetItem {
   final String createdAt; // dd/MM/yyyy
   final String status; // pendente | cancelado
   final String? canceledAt;
+  final String? agendamentoId;
   final bool isAvaliacao;
   final String? notasCliente;
 
@@ -57,6 +58,7 @@ class InternalBudgetItem {
     required this.createdAt,
     this.status = 'pendente',
     this.canceledAt,
+    this.agendamentoId,
     this.isAvaliacao = false,
     this.notasCliente,
   });
@@ -81,6 +83,7 @@ class InternalBudgetItem {
     String? status,
     String? canceledAt,
     bool clearCanceledAt = false,
+    String? agendamentoId,
     bool? isAvaliacao,
     String? notasCliente,
   }) {
@@ -95,6 +98,7 @@ class InternalBudgetItem {
       createdAt: createdAt ?? this.createdAt,
       status: status ?? this.status,
       canceledAt: clearCanceledAt ? null : (canceledAt ?? this.canceledAt),
+      agendamentoId: agendamentoId ?? this.agendamentoId,
       isAvaliacao: isAvaliacao ?? this.isAvaliacao,
       notasCliente: notasCliente ?? this.notasCliente,
     );
@@ -120,6 +124,7 @@ class InternalBudgetItem {
       status: (json['status'] as String? ?? 'RASCUNHO').toLowerCase(),
       createdAt: formattedDate,
       observation: json['observacoes'] as String? ?? '',
+      agendamentoId: json['agendamento_id'] as String?,
       isAvaliacao: json['is_avaliacao'] == true,
       notasCliente: json['notas_cliente'] as String?,
       services: servicesJson

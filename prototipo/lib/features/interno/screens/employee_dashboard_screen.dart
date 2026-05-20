@@ -107,35 +107,63 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
         final data = snapshot.data;
         final internalServices = data?.services ?? const <InternalService>[];
         final budgets = data?.budgets ?? const <InternalBudgetItem>[];
-        final scheduledServices = data?.scheduledServices ?? const <ScheduledServiceItem>[];
+        final scheduledServices =
+            data?.scheduledServices ?? const <ScheduledServiceItem>[];
         final now = DateTime.now();
 
         // Mantem os KPIs alinhados com as regras das telas de Serviços e Agendamentos.
         final activeExecutions = internalServices
-          .where((s) => s.status != 'concluido' && s.status != 'cancelado')
-          .toList();
-
-        final openAppointments = scheduledServices
-          .where(
-            (item) =>
-              item.status.toLowerCase() == 'pendente' ||
-              item.status.toLowerCase() == 'confirmado',
-          )
-          .length;
-
-        final pendingBudgets = budgets
-          .where((b) => b.isPending)
+            .where((s) => s.status != 'concluido' && s.status != 'cancelado')
             .toList();
 
-        // Faturamento previsto: soma de serviços ativos + orçamentos pendentes
-        final servicesRevenue = internalServices
-          .where((s) => s.status != 'concluido' && s.status != 'cancelado')
-          .fold<double>(0, (sum, item) => sum + item.value);
-        final budgetsRevenue = pendingBudgets.fold<double>(
-          0,
-          (sum, item) => sum + item.value,
-        );
-        final predictedRevenue = servicesRevenue + budgetsRevenue;
+        final openAppointments = scheduledServices
+            .where(
+              (item) =>
+                  item.status.toLowerCase() == 'pendente' ||
+                  item.status.toLowerCase() == 'confirmado',
+            )
+            .length;
+
+        final pendingBudgets = budgets
+            .where((b) => b.isPending)
+            // Rascunhos sem itens são agendamentos de avaliação — não aparecem
+            // na tela de Orçamentos e não devem contar no KPI.
+            .where((b) => !(b.status == 'rascunho' && b.services.isEmpty && b.products.isEmpty))
+            .toList();
+
+        // Agendamentos que cobrem hoje: [agendadoPara, agendadoPara + duracaoMinutos)
+        // deve se sobrepor com [todayStart, todayEnd). Assim serviços que começaram
+        // ontem e terminam hoje, ou que começam hoje e terminam amanhã, são incluídos.
+        final todayStart = DateTime(now.year, now.month, now.day);
+        final todayEnd   = todayStart.add(const Duration(days: 1));
+
+        final todayScheduledIds = scheduledServices
+            .where((s) {
+              final inicio = s.agendadoPara;
+              final fim    = inicio.add(Duration(minutes: s.duracaoMinutos));
+              return inicio.isBefore(todayEnd) && fim.isAfter(todayStart);
+            })
+            .map((s) => s.id)
+            .toSet();
+
+        // Orçamentos pendentes cujo agendamento toca hoje
+        final todayBudgetsRevenue = pendingBudgets
+            .where((b) => b.agendamentoId != null && todayScheduledIds.contains(b.agendamentoId))
+            .fold<double>(0, (sum, item) => sum + item.value);
+
+        // Execuções ativas que ainda não foram finalizadas e já iniciaram até hoje.
+        // InternalService não expõe agendamentoId, então usa openedAtDate como proxy:
+        // inclui qualquer execução iniciada até o fim de hoje sem finalizado_em.
+        final todayServicesRevenue = internalServices
+            .where((s) => s.status != 'concluido' && s.status != 'cancelado')
+            .where((s) {
+              final d = s.openedAtDate;
+              if (d == null) return false;
+              return !d.isAfter(todayEnd) && s.finishedAtDate == null;
+            })
+            .fold<double>(0, (sum, item) => sum + item.value);
+
+        final predictedRevenue = todayServicesRevenue + todayBudgetsRevenue;
 
         // Lógica simples de atraso: aberto há mais de 2 dias e não concluído
         final delayedServices = internalServices.where((s) {
@@ -287,8 +315,11 @@ class _DashboardHeader extends StatelessWidget {
                         color: Colors.white.withValues(alpha: 0.10),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(Icons.menu_rounded,
-                          size: 19, color: Colors.white),
+                      child: const Icon(
+                        Icons.menu_rounded,
+                        size: 19,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
@@ -368,8 +399,11 @@ class _DashboardHeader extends StatelessWidget {
                             color: Colors.white.withValues(alpha: 0.10),
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child: const Icon(Icons.notifications_outlined,
-                              size: 19, color: Colors.white),
+                          child: const Icon(
+                            Icons.notifications_outlined,
+                            size: 19,
+                            color: Colors.white,
+                          ),
                         ),
                         if (unreadAlertsCount > 0)
                           Positioned(
@@ -377,15 +411,18 @@ class _DashboardHeader extends StatelessWidget {
                             right: 5,
                             child: Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 4, vertical: 1),
+                                horizontal: 4,
+                                vertical: 1,
+                              ),
                               decoration: BoxDecoration(
                                 color: red,
                                 borderRadius: BorderRadius.circular(99),
-                                border: Border.all(
-                                    color: navyDark, width: 1.5),
+                                border: Border.all(color: navyDark, width: 1.5),
                               ),
                               constraints: const BoxConstraints(
-                                  minWidth: 14, minHeight: 14),
+                                minWidth: 14,
+                                minHeight: 14,
+                              ),
                               child: Text(
                                 unreadAlertsCount > 9
                                     ? '9+'
@@ -439,8 +476,11 @@ class _DashboardHeader extends StatelessWidget {
                         color: Colors.white.withValues(alpha: 0.10),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(Icons.logout_rounded,
-                          color: Colors.white, size: 18),
+                      child: const Icon(
+                        Icons.logout_rounded,
+                        color: Colors.white,
+                        size: 18,
+                      ),
                     ),
                   ),
                 ),

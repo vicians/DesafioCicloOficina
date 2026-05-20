@@ -1,6 +1,8 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
-import { createOsWorkflow } from '../services/appointment_service';
+import { createOsWorkflow, recoverRecentOsWorkflow } from '../services/appointment_service';
+import { formatBackendValidationError } from '../utils/backend_error';
+import { isValidRequestedAppointmentDate } from '../utils/date_utils';
 
 function normalizeServices(value: string | string[]): string[] {
   const rawItems = Array.isArray(value) ? value : [value];
@@ -30,6 +32,14 @@ export const appointmentTool = (phoneNumber: string, fallbackDescription: string
     vehiclePlate: z.string().describe("Placa do veículo"),
     description: z.string().optional().describe("Descrição do problema ou serviço solicitado"),
     serviceType: z.string().optional().describe("Tipo de serviço (Mecânica ou Borracharia)"),
+    requestedDate: z
+      .string()
+      .trim()
+      .refine((value) => value.length === 0 || isValidRequestedAppointmentDate(value), {
+        message: "requestedDate deve ser uma data util atual ou futura no formato YYYY-MM-DD"
+      })
+      .optional()
+      .describe("Data desejada para o agendamento no formato YYYY-MM-DD. Nao use datas passadas nem fins de semana."),
     services: z
       .union([z.string(), z.array(z.string())])
       .transform((value) => normalizeServices(value))
@@ -37,6 +47,8 @@ export const appointmentTool = (phoneNumber: string, fallbackDescription: string
       .describe("Lista de nomes de serviços do catálogo identificados (ex: ['Troca de óleo', 'Alinhamento'])")
   }),
   func: async (input) => {
+    const startedAt = new Date();
+
     try {
       const description = input.description?.trim() || fallbackDescription;
 
@@ -47,7 +59,18 @@ export const appointmentTool = (phoneNumber: string, fallbackDescription: string
       });
       return JSON.stringify(result);
     } catch (error: any) {
-      return `Erro ao criar agendamento: ${error.message}`;
+      const description = input.description?.trim() || fallbackDescription;
+      const recovered = await recoverRecentOsWorkflow({
+        ...input,
+        description,
+        number: phoneNumber
+      }, startedAt);
+
+      if (recovered) {
+        return JSON.stringify(recovered);
+      }
+
+      return formatBackendValidationError(error, 'Erro desconhecido ao criar agendamento');
     }
   }
 });

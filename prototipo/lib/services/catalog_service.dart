@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+import '../core/api/api_helper.dart';
 import '../core/config/api_config.dart';
 import '../features/interno/data/models/catalogo_servico_item.dart';
 
@@ -9,7 +9,7 @@ class CatalogService {
 
   static Future<List<CatalogoServicoItem>> getServices() async {
     try {
-      final res = await http.get(Uri.parse('$_baseUrl/servicos')).timeout(_timeout);
+      final res = await ApiHelper.get('$_baseUrl/servicos');
       if (res.statusCode == 200) {
         final List<dynamic> data = jsonDecode(res.body);
         return data.map((json) => CatalogoServicoItem.fromJson(json)).toList();
@@ -27,16 +27,15 @@ class CatalogService {
     int? duracaoMinutos,
   }) async {
     try {
-      final res = await http.post(
-        Uri.parse('$_baseUrl/servicos'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
+      final res = await ApiHelper.post(
+        '$_baseUrl/servicos',
+        {
           'nome': nome,
           'preco': (preco * 100).toInt(),
           'descricao': descricao,
           'duracao_minutos': duracaoMinutos ?? 60,
-        }),
-      ).timeout(_timeout);
+        },
+      );
       return res.statusCode == 201;
     } catch (_) {
       return false;
@@ -51,16 +50,15 @@ class CatalogService {
     int? duracaoMinutos,
   }) async {
     try {
-      final res = await http.patch(
-        Uri.parse('$_baseUrl/servicos/$id'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
+      final res = await ApiHelper.patch(
+        '$_baseUrl/servicos/$id',
+        {
           'nome': nome,
           'preco': (preco * 100).toInt(),
           'descricao': descricao,
           'duracao_minutos': duracaoMinutos ?? 60,
-        }),
-      ).timeout(_timeout);
+        },
+      );
       return res.statusCode == 200;
     } catch (_) {
       return false;
@@ -69,7 +67,7 @@ class CatalogService {
 
   static Future<bool> deleteService(String id) async {
     try {
-      final res = await http.delete(Uri.parse('$_baseUrl/servicos/$id')).timeout(_timeout);
+      final res = await ApiHelper.delete('$_baseUrl/servicos/$id');
       return res.statusCode == 204 || res.statusCode == 200;
     } catch (_) {
       return false;

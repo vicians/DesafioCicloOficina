@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../core/api/api_helper.dart';
 import '../core/config/api_config.dart';
 import '../core/api/api_helper.dart';
 import '../features/interno/data/models/user_item.dart';
@@ -28,14 +29,17 @@ class UserService {
     required String senha,
   }) async {
     try {
-      final res = await ApiHelper.post('$_baseUrl/usuarios', {
-        'tipo_id': tipoId,
-        'cpf_cnpj': cpfCnpj,
-        'nome': nome,
-        'telefone': telefone,
-        'email': email,
-        'senha': senha,
-      });
+      final res = await ApiHelper.post(
+        '$_baseUrl/usuarios',
+        {
+          'tipo_id': tipoId,
+          'cpf_cnpj': cpfCnpj,
+          'nome': nome,
+          'telefone': telefone,
+          'email': email,
+          'senha': senha,
+        },
+      );
       return res.statusCode == 201;
     } catch (_) {
       return false;
@@ -50,12 +54,15 @@ class UserService {
     required String email,
   }) async {
     try {
-      final res = await ApiHelper.put('$_baseUrl/usuarios/$id', {
-        'tipo_id': tipoId,
-        'nome': nome,
-        'telefone': telefone,
-        'email': email,
-      });
+      final res = await ApiHelper.put(
+        '$_baseUrl/usuarios/$id',
+        {
+          'tipo_id': tipoId,
+          'nome': nome,
+          'telefone': telefone,
+          'email': email,
+        },
+      );
       return res.statusCode == 200;
     } catch (_) {
       return false;

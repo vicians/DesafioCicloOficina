@@ -1,48 +1,260 @@
 import axios from 'axios';
 import { CreateOsBody } from '../schemas/ai_schemas';
-import { nextBusinessDay9am } from '../utils/date_utils';
+import { resolveAppointmentDate, toDateOnlyString } from '../utils/date_utils';
+import { extractBackendErrorMessage } from '../utils/backend_error';
+import { cleanCustomerName, isValidCustomerName } from '../utils/customer_name';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
-const BACKEND_SERVICE_EMAIL = process.env.BACKEND_SERVICE_EMAIL;
-const BACKEND_SERVICE_PASSWORD = process.env.BACKEND_SERVICE_PASSWORD;
+const OS_RECOVERY_LOOKBACK_BUFFER_MS = 5 * 1000;
 
-let cachedBackendToken: string | null = null;
-let backendTokenFetchedAt = 0;
-const BACKEND_TOKEN_TTL_MS = 10 * 60 * 1000;
-
-async function getBackendAuthToken(): Promise<string> {
-  const now = Date.now();
-
-  if (cachedBackendToken && now - backendTokenFetchedAt < BACKEND_TOKEN_TTL_MS) {
-    return cachedBackendToken;
-  }
-
-  const loginResponse = await axios.post(`${BACKEND_URL}/auth/login`, {
-    email: BACKEND_SERVICE_EMAIL,
-    senha: BACKEND_SERVICE_PASSWORD,
-  });
-
-  const token = loginResponse?.data?.token;
-  if (!token) {
-    throw new Error('Falha ao autenticar no backend: token ausente em /auth/login.');
-  }
-
-  cachedBackendToken = token;
-  backendTokenFetchedAt = now;
-  return token;
-}
+type AuthHeaders = { Authorization?: string; 'X-Internal-Token'?: string };
+type MechanicCandidate = { id: string; nome: string };
+type BackendCustomer = { id: string; nome?: string; telefone?: string | null };
+type BackendAppointmentSummary = {
+  id?: string;
+  funcionario_id?: string | null;
+  agendado_para?: string | Date | null;
+  criado_em?: string | Date | null;
+  notas_cliente?: string | null;
+  veiculo_placa?: string | null;
+};
+type OsWorkflowResult = {
+  agendamento_id: string;
+  orcamento_id: string;
+  mechanic: { id: string | null; nome: string };
+  agendado_para: string;
+  magic_link_url: string | null;
+  message: string;
+  recovered?: boolean;
+};
 
 async function getAuthHeaders() {
-  const token = await getBackendAuthToken();
-  return { Authorization: `Bearer ${token}` };
+  return { 'X-Internal-Token': process.env.INTERNAL_AUTH_TOKEN };
+}
+
+function normalizePhone(value: string | null | undefined): string {
+  return (value ?? '').replace(/\D/g, '');
+}
+
+function phoneMatches(left: string | null | undefined, right: string | null | undefined): boolean {
+  const leftDigits = normalizePhone(left);
+  const rightDigits = normalizePhone(right);
+
+  if (!leftDigits || !rightDigits) return false;
+  if (leftDigits === rightDigits) return true;
+
+  const leftWithoutCountryCode = leftDigits.startsWith('55') ? leftDigits.slice(2) : leftDigits;
+  const rightWithoutCountryCode = rightDigits.startsWith('55') ? rightDigits.slice(2) : rightDigits;
+  return leftWithoutCountryCode === rightWithoutCountryCode;
+}
+
+function dateTimeMs(value: unknown): number {
+  const date = value instanceof Date
+    ? value
+    : typeof value === 'string'
+      ? new Date(value)
+      : null;
+
+  if (!date || Number.isNaN(date.getTime())) {
+    return 0;
+  }
+
+  return date.getTime();
+}
+
+function buildOsWorkflowResult(params: {
+  agendamentoId: string;
+  orcamentoId: string;
+  mecanicoId: string | null;
+  mecanicoNome: string;
+  agendadoPara: Date;
+  magicLinkUrl: string | null;
+  recovered?: boolean;
+}): OsWorkflowResult {
+  return {
+    agendamento_id: params.agendamentoId,
+    orcamento_id: params.orcamentoId,
+    mechanic: { id: params.mecanicoId, nome: params.mecanicoNome },
+    agendado_para: params.agendadoPara.toISOString(),
+    magic_link_url: params.magicLinkUrl,
+    message: params.magicLinkUrl
+      ? `Agendamento e Orçamento criados com sucesso! Acesse pelo link: ${params.magicLinkUrl}`
+      : 'Agendamento criado! Entre em contato para detalhes do orçamento.',
+    recovered: params.recovered,
+  };
+}
+
+async function createMagicLinkForPhone(telefone: string): Promise<string | null> {
+  try {
+    const mlRes = await axios.post(`${BACKEND_URL}/auth/magic-link`, { telefone });
+    return mlRes.data.url ?? null;
+  } catch (err: any) {
+    console.warn('[OS] Aviso: não foi possível gerar magic link:', extractBackendErrorMessage(err));
+    return null;
+  }
+}
+
+async function findBudgetByAppointmentId(
+  agendamentoId: string,
+  headers: AuthHeaders
+): Promise<string | null> {
+  const existingOrcamentos = await axios.get(`${BACKEND_URL}/orcamentos`, { headers });
+  const foundOrcamento = (existingOrcamentos.data ?? []).find(
+    (orcamento: any) => orcamento.agendamento_id === agendamentoId
+  );
+
+  return foundOrcamento?.id ?? null;
+}
+
+async function getOrCreateBudgetForAppointment(
+  agendamentoId: string,
+  clienteId: string,
+  mecanicoId: string | null,
+  headers: AuthHeaders
+): Promise<string> {
+  const existingId = await findBudgetByAppointmentId(agendamentoId, headers);
+  if (existingId) return existingId;
+
+  try {
+    const orcRes = await axios.post(`${BACKEND_URL}/orcamentos`, {
+      agendamento_id: agendamentoId,
+      cliente_id: clienteId,
+      funcionario_id: mecanicoId,
+    }, {
+      headers,
+    });
+    return orcRes.data.id;
+  } catch (err: any) {
+    if (err?.response?.status === 409) {
+      const fallbackId = await findBudgetByAppointmentId(agendamentoId, headers);
+      if (fallbackId) return fallbackId;
+    }
+
+    throw err;
+  }
+}
+
+function isMechanicScheduleConflict(error: any): boolean {
+  const message = extractBackendErrorMessage(error).toLowerCase();
+  return error?.response?.status === 409 && message.includes('funcionário') && message.includes('agendamento');
+}
+
+async function createAppointmentWithMechanicFallback(params: {
+  clienteId: string;
+  veiculoId: string;
+  mecanicos: MechanicCandidate[];
+  data: string;
+  hora: number;
+  notasCliente: string;
+  headers: AuthHeaders;
+}): Promise<{ agendamentoId: string; mecanicoId: string | null; mecanicoNome: string }> {
+  const candidates: Array<{ id: string | null; nome: string }> = [
+    ...params.mecanicos,
+    { id: null, nome: 'A definir' },
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      const agendRes = await axios.post(`${BACKEND_URL}/agendamentos`, {
+        cliente_id: params.clienteId,
+        veiculo_id: params.veiculoId,
+        funcionario_id: candidate.id,
+        data: params.data,
+        hora: params.hora,
+        para_avaliacao: true,
+        notas_cliente: params.notasCliente,
+      }, {
+        headers: params.headers,
+      });
+
+      return {
+        agendamentoId: agendRes.data.id,
+        mecanicoId: candidate.id,
+        mecanicoNome: candidate.nome,
+      };
+    } catch (err: any) {
+      if (candidate.id && isMechanicScheduleConflict(err)) {
+        console.warn(`[OS] Mecânico indisponível (${candidate.nome}), tentando próximo responsável.`);
+        continue;
+      }
+
+      throw err;
+    }
+  }
+
+  throw new Error('Não foi possível criar agendamento para nenhum responsável disponível.');
+}
+
+export async function recoverRecentOsWorkflow(
+  body: CreateOsBody & { services?: string[] },
+  startedAt: Date,
+): Promise<OsWorkflowResult | null> {
+  try {
+    if (!body.number) return null;
+
+    const headers = await getAuthHeaders();
+    const usuariosRes = await axios.get(`${BACKEND_URL}/usuarios`, {
+      params: { tipo_id: 2 },
+      headers,
+    });
+    const clientes = (usuariosRes.data ?? []) as BackendCustomer[];
+    const cliente = clientes.find((candidate) => phoneMatches(candidate.telefone, body.number));
+
+    if (!cliente) return null;
+
+    const agendamentosRes = await axios.get(`${BACKEND_URL}/agendamentos/cliente/${cliente.id}`, {
+      headers,
+    });
+    const agendamentos = (agendamentosRes.data ?? []) as BackendAppointmentSummary[];
+    const minCreatedAt = startedAt.getTime() - OS_RECOVERY_LOOKBACK_BUFFER_MS;
+    const requestedPlate = body.vehiclePlate?.trim().toUpperCase();
+    const candidates = agendamentos
+      .filter((agendamento) => dateTimeMs(agendamento.criado_em) >= minCreatedAt)
+      .filter((agendamento) => agendamento.notas_cliente?.startsWith('[WhatsApp]'))
+      .filter((agendamento) => {
+        if (!requestedPlate) return true;
+        return agendamento.veiculo_placa?.trim().toUpperCase() === requestedPlate;
+      })
+      .sort((left, right) => dateTimeMs(right.criado_em) - dateTimeMs(left.criado_em));
+
+    for (const agendamento of candidates) {
+      if (!agendamento.id || !agendamento.agendado_para) continue;
+
+      const orcamentoId = await findBudgetByAppointmentId(agendamento.id, headers);
+      if (!orcamentoId) continue;
+
+      const agendadoPara = new Date(agendamento.agendado_para);
+      if (Number.isNaN(agendadoPara.getTime())) continue;
+
+      const magicLinkUrl = await createMagicLinkForPhone(cliente.telefone ?? body.number);
+      console.warn(`[OS] Fluxo recuperado após erro: agendamento ${agendamento.id}, orçamento ${orcamentoId}`);
+
+      return buildOsWorkflowResult({
+        agendamentoId: agendamento.id,
+        orcamentoId,
+        mecanicoId: agendamento.funcionario_id ?? null,
+        mecanicoNome: agendamento.funcionario_id ? 'Responsável atribuído' : 'A definir',
+        agendadoPara,
+        magicLinkUrl,
+        recovered: true,
+      });
+    }
+  } catch (err: any) {
+    console.warn('[OS] Falha ao verificar OS persistida após erro:', extractBackendErrorMessage(err));
+  }
+
+  return null;
 }
 
 export async function createOsWorkflow(body: CreateOsBody & { services?: string[] }) {
-  const { number, customerName, vehiclePlate, description, serviceType, services } = body;
+  const { number, customerName, vehiclePlate, description, serviceType, services, requestedDate } = body;
 
   if (!number || !description) {
     throw new Error('number e description são obrigatórios');
   }
+
+  const agendadoPara = resolveAppointmentDate(requestedDate);
+  const cleanedCustomerName = customerName ? cleanCustomerName(customerName) : '';
 
   // ── 1. Localizar ou criar cliente ─────────────────────────────────────────
   console.log(`[OS] 📝 Iniciando processo de criação para: ${number}`);
@@ -55,18 +267,23 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
     headers,
   });
   const todos: any[] = usuariosRes.data ?? [];
-  const found = todos.find((u: any) => u.telefone === number);
+  const found = todos.find((u: any) => phoneMatches(u.telefone, number));
 
   if (found) {
     clienteId = found.id;
+    clienteTelefone = found.telefone ?? number;
     console.log(`[OS] Cliente encontrado: ${found.nome} (${clienteId})`);
   } else {
     console.log(`[OS] Cliente não encontrado. Criando novo registro...`);
+    if (!isValidCustomerName(cleanedCustomerName, number)) {
+      throw new Error('Nome real do cliente e obrigatorio para criar cadastro e OS via WhatsApp.');
+    }
+
     const temporaryPassword = `whatsapp_${number.replace(/\D/g, '').slice(-8)}_tmp`;
     const novoCliente = await axios.post(`${BACKEND_URL}/usuarios`, {
       tipo_id: 2,
       cpf_cnpj: number.replace(/\D/g, '').slice(0, 20),
-      nome: customerName ?? `Cliente WhatsApp ${number}`,
+      nome: cleanedCustomerName,
       telefone: number,
       senha: temporaryPassword,
     }, {
@@ -109,71 +326,40 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
   }
 
   // ── 3. Selecionar mecânico disponível ─────────────────────────────────────
-  let mecanicoId: string | null = null;
-  let mecanicoNome: string = 'A definir';
+  let mecanicos: MechanicCandidate[] = [];
 
   try {
     const mecanicosRes = await axios.get(`${BACKEND_URL}/usuarios`, {
       params: { tipo_id: 3 },
       headers,
     });
-    const mecanicos: any[] = mecanicosRes.data ?? [];
+    mecanicos = mecanicosRes.data ?? [];
     if (mecanicos.length > 0) {
-      mecanicoId = mecanicos[0].id;
-      mecanicoNome = mecanicos[0].nome;
-      console.log(`[OS] Mecânico atribuído: ${mecanicoNome} (${mecanicoId})`);
+      console.log(`[OS] Mecânicos candidatos: ${mecanicos.map((m) => m.nome).join(', ')}`);
     }
   } catch (err: any) {
-    console.warn('[OS] Aviso: não foi possível buscar mecânicos:', err.message);
+    console.warn('[OS] Aviso: não foi possível buscar mecânicos:', extractBackendErrorMessage(err));
   }
 
-  // ── 4. Criar agendamento (próximo dia útil às 09:00) ─────────────────────
-  const agendadoPara = nextBusinessDay9am();
-  const data = agendadoPara.toISOString().slice(0, 10);
+  // ── 4. Criar agendamento (data solicitada ou fallback às 09:00) ───────────
+  const data = toDateOnlyString(agendadoPara);
   const hora = agendadoPara.getHours();
 
-  const agendRes = await axios.post(`${BACKEND_URL}/agendamentos`, {
-    cliente_id: clienteId,
-    veiculo_id: veiculoId,
-    funcionario_id: mecanicoId,
+  const appointment = await createAppointmentWithMechanicFallback({
+    clienteId,
+    veiculoId,
+    mecanicos,
     data,
     hora,
-    para_avaliacao: true,
-    notas_cliente: `[WhatsApp] ${serviceType ?? ''} — ${description}`.trim(),
-  }, {
+    notasCliente: `[WhatsApp] ${serviceType ?? ''} — ${description}`.trim(),
     headers,
   });
-  const agendamentoId = agendRes.data.id;
+  const { agendamentoId, mecanicoId, mecanicoNome } = appointment;
   console.log(`[OS] Agendamento criado: ${agendamentoId}`);
 
-  // ── 5. Criar orçamento (rascunho) ─────────────────────────────────────────
-  let orcamentoId: string;
-  try {
-    const orcRes = await axios.post(`${BACKEND_URL}/orcamentos`, {
-      agendamento_id: agendamentoId,
-      cliente_id: clienteId,
-      funcionario_id: mecanicoId,
-    }, {
-      headers,
-    });
-    orcamentoId = orcRes.data.id;
-  } catch (err: any) {
-    if (err?.response?.status === 409) {
-      const existingOrcamentos = await axios.get(`${BACKEND_URL}/orcamentos`, { headers });
-      const foundOrcamento = (existingOrcamentos.data ?? []).find(
-        (o: any) => o.agendamento_id === agendamentoId
-      );
-
-      if (!foundOrcamento?.id) {
-        throw err;
-      }
-
-      orcamentoId = foundOrcamento.id;
-    } else {
-      throw err;
-    }
-  }
-  console.log(`[OS] Orçamento criado: ${orcamentoId}`);
+  // ── 5. Reutilizar ou criar orçamento (rascunho) ───────────────────────────
+  const orcamentoId = await getOrCreateBudgetForAppointment(agendamentoId, clienteId, mecanicoId, headers);
+  console.log(`[OS] Orçamento vinculado: ${orcamentoId}`);
 
   // ── 6. Adicionar serviços identificados ───────────────────────────────────
   if (services && services.length > 0) {
@@ -182,8 +368,8 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
     const catalogo: any[] = catalogoRes.data ?? [];
 
     for (const sName of services) {
-      const match = catalogo.find(s => 
-        s.nome.toLowerCase().includes(sName.toLowerCase()) || 
+      const match = catalogo.find(s =>
+        s.nome.toLowerCase().includes(sName.toLowerCase()) ||
         sName.toLowerCase().includes(s.nome.toLowerCase())
       );
 
@@ -198,7 +384,7 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
           });
           console.log(`[OS] Serviço adicionado: ${match.nome}`);
         } catch (err: any) {
-          console.error(`[OS] Erro ao adicionar serviço ${match.nome}:`, err.message);
+          console.error(`[OS] Erro ao adicionar serviço ${match.nome}:`, extractBackendErrorMessage(err));
         }
       }
     }
@@ -211,7 +397,7 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
       telefone: clienteTelefone,
     });
     magicLinkUrl = mlRes.data.url;
-  } catch (err) {}
+  } catch (err) { }
 
   return {
     agendamento_id: agendamentoId,
@@ -220,7 +406,7 @@ export async function createOsWorkflow(body: CreateOsBody & { services?: string[
     agendado_para: agendadoPara.toISOString(),
     magic_link_url: magicLinkUrl,
     message: magicLinkUrl
-      ? `Agendamento e Orçamento criados com sucesso! Acesse pelo link: ${magicLinkUrl}`
+      ? 'Agendamento e Orçamento criados com sucesso!'
       : 'Agendamento criado! Entre em contato para detalhes do orçamento.',
   };
 }
@@ -230,13 +416,13 @@ export async function checkAvailability(date: string) {
   const headers = await getAuthHeaders();
   const res = await axios.get(`${BACKEND_URL}/agendamentos`, { headers });
   const all: any[] = res.data ?? [];
-  
+
   const targetDate = new Date(date);
   const dailySchedules = all.filter(a => {
     const d = new Date(a.agendado_para);
     return d.getFullYear() === targetDate.getFullYear() &&
-           d.getMonth() === targetDate.getMonth() &&
-           d.getDate() === targetDate.getDate();
+      d.getMonth() === targetDate.getMonth() &&
+      d.getDate() === targetDate.getDate();
   });
 
   if (dailySchedules.length === 0) {
@@ -246,30 +432,112 @@ export async function checkAvailability(date: string) {
   const occupied = dailySchedules.map(a => {
     const start = new Date(a.agendado_para);
     const end = new Date(start.getTime() + a.duracao_total_minutos * 60000);
-    return `${start.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})} - ${end.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}`;
+    return `${start.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
   });
 
   return `Horários já ocupados em ${targetDate.toLocaleDateString('pt-BR')}: \n${occupied.join('\n')}\nOs demais horários entre 08:00 e 18:00 estão disponíveis.`;
 }
 
+type BackendVehicle = {
+  placa?: string | null;
+  marca?: string | null;
+  modelo?: string | null;
+};
+
+type BackendAppointment = {
+  agendado_para?: string | Date | null;
+  notas_cliente?: string | null;
+  status?: string | null;
+  veiculo_placa?: string | null;
+  veiculo_marca?: string | null;
+  veiculo_modelo?: string | null;
+};
+
+function formatText(value: unknown, fallback: string): string {
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim();
+  }
+
+  if (typeof value === 'number') {
+    return String(value);
+  }
+
+  return fallback;
+}
+
+function formatDate(value: unknown): string {
+  const date = value instanceof Date
+    ? value
+    : typeof value === 'string'
+      ? new Date(value)
+      : null;
+
+  if (!date || Number.isNaN(date.getTime())) {
+    return 'Data nao informada';
+  }
+
+  return date.toLocaleDateString('pt-BR');
+}
+
+function formatVehicleLine(vehicle: BackendVehicle): string {
+  const plate = formatText(vehicle.placa, 'Placa nao informada');
+  const make = formatText(vehicle.marca, 'Marca nao informada');
+  const model = formatText(vehicle.modelo, 'Modelo nao informado');
+
+  return `- Placa: ${plate}; Marca: ${make}; Modelo: ${model}`;
+}
+
+function formatAppointmentLine(appointment: BackendAppointment): string {
+  const date = formatDate(appointment.agendado_para);
+  const description = formatText(appointment.notas_cliente, 'Sem descricao');
+  const status = formatText(appointment.status, '');
+  const plate = formatText(appointment.veiculo_placa, '');
+  const make = formatText(appointment.veiculo_marca, '');
+  const model = formatText(appointment.veiculo_modelo, '');
+  const vehicleName = [make, model].filter(Boolean).join(' ').trim();
+  const vehicleText = plate
+    ? ` | Veiculo: ${vehicleName || 'Marca/modelo nao informados'} | Placa: ${plate}`
+    : '';
+  const statusText = status ? ` | Status: ${status}` : '';
+
+  return `- ${date}: ${description}${vehicleText}${statusText}`;
+}
+
 export async function getCustomerHistory(number: string) {
-  console.log(`[AI] Buscando histórico para o número: ${number}`);
+  console.log(`[AI] Buscando dados do cliente, veiculos e historico para o numero: ${number}`);
   const headers = await getAuthHeaders();
-  
+
   const usuariosRes = await axios.get(`${BACKEND_URL}/usuarios`, { params: { tipo_id: 2 }, headers });
-  const cliente = (usuariosRes.data ?? []).find((u: any) => u.telefone === number);
+  const cliente = ((usuariosRes.data ?? []) as BackendCustomer[])
+    .find((u) => u.telefone === number);
 
-  if (!cliente) return "Cliente não encontrado na base de dados.";
+  if (!cliente) return "Cliente nao encontrado na base de dados.";
 
-  const agendRes = await axios.get(`${BACKEND_URL}/agendamentos/cliente/${cliente.id}`, { headers });
-  const history: any[] = agendRes.data ?? [];
+  const [agendRes, veiculosRes] = await Promise.all([
+    axios.get(`${BACKEND_URL}/agendamentos/cliente/${cliente.id}`, { headers }),
+    axios.get(`${BACKEND_URL}/veiculos/cliente/${cliente.id}`, { headers }),
+  ]);
 
-  if (history.length === 0) return "Não há histórico de atendimentos para este cliente.";
+  const history = (agendRes.data ?? []) as BackendAppointment[];
+  const vehicles = (veiculosRes.data ?? []) as BackendVehicle[];
 
-  const summary = history.map(h => {
-    const data = new Date(h.agendado_para).toLocaleDateString('pt-BR');
-    return `- ${data}: ${h.notas_cliente || 'Sem descrição'}`;
-  }).join('\n');
+  const customerName = formatText(cliente.nome, 'Nome nao informado');
+  const vehicleSummary = vehicles.length > 0
+    ? vehicles.map(formatVehicleLine).join('\n')
+    : 'Nenhum veiculo vinculado a este cliente.';
+  const historySummary = history.length > 0
+    ? history.map(formatAppointmentLine).join('\n')
+    : 'Nao ha historico de atendimentos para este cliente.';
 
-  return `Histórico de atendimentos do cliente ${cliente.nome}:\n${summary}`;
+  return [
+    `Dados cadastrais do cliente atual:`,
+    `- Nome: ${customerName}`,
+    `- Telefone: ${formatText(cliente.telefone, number)}`,
+    '',
+    'Veiculos vinculados ao cliente:',
+    vehicleSummary,
+    '',
+    'Historico de atendimentos:',
+    historySummary,
+  ].join('\n');
 }

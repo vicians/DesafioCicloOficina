@@ -3,6 +3,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import aiRoutes from './routes/ai_routes';
+import { internalAuthMiddleware } from './middlewares/internalAuthMiddleware';
 
 dotenv.config();
 
@@ -11,6 +12,9 @@ app.use(cors());
 app.use(express.json());
 
 const PORT = process.env.PORT || 3001;
+
+// Proteção global para rotas internas
+app.use(internalAuthMiddleware);
 
 // Registro das rotas modulares
 app.use(aiRoutes);

@@ -11,9 +11,9 @@ model agendamentos {
   cliente_id                                     String       @db.Uuid
   veiculo_id                                     String       @db.Uuid
   funcionario_id                                 String?      @db.Uuid
-  agendado_para                                  DateTime     @db.Timestamp(6)
+  agendado_para                                  DateTime     @db.Timestamptz(6)
   duracao_total_minutos                          Int
-  fim_estimado_em                                DateTime     @db.Timestamp(6)
+  fim_estimado_em                                DateTime     @db.Timestamptz(6)
   status                                         String       @db.VarChar
   notas_cliente                                  String?
   criado_em                                      DateTime?    @default(now()) @db.Timestamp(6)
@@ -61,6 +61,7 @@ model itens_orcamento_produto {
   produto_id     String     @db.Uuid
   quantidade     Int
   preco_unitario Int
+  em_revisao     Boolean?   @default(false)
   orcamentos     orcamentos @relation(fields: [orcamento_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   produtos       produtos   @relation(fields: [produto_id], references: [id], onUpdate: NoAction)
 }
@@ -71,6 +72,7 @@ model itens_orcamento_servico {
   servico_id        String            @db.Uuid
   quantidade        Int               @default(1)
   preco_unitario    Int
+  em_revisao        Boolean?          @default(false)
   orcamentos        orcamentos        @relation(fields: [orcamento_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   catalogo_servicos catalogo_servicos @relation(fields: [servico_id], references: [id], onUpdate: NoAction)
 }
@@ -127,6 +129,7 @@ model orcamentos {
   funcionario_id                               String?                   @db.Uuid
   status                                       String                    @db.VarChar
   valor_total                                  Int
+  observacoes                                  String?
   valido_ate                                   DateTime?                 @db.Timestamp(6)
   criado_em                                    DateTime?                 @default(now()) @db.Timestamp(6)
   execucoes_servico                            execucoes_servico?
@@ -169,9 +172,9 @@ model user_push_tokens {
 model usuarios {
   id                                                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tipo_id                                            Int
-  cpf_cnpj                                           String              @unique @db.VarChar
+  cpf_cnpj                                           String?             @unique @db.VarChar
   nome                                               String              @db.VarChar
-  telefone                                           String              @unique @db.VarChar
+  telefone                                           String?             @unique @db.VarChar
   email                                              String?             @unique @db.VarChar
   senha_hash                                         String?             @db.VarChar
   criado_em                                          DateTime?           @default(now()) @db.Timestamp(6)
@@ -223,4 +226,60 @@ model document_embeddings {
   metadata  Json
   source    String                       @db.VarChar
   category  String                       @db.VarChar // 'policy' | 'manual'
+}
+
+model agendamento_embeddings {
+  id        String                       @id @db.Uuid
+  content   String
+  embedding Unsupported("vector(2048)")?
+  metadata  Json
+}
+
+model orcamento_embeddings {
+  id        String                       @id @db.Uuid
+  content   String
+  embedding Unsupported("vector(2048)")?
+  metadata  Json
+}
+
+model execucao_servico_embeddings {
+  id        String                       @id @db.Uuid
+  content   String
+  embedding Unsupported("vector(2048)")?
+  metadata  Json
+}
+
+model mensagem_chat_embeddings {
+  id        String                       @id @db.Uuid
+  content   String
+  embedding Unsupported("vector(2048)")?
+  metadata  Json
+}
+
+model conversacao_chat_embeddings {
+  id        String                       @id @db.Uuid
+  content   String
+  embedding Unsupported("vector(2048)")?
+  metadata  Json
+}
+
+model usuario_embeddings {
+  id        String                       @id @db.Uuid
+  content   String
+  embedding Unsupported("vector(2048)")?
+  metadata  Json
+}
+
+model oficina_embeddings {
+  id        String                       @id @db.Uuid
+  content   String
+  embedding Unsupported("vector(2048)")?
+  metadata  Json
+}
+
+model veiculo_embeddings {
+  id        String                       @id @db.Uuid
+  content   String
+  embedding Unsupported("vector(2048)")?
+  metadata  Json
 }

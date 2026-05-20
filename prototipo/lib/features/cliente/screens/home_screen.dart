@@ -3,7 +3,6 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
-import '../../../core/widgets/app_avatar.dart';
 import '../../../core/widgets/app_progress_bar.dart';
 import '../../../core/widgets/pulsing_dot.dart';
 import '../data/client_flow_repository.dart';
@@ -14,12 +13,18 @@ import 'service_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final VoidCallback? onLogout;
+  final VoidCallback? onOpenDrawer;
+  final VoidCallback? onOpenAlerts;
   final ClientFlowRepository repository;
+  final int unreadCount;
 
   const HomeScreen({
     super.key,
     required this.repository,
     this.onLogout,
+    this.onOpenDrawer,
+    this.onOpenAlerts,
+    this.unreadCount = 0,
   });
 
   @override
@@ -91,6 +96,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 svc: svc,
                 clientName: clientName,
                 onLogout: widget.onLogout,
+                onOpenDrawer: widget.onOpenDrawer,
+                onOpenAlerts: widget.onOpenAlerts,
+                unreadCount: widget.unreadCount,
               ),
               Padding(
                 padding: const EdgeInsets.all(16),
@@ -192,10 +200,14 @@ class _HomeScreenState extends State<HomeScreen> {
                         style: GoogleFonts.dmSans(fontSize: 13, color: textMuted),
                       )
                     else
-                      ...history.take(3).map((h) => Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: _HistoryCard(item: h),
-                          )),
+                      // Mostra apenas finalizados nesta seção (ativos estão no card do topo)
+                      ...history
+                          .where((h) => h.status == 'concluido' || h.status == 'cancelado')
+                          .take(3)
+                          .map((h) => Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: _HistoryCard(item: h),
+                              )),
                     const SizedBox(height: 88),
                   ],
                 ),
@@ -258,51 +270,29 @@ class _Header extends StatelessWidget {
   final ServiceModel? svc;
   final String clientName;
   final VoidCallback? onLogout;
+  final VoidCallback? onOpenDrawer;
+  final VoidCallback? onOpenAlerts;
+  final int unreadCount;
   const _Header({
     this.svc,
     required this.clientName,
     this.onLogout,
+    this.onOpenDrawer,
+    this.onOpenAlerts,
+    this.unreadCount = 0,
   });
-
-  String _getInitials(String name) {
-    if (name.isEmpty) return '??';
-    final parts = name.trim().split(' ');
-    if (parts.length > 1) {
-      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-    }
-    return parts[0][0].toUpperCase();
-  }
 
   @override
   Widget build(BuildContext context) {
     return ClientScreenHeader(
       title: 'Tião Oficina',
       subtitle: 'Olá, $clientName',
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          AppAvatar(initials: _getInitials(clientName), size: 40),
-          if (onLogout != null) ...[
-            const SizedBox(width: 10),
-            GestureDetector(
-              onTap: onLogout,
-              child: Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.logout_rounded,
-                  color: Colors.white,
-                  size: 18,
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
+      leading: onOpenDrawer != null
+          ? ClientMenuButton(onTap: onOpenDrawer!)
+          : null,
+      trailing: onOpenAlerts != null
+          ? ClientAlertsButton(unreadCount: unreadCount, onTap: onOpenAlerts!)
+          : null,
       childSpacing: 14,
       child: svc != null ? _ActiveServiceCard(svc: svc!) : const _WelcomePlaceholder(),
     );
@@ -354,6 +344,8 @@ class _ActiveServiceCard extends StatelessWidget {
     switch (status.toLowerCase()) {
       case 'orcamento':
       case 'enviado': return 'ORÇAMENTO PENDENTE';
+      case 'aprovado':
+      case 'aguardando':
       case 'andamento':
       case 'em_execucao': return 'EM ANDAMENTO';
       case 'revisao':
@@ -368,6 +360,10 @@ class _ActiveServiceCard extends StatelessWidget {
     switch (status.toLowerCase()) {
       case 'orcamento':
       case 'enviado': return Colors.redAccent;
+      case 'aprovado':
+      case 'aguardando':
+      case 'andamento':
+      case 'em_execucao': return orange;
       case 'aguardando_retirada':
       case 'concluido': return green;
       default: return orange;
@@ -503,6 +499,14 @@ class _HistoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isCanceled = item.status == 'cancelado';
+    final iconBg = isCanceled ? redBg : greenBg;
+    final iconColor = isCanceled ? red : green;
+    final iconData = isCanceled ? Icons.cancel_outlined : Icons.check_circle_outline_rounded;
+    final badgeBg = isCanceled ? redBg : greenBg;
+    final badgeColor = isCanceled ? red : green;
+    final badgeLabel = isCanceled ? 'Cancelado' : 'Concluído';
+
     return AppCard(
       child: Row(
         children: [
@@ -510,10 +514,10 @@ class _HistoryCard extends StatelessWidget {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: greenBg,
+              color: iconBg,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.check_rounded, color: green, size: 20),
+            child: Icon(iconData, color: iconColor, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -535,13 +539,37 @@ class _HistoryCard extends StatelessWidget {
               ],
             ),
           ),
-          Text(
-            item.total,
-            style: GoogleFonts.dmSans(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: textPrimary,
-            ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: badgeBg,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  badgeLabel,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: badgeColor,
+                  ),
+                ),
+              ),
+              if (item.total != '—') ...[
+                const SizedBox(height: 3),
+                Text(
+                  item.total,
+                  style: GoogleFonts.dmSans(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: textPrimary,
+                  ),
+                ),
+              ],
+            ],
           ),
         ],
       ),

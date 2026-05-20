@@ -26,11 +26,16 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
   late final TextEditingController _obsCtrl;
   bool _saving = false;
 
+  // Status local — atualizado após cada operação para refletir a resposta real do backend.
+  late String _status;
+
   List<CatalogoServicoItem> _catalogoServicos = [];
   List<ProdutoItem> _produtosCatalog = [];
   bool _loadingCatalog = true;
 
-  bool get _isCanceled => widget.budget.isCanceled;
+  bool get _isCanceled => _status == 'cancelado';
+  bool get _isWaitingApproval => _status == 'enviado';
+  bool get _canEdit => !_isCanceled && !_isWaitingApproval;
   double get _total =>
       _services.fold(0.0, (s, e) => s + e.total) +
       _products.fold(0.0, (s, e) => s + e.total);
@@ -38,6 +43,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
   @override
   void initState() {
     super.initState();
+    _status = widget.budget.status;
     _services = List.of(widget.budget.services);
     _products = List.of(widget.budget.products);
     _obsCtrl = TextEditingController(text: widget.budget.observation);
@@ -69,12 +75,14 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
         products: _products,
         observation: _obsCtrl.text.trim(),
       );
-      await widget.repository.updateOrcamento(updated);
+      // updateOrcamento já retorna o item com o status atualizado pelo backend.
+      final refreshed = await widget.repository.updateOrcamento(updated);
+
       if (!mounted) return;
+      setState(() => _status = refreshed.status);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Orçamento salvo com sucesso!')),
       );
-      Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -110,13 +118,80 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
     }
   }
 
+  Future<void> _sendToClient() async {
+    setState(() => _saving = true);
+    try {
+      // Primeiro salvamos as alterações locais
+      final updated = widget.budget.copyWith(
+        services: _services,
+        products: _products,
+        observation: _obsCtrl.text.trim(),
+      );
+      await widget.repository.updateOrcamento(updated);
+      
+      // Depois enviamos para o cliente
+      await widget.repository.sendBudgetToClient(widget.budget.id);
+      
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Orçamento enviado para aprovação do cliente!')),
+      );
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro ao enviar: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   Future<void> _approveBudget() async {
     setState(() => _saving = true);
     try {
-      final service = await widget.repository.approveOrcamento(widget.budget.id);
+      // Regra: Aprovação agora apenas muda o status do orçamento.
+      await widget.repository.approveOrcamento(widget.budget.id);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Orçamento aprovado! OS gerada.')),
+        const SnackBar(content: Text('Orçamento marcado como aprovado!')),
+      );
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro ao aprovar: $msg'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _concludeAgendamento() async {
+    // Validação local extra (RN 4)
+    if (_services.isEmpty && _products.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Adicione serviços antes de concluir.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _saving = true);
+    try {
+      final service = await widget.repository.concludeAgendamento(widget.budget.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Agendamento concluído! OS gerada.')),
       );
       Navigator.pop(context, service.id);
     } catch (e) {
@@ -124,7 +199,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
       final msg = e.toString().replaceFirst('Exception: ', '');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erro ao aprovar: $msg'),
+          content: Text('Erro ao concluir: $msg'),
           backgroundColor: Colors.red,
         ),
       );
@@ -291,14 +366,14 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
               final item = entry.value;
               return _LineItemRow(
                 item: item,
-                enabled: !_isCanceled,
+                enabled: _canEdit,
                 onQtyChanged: (qty) => setState(() {
                   _services[i] = item.copyWith(qty: qty);
                 }),
                 onRemove: () => setState(() => _services.removeAt(i)),
               );
             }),
-            if (!_isCanceled)
+            if (_canEdit)
               _AddButton(
                 label: 'Adicionar serviço',
                 loading: _loadingCatalog,
@@ -323,14 +398,14 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
               final item = entry.value;
               return _LineItemRow(
                 item: item,
-                enabled: !_isCanceled,
+                enabled: _canEdit,
                 onQtyChanged: (qty) => setState(() {
                   _products[i] = item.copyWith(qty: qty);
                 }),
                 onRemove: () => setState(() => _products.removeAt(i)),
               );
             }),
-            if (!_isCanceled)
+            if (_canEdit)
               _AddButton(
                 label: 'Adicionar produto',
                 loading: _loadingCatalog,
@@ -365,7 +440,7 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
             const SizedBox(height: 20),
 
             // Observação
-            if (!_isCanceled) ...[
+            if (_canEdit) ...[
               _SectionLabel(text: 'Observação'),
               const SizedBox(height: 8),
               TextField(
@@ -387,10 +462,14 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
                 ),
               ),
               const SizedBox(height: 20),
-            ] else if (widget.budget.observation.isNotEmpty) ...[
+            ] else if (widget.budget.observation.isNotEmpty || _isWaitingApproval) ...[
               _SectionLabel(text: 'Observação'),
               const SizedBox(height: 8),
-              _ReadOnlyField(label: '', value: widget.budget.observation, showLabel: false),
+              _ReadOnlyField(
+                label: '',
+                value: _obsCtrl.text.isNotEmpty ? _obsCtrl.text : 'Sem observações.',
+                showLabel: false,
+              ),
               const SizedBox(height: 20),
             ],
 
@@ -404,49 +483,62 @@ class _BudgetDetailScreenState extends State<BudgetDetailScreen> {
                 ),
               )
             else ...[
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: _saving ? null : _save,
-                  child: const Text('Salvar alterações'),
+              if (_canEdit)
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: _saving ? null : _save,
+                    child: const Text('Salvar alterações'),
+                  ),
                 ),
-              ),
               const SizedBox(height: 10),
-              // Para avaliação: só deixa aprovar se já tem serviços adicionados
-              if (widget.budget.isAvaliacao && _services.isEmpty)
+
+              // Botões dinâmicos baseados no _status local (atualizado após cada save).
+              if (_status == 'rascunho')
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _saving ? null : _sendToClient,
+                    icon: const Icon(Icons.send_rounded, size: 18),
+                    label: const Text('Enviar para o Cliente'),
+                  ),
+                )
+              else if (_status == 'enviado')
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFF8E1),
+                    color: blueBg,
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFFFFCC02)),
+                    border: Border.all(color: blue.withValues(alpha: 0.3)),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.warning_amber_rounded,
-                          color: Color(0xFFF59E0B), size: 18),
+                      const Icon(Icons.hourglass_empty_rounded, color: blue, size: 18),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Adicione pelo menos um serviço antes de gerar a OS.',
+                          'Orçamento enviado. Aguardando aprovação do cliente.',
                           style: GoogleFonts.dmSans(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
-                            color: const Color(0xFF92400E),
+                            color: blue,
                           ),
                         ),
                       ),
                     ],
                   ),
                 )
-              else
+              else if (_status == 'aprovado')
                 SizedBox(
                   width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: _saving ? null : _approveBudget,
-                    child: const Text('Aprovar e gerar OS'),
+                  child: FilledButton.icon(
+                    onPressed: _saving ? null : _concludeAgendamento,
+                    icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
+                    style: FilledButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
+                    label: const Text('Concluir Agendamento e Abrir OS'),
                   ),
                 ),
+              
               const SizedBox(height: 10),
               SizedBox(
                 width: double.infinity,

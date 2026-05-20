@@ -13,6 +13,7 @@ import {
   getRecentConversationMessages,
   resolveConversationId,
 } from '../repositories/conversation_repository';
+import { isGenericCustomerName } from '../utils/customer_name';
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage, BaseMessage } from '@langchain/core/messages';
 
 import dotenv from 'dotenv';
@@ -71,6 +72,41 @@ function shouldAppendCurrentMessage(
   return getMessageText(lastMessage) !== currentMessage.trim();
 }
 
+function buildCustomerProfileContext(params: {
+  phoneNumber: string;
+  customerName?: string | null;
+  needsCustomerName: boolean;
+}): string {
+  const storedName = params.customerName?.trim() || 'NAO_INFORMADO';
+
+  return [
+    'Contexto cadastral do cliente atual:',
+    `- Telefone WhatsApp: ${params.phoneNumber}`,
+    `- Nome cadastrado: ${storedName}`,
+    `- Nome real confirmado: ${params.needsCustomerName ? 'nao' : 'sim'}`,
+    params.needsCustomerName
+      ? '- O nome real ainda precisa ser coletado. Para duvidas gerais sobre privacidade, LGPD ou seguranca dos dados, responda primeiro sem pedir o nome. Nos demais atendimentos, pergunte de forma natural e, assim que o cliente informar, use update_customer_name antes de seguir com a proxima acao.'
+      : '- O nome real ja esta confirmado. Nao peca o nome novamente a menos que o cliente queira corrigir.',
+  ].join('\n');
+}
+
+function isAwaitingCustomerName(history: ChatHistoryMessage[]): boolean {
+  const lastBotMessage = [...history]
+    .reverse()
+    .find((chatMessage) => chatMessage.tipo_remetente === 'bot')
+    ?.conteudo
+    ?.normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+  if (!lastBotMessage) return false;
+
+  return (
+    /\bnome\b/.test(lastBotMessage) &&
+    /\b(qual|informe|informar|me diga|me passa|pode me dizer|confirmar|confirmar seu)\b/.test(lastBotMessage)
+  );
+}
+
 function parseJsonText(content: string): unknown | null {
   try {
     return JSON.parse(content);
@@ -79,52 +115,97 @@ function parseJsonText(content: string): unknown | null {
   }
 }
 
-function normalizeAssistantReply(content: string): string {
+type AppointmentToolSuccess = {
+  agendamento_id: string;
+  orcamento_id: string;
+  agendado_para?: string;
+  magic_link_url?: string | null;
+  message?: string;
+};
+
+function isAppointmentToolSuccess(value: unknown): value is AppointmentToolSuccess {
+  if (!value || typeof value !== 'object') return false;
+  const data = value as Record<string, unknown>;
+
+  return typeof data.agendamento_id === 'string' && typeof data.orcamento_id === 'string';
+}
+
+function isGenericFailureReply(content: string): boolean {
+  const normalized = content.toLowerCase();
+  return (
+    normalized.includes('desculpe') ||
+    normalized.includes('não consegui') ||
+    normalized.includes('nao consegui') ||
+    normalized.includes('problema ao processar') ||
+    normalized.includes('erro técnico') ||
+    normalized.includes('erro tecnico')
+  );
+}
+
+function formatAppointmentConfirmation(data: AppointmentToolSuccess): string {
+  return typeof data.message === 'string' && data.message.trim()
+    ? data.message.trim()
+    : `Agendamento e orçamento criados com sucesso${
+        typeof data.agendado_para === 'string'
+          ? ` para ${new Date(data.agendado_para).toLocaleString('pt-BR')}`
+          : ''
+      }.`;
+}
+
+function appendAppointmentLinkIfMissing(content: string, fallbackAppointment?: AppointmentToolSuccess | null): string {
+  return content;
+}
+
+function normalizeAssistantReply(content: string, fallbackAppointment?: AppointmentToolSuccess | null): string {
   const trimmed = content.trim();
 
   if (!trimmed) {
+    if (fallbackAppointment) {
+      return formatAppointmentConfirmation(fallbackAppointment);
+    }
+
     return 'Não consegui concluir a solicitação agora. Pode reformular a mensagem?';
+  }
+
+  if (fallbackAppointment && isGenericFailureReply(trimmed)) {
+    return formatAppointmentConfirmation(fallbackAppointment);
   }
 
   const parsed = parseJsonText(trimmed);
   if (!parsed || typeof parsed !== 'object') {
-    return trimmed;
+    return appendAppointmentLinkIfMissing(trimmed, fallbackAppointment);
   }
 
   const data = parsed as Record<string, unknown>;
 
   if (typeof data.result === 'string' && data.result.trim()) {
-    return data.result.trim();
+    return appendAppointmentLinkIfMissing(data.result.trim(), fallbackAppointment);
   }
 
   if (typeof data.message === 'string' && data.message.trim()) {
-    return data.message.trim();
+    return appendAppointmentLinkIfMissing(data.message.trim(), fallbackAppointment);
   }
 
   if (data.ok === false && typeof data.error === 'string') {
+    if (fallbackAppointment) {
+      return formatAppointmentConfirmation(fallbackAppointment);
+    }
+
     return `Não consegui concluir a ação no sistema: ${data.error}`;
   }
 
-  if (
-    typeof data.agendamento_id === 'string' &&
-    typeof data.orcamento_id === 'string'
-  ) {
-    const dateText = typeof data.agendado_para === 'string'
-      ? ` para ${new Date(data.agendado_para).toLocaleString('pt-BR')}`
-      : '';
-    const magicLinkText = typeof data.magic_link_url === 'string' && data.magic_link_url
-      ? ` Acompanhe pelo link: ${data.magic_link_url}`
-      : '';
-
-    return `Agendamento e orçamento criados com sucesso${dateText}.${magicLinkText}`.trim();
+  if (isAppointmentToolSuccess(data)) {
+    return formatAppointmentConfirmation(data);
   }
 
-  return trimmed;
+  return appendAppointmentLinkIfMissing(trimmed, fallbackAppointment);
 }
 
 export async function analyzeMessage(message: string, number: string, conversacaoId?: string) {
   console.log(`\n[AI Service] 📩 Requisição recebida de: ${number}`);
   console.log(`[AI Service] 💬 Mensagem: "${message}"`);
+
+  let magicLinkUrl: string | undefined = undefined;
 
   const customer = await prisma.usuarios.findUnique({
     where: { telefone: number },
@@ -138,7 +219,28 @@ export async function analyzeMessage(message: string, number: string, conversaca
     };
   }
 
-  const inputGuardrail = await evaluateInputGuardrails(message, model);
+  const resolvedConversationId = await resolveConversationId(conversacaoId, customer?.id);
+  const historyLimit = getConversationHistoryLimit();
+  const conversationHistory = await getRecentConversationMessages(
+    resolvedConversationId,
+    customer?.id,
+    historyLimit,
+  );
+  const historyMessages = mapConversationHistoryToLlmMessages(conversationHistory);
+  const needsCustomerName = !customer || isGenericCustomerName(customer.nome, number);
+  const awaitingCustomerName = needsCustomerName && isAwaitingCustomerName(conversationHistory);
+
+  const guardrailModel = model.withConfig({
+    runName: 'Oficina_Tiao_Input_Guardrail',
+    metadata: {
+      customer_phone: number,
+      customer_id: customer?.id ?? 'unknown',
+    },
+  });
+
+  const inputGuardrail = await evaluateInputGuardrails(message, guardrailModel as any, {
+    awaitingCustomerName,
+  });
   if (!inputGuardrail.allowed) {
     console.warn(
       `[Guardrails] Entrada bloqueada (${inputGuardrail.category}): ${inputGuardrail.reason}`,
@@ -151,20 +253,23 @@ export async function analyzeMessage(message: string, number: string, conversaca
     };
   }
 
-  const tools = getTools(number, message);
-  const modelWithTools = model.bindTools(tools);
+  const tools = getTools(number, message, customer?.id);
 
-  const resolvedConversationId = await resolveConversationId(conversacaoId, customer?.id);
-  const historyLimit = getConversationHistoryLimit();
-  const conversationHistory = await getRecentConversationMessages(
-    resolvedConversationId,
-    customer?.id,
-    historyLimit,
-  );
-  const historyMessages = mapConversationHistoryToLlmMessages(conversationHistory);
-
+  const modelWithTools = model.bindTools(tools).withConfig({
+    runName: 'Oficina_Tiao_Agent_Loop',
+    metadata: {
+      customer_phone: number,
+      customer_id: customer?.id ?? 'unknown',
+      conversation_id: resolvedConversationId,
+    },
+  });
   const messages: BaseMessage[] = [
     new SystemMessage(OFICINA_TIAO_SYSTEM_PROMPT),
+    new SystemMessage(buildCustomerProfileContext({
+      phoneNumber: number,
+      customerName: customer?.nome,
+      needsCustomerName,
+    })),
     ...historyMessages,
   ];
 
@@ -177,6 +282,7 @@ export async function analyzeMessage(message: string, number: string, conversaca
 
   let iterations = 0;
   let finalResponse: any = null;
+  let lastSuccessfulAppointment: AppointmentToolSuccess | null = null;
 
   while (iterations < MAX_ITERATIONS) {
     iterations++;
@@ -216,6 +322,14 @@ export async function analyzeMessage(message: string, number: string, conversaca
       try {
         const toolResult = await (tool as any).call(toolCall.args);
         const serializedToolResult = typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult);
+        const parsedToolResult = parseJsonText(serializedToolResult);
+
+        if (toolCall.name === 'create_appointment' && isAppointmentToolSuccess(parsedToolResult)) {
+          lastSuccessfulAppointment = parsedToolResult;
+          if (typeof parsedToolResult.magic_link_url === 'string') {
+            magicLinkUrl = parsedToolResult.magic_link_url;
+          }
+        }
         messages.push(new ToolMessage({
           tool_call_id: toolCallId,
           content: sanitizeToolResultForPrompt(serializedToolResult)
@@ -232,12 +346,14 @@ export async function analyzeMessage(message: string, number: string, conversaca
 
   const finalContent = validateFinalReplyGuardrails(
     normalizeAssistantReply(
-      String(finalResponse?.content || 'Desculpe, tive um problema ao processar sua solicitação no momento. Posso tentar novamente?')
+      String(finalResponse?.content ?? ''),
+      lastSuccessfulAppointment
     )
   );
 
   return {
     result: finalContent,
-    action: 'REPLY'
+    action: 'REPLY',
+    magic_link_url: magicLinkUrl
   };
 }

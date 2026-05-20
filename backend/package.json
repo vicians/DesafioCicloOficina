@@ -1,11 +1,12 @@
 {
-  "name": "omniconnect-backend",
+  "name": "oficina-backend",
   "version": "1.0.0",
-  "description": "API Backend para o sistema OmniConnect",
+  "description": "API Backend para o sistema Tião Oficina",
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc",
     "start": "node dist/backend/src/server.js",
+    "ngrok": "npx ngrok http 3000",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "db:migrate": "ts-node src/database/migrations/migrations.ts",
     "db:seed": "ts-node src/database/seeds/seeds.ts",

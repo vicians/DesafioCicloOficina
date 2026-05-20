@@ -71,6 +71,8 @@ class SchedulingApiRepository implements SchedulingRepository {
       possuiOrcamento: map['possui_orcamento'] == true,
       possuiExecucao: map['possui_execucao'] == true,
       notasCliente: map['notas_cliente'] as String?,
+      orcamentoStatus: map['orcamento_status'] as String?,
+      orcamentoTemItens: map['orcamento_tem_itens'] == true,
     );
   }
 
@@ -89,11 +91,16 @@ class SchedulingApiRepository implements SchedulingRepository {
 
     final List<dynamic> orcamentos = jsonDecode(orcamentosResp.body) as List<dynamic>;
     final sentBudgetAgendamentoIds = <String>{};
+    final budgetByAgendamento = <String, Map<String, dynamic>>{};
+
     for (final raw in orcamentos.cast<Map<String, dynamic>>()) {
       final status = (raw['status'] as String? ?? '').toUpperCase();
       final agendamentoId = raw['agendamento_id'] as String?;
-      if (status == 'ENVIADO' && agendamentoId != null && agendamentoId.isNotEmpty) {
-        sentBudgetAgendamentoIds.add(agendamentoId);
+      if (agendamentoId != null && agendamentoId.isNotEmpty) {
+        budgetByAgendamento[agendamentoId] = raw;
+        if (status == 'ENVIADO') {
+          sentBudgetAgendamentoIds.add(agendamentoId);
+        }
       }
     }
 
@@ -106,7 +113,30 @@ class SchedulingApiRepository implements SchedulingRepository {
           final possuiExecucao = map['possui_execucao'] == true;
           return !sentBudgetAgendamentoIds.contains(agendamentoId) && !possuiExecucao;
         })
-        .map(_mapScheduledItem)
+        .map((map) {
+          final agendamentoId = map['id'] as String? ?? '';
+          final budget = budgetByAgendamento[agendamentoId];
+          
+          if (budget != null) {
+            final budgetStatus = (budget['status'] as String? ?? '').toUpperCase();
+            map['orcamento_status'] = budgetStatus.isNotEmpty ? budgetStatus : map['orcamento_status'];
+            
+            // O backend local já traz orcamento_tem_itens, mas o remoto (antigo) traz nulo.
+            if (map['orcamento_tem_itens'] == null || map['orcamento_tem_itens'] == false) {
+              final servicos = (budget['servicos'] as List?) ?? (budget['itens_servico'] as List?) ?? [];
+              final produtos = (budget['produtos'] as List?) ?? (budget['itens_produto'] as List?) ?? [];
+              final valorTotal = (budget['valor_total'] as num?)?.toInt() ?? 0;
+              
+              map['orcamento_tem_itens'] = servicos.isNotEmpty || 
+                                           produtos.isNotEmpty || 
+                                           valorTotal > 0 || 
+                                           budgetStatus == 'ENVIADO' || 
+                                           budgetStatus == 'APROVADO';
+            }
+            map['possui_orcamento'] = true;
+          }
+          return _mapScheduledItem(map);
+        })
         .toList();
 
     items.sort((a, b) => a.agendadoPara.compareTo(b.agendadoPara));

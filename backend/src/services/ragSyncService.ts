@@ -19,7 +19,10 @@ export class RagSyncService {
           valor: produto.valor,
           quantidade_estoque: produto.quantidade_estoque,
         },
-        { timeout: 5000 },
+        { 
+          timeout: 5000,
+          headers: { 'X-Internal-Token': process.env.INTERNAL_AUTH_TOKEN }
+        },
       )
       .catch((err: Error) => {
         console.warn('[RAG_SYNC] Falha ao sincronizar produto com Vector DB:', err.message);
