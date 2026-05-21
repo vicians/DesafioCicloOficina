@@ -310,7 +310,7 @@ export async function analyzeMessage(message: string, number: string, conversaca
   });
   const messages: BaseMessage[] = [
     new SystemMessage(OFICINA_TIAO_SYSTEM_PROMPT),
-    new SystemMessage(`A data e hora atuais do sistema são: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}. Use esta informação como base para qualquer referência temporal (como 'hoje', 'amanhã', dias da semana) e para agendamentos.`),
+    new SystemMessage(`A data e hora atuais do sistema são: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}. Use esta informação como base para qualquer referência temporal e para agendamentos - Lembre-se que caso esteja em uma interacao fora do horario de atendimento, voce deve apenas tirar duvidas e nunca criar agendamentos.`),
     new SystemMessage(buildCustomerProfileContext({
       phoneNumber: number,
       customerName: activeCustomer?.nome,
