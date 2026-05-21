@@ -82,28 +82,49 @@ function buildCustomerProfileContext(params: {
   phoneNumber: string;
   customerName?: string | null;
   customerCpfCnpj?: string | null;
+  customerEmail?: string | null;
   needsCustomerName: boolean;
+  needsCustomerEmail?: boolean;
+  needsCustomerCpfCnpj?: boolean;
 }): string {
   const storedName = params.customerName?.trim() || 'NAO_INFORMADO';
+  const storedEmail = params.customerEmail?.trim() || 'NAO_INFORMADO';
+
   const cpfCnpjDigits = onlyDigits(params.customerCpfCnpj);
   const phoneDigits = onlyDigits(params.phoneNumber);
   const phoneWithoutCountryCode = phoneDigits.startsWith('55') ? phoneDigits.slice(2) : phoneDigits;
+  
   const hasCpfCnpj = Boolean(
     cpfCnpjDigits &&
     cpfCnpjDigits !== phoneDigits &&
     cpfCnpjDigits !== phoneWithoutCountryCode,
   );
 
-  return [
+  const contextLines = [
     'Contexto cadastral do cliente atual:',
     `- Telefone WhatsApp: ${params.phoneNumber}`,
     `- Nome cadastrado: ${storedName}`,
     `- CPF/CNPJ cadastrado: ${hasCpfCnpj ? 'sim' : 'nao'}`,
-    `- Nome real confirmado: ${params.needsCustomerName ? 'nao' : 'sim'}`,
-    params.needsCustomerName
-      ? '- O nome real ainda precisa ser coletado. Para duvidas gerais sobre privacidade, LGPD ou seguranca dos dados, responda primeiro sem pedir o nome. Nos demais atendimentos, pergunte de forma natural e, assim que o cliente informar, use update_customer_name antes de seguir com a proxima acao.'
-      : '- O nome real ja esta confirmado. Nao peca o nome novamente a menos que o cliente queira corrigir.',
-  ].join('\n');
+    `- Email cadastrado: ${storedEmail !== 'NAO_INFORMADO' ? 'sim' : 'nao'}`,
+    '',
+    'Diretrizes de coleta de dados (aja de forma conversacional e prestativa; não faça múltiplas perguntas de uma vez):'
+  ];
+
+  if (params.needsCustomerName) {
+    contextLines.push('- NOME: O nome real ainda precisa ser coletado. Para dúvidas sobre LGPD, responda primeiro. Nos demais casos, pergunte o nome de forma amigável e use a ferramenta update_customer com o parametro nome antes de avançar.');
+  } else {
+    contextLines.push('- NOME: Já confirmado. Não pergunte novamente, a menos que o cliente peça para corrigir.');
+  }
+
+  if (params.needsCustomerEmail && !params.needsCustomerName) {
+    contextLines.push('- EMAIL: O email está pendente. Peça-o de forma contextualizada (ex: "Para que você consiga logar no Aplicativo da Oficina, qual o seu email?") e apos obte-lo, use a ferramenta update_customer com o parametro email.');
+  }
+  
+  if (params.needsCustomerCpfCnpj) {
+    contextLines.push('- CPF/CNPJ: Como o cliente buscou a oficina, pergunte qual é o CPF ou CNPJ do cliente. Ao obter, use a ferramenta update_customer com o parametro cpf_cnpj.');
+  }
+  
+  return contextLines.join('\n');
 }
 
 function isAwaitingCustomerName(history: ChatHistoryMessage[]): boolean {
@@ -291,6 +312,16 @@ export async function analyzeMessage(message: string, number: string, conversaca
   });
   const activeCustomer = capturedEntityState?.customer ?? customer;
   const activeNeedsCustomerName = !activeCustomer || isGenericCustomerName(activeCustomer.nome, number);
+  const activeNeedsCustomerEmail = !activeCustomer?.email;
+  const activeCpfCnpjDigits = onlyDigits(activeCustomer?.cpf_cnpj);
+  const activePhoneDigits = onlyDigits(number);
+  const activePhoneWithoutCountryCode = activePhoneDigits.startsWith('55') ? activePhoneDigits.slice(2) : activePhoneDigits;
+  const activeHasCpfCnpj = Boolean(
+    activeCpfCnpjDigits &&
+    activeCpfCnpjDigits !== activePhoneDigits &&
+    activeCpfCnpjDigits !== activePhoneWithoutCountryCode,
+  );
+  const activeNeedsCustomerCpfCnpj = !activeHasCpfCnpj;
 
   if (capturedEntityState) {
     console.log(
@@ -315,7 +346,10 @@ export async function analyzeMessage(message: string, number: string, conversaca
       phoneNumber: number,
       customerName: activeCustomer?.nome,
       customerCpfCnpj: activeCustomer?.cpf_cnpj,
+      customerEmail: activeCustomer?.email,
       needsCustomerName: activeNeedsCustomerName,
+      needsCustomerEmail: activeNeedsCustomerEmail,
+      needsCustomerCpfCnpj: activeNeedsCustomerCpfCnpj,
     })),
     ...(capturedEntityState ? [new SystemMessage(capturedEntityState.promptContext)] : []),
     ...historyMessages,

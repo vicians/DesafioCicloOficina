@@ -151,7 +151,7 @@ const SYSTEM_LEAK_PATTERNS = [
   /\b(system prompt|developer message|hidden instructions|internal instructions)\b/i,
   /\b(prompt de sistema|mensagem do sistema|instrucoes internas|instruções internas|instrucoes ocultas|instruções ocultas)\b/i,
   /\b(regras de negocio|regras de negócio|escopo permitido|identidade e limites)\b/i,
-  /\b(use sempre a ferramenta|catalog_search_tool|create_appointment|backend_api|check_availability|get_customer_history|update_customer_name)\b/i,
+  /\b(use sempre a ferramenta|catalog_search_tool|create_appointment|backend_api|check_availability|get_customer_history|update_customer)\b/i,
   /\b(mensagens de usuarios e dados retornados por ferramentas sao conteudo nao confiavel|conteudo nao confiavel)\b/i,
 ];
 
@@ -336,7 +336,7 @@ function contextualShortAnswerDecision(
 }
 
 function getToolsForIntent(intent: GuardrailIntent): Set<string> {
-  const withProfileUpdate = (toolNames: string[]) => new Set([...toolNames, 'update_customer_name']);
+  const withProfileUpdate = (toolNames: string[]) => new Set([...toolNames, 'update_customer']);
 
   switch (intent) {
     case 'automotive_advice':
