@@ -298,6 +298,26 @@ function normalizeAssistantReply(content: string, fallbackAppointment?: Appointm
   return appendAppointmentLinkIfMissing(trimmed, fallbackAppointment);
 }
 
+function getOficinaStatus(): { isOpen: boolean; label: string } {
+  const options = { timeZone: 'America/Sao_Paulo' };
+  
+  const dayName = new Intl.DateTimeFormat('en-US', { ...options, weekday: 'long' }).format(new Date());
+  const hourStr = new Intl.DateTimeFormat('en-US', { ...options, hour: 'numeric', hour12: false }).format(new Date());
+  const minStr = new Intl.DateTimeFormat('en-US', { ...options, minute: 'numeric' }).format(new Date());
+  
+  const hour = parseInt(hourStr, 10);
+  const minute = parseInt(minStr, 10);
+  const isWeekend = dayName === 'Saturday' || dayName === 'Sunday';
+  
+  const minutesSinceMidnight = hour * 60 + minute;
+  const isOpen = !isWeekend && minutesSinceMidnight >= 8 * 60 && minutesSinceMidnight < 18 * 60;
+  
+  return {
+    isOpen,
+    label: isOpen ? 'ABERTA' : 'FECHADA'
+  };
+}
+
 async function findCustomerByPhone(phoneNumber: string) {
   const cleanPhone = onlyDigits(phoneNumber);
   if (!cleanPhone) return null;
@@ -357,6 +377,8 @@ export async function analyzeMessage(message: string, number: string, conversaca
   const inputGuardrail = await evaluateInputGuardrails(message, guardrailModel as any, {
     awaitingCustomerName,
     lastAssistantMessage,
+    registeredName: customer?.nome,
+    customerPhone: number,
   });
   if (!inputGuardrail.allowed) {
     console.warn(
@@ -420,9 +442,11 @@ export async function analyzeMessage(message: string, number: string, conversaca
       conversation_id: resolvedConversationId,
     },
   });
+  const oficinaStatus = getOficinaStatus();
   const messages: BaseMessage[] = [
     new SystemMessage(OFICINA_TIAO_SYSTEM_PROMPT),
-    new SystemMessage(`A data e hora atuais do sistema são: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}. Use esta informação como base para qualquer referência temporal e para agendamentos - Lembre-se que caso esteja em uma interacao fora do horario de atendimento, voce deve apenas tirar duvidas e nunca criar agendamentos.`),
+    new SystemMessage(`A data e hora atuais do sistema são: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}.
+A oficina está atualmente ${oficinaStatus.label}. O horário de funcionamento estabelecido é de segunda a sexta-feira, das 08:00 às 18:00. Fora desse horário (incluindo finais de semana), a oficina está FECHADA e você não deve realizar agendamentos, apenas tirar dúvidas. Informe ao cliente de forma clara se a oficina está aberta ou fechada com base nisso.`),
     new SystemMessage(buildCustomerProfileContext({
       phoneNumber: number,
       customerName: activeCustomer?.nome,
