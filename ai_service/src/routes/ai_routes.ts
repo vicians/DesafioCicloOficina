@@ -8,6 +8,7 @@ import { upsertOrcamento } from '../vectorstore/orcamentoVectorStore';
 import { upsertExecucao } from '../vectorstore/execucaoServicoVectorStore';
 import { AnalyzeRequestBody, CreateOsBody, ProdutoPayload, ServicoPayload, AgendamentoPayload, OrcamentoPayload, ExecucaoServicoPayload } from '../schemas/ai_schemas';
 import { extractBackendErrorMessage, getBackendErrorStatus } from '../utils/backend_error';
+import { rate_limiter } from '../middlewares/rate_limiter';
 const router = Router();
 
 /**
@@ -120,7 +121,7 @@ router.post('/ai/execucoes/sync', async (req: Request, res: Response) => {
  * Análise de mensagem com contexto RAG
  */
 
-router.post('/ai/analyze', async (req: Request, res: Response) => {
+router.post('/ai/analyze', rate_limiter, async (req: Request, res: Response) => {
   const { message, number, conversacaoId } = req.body as AnalyzeRequestBody;
 
   if (!message || !number) {
@@ -140,7 +141,7 @@ router.post('/ai/analyze', async (req: Request, res: Response) => {
  * Sub-Agent: Criação de OS
  */
 
-router.post('/ai/create-os', async (req: Request, res: Response) => {
+router.post('/ai/create-os', rate_limiter, async (req: Request, res: Response) => {
   const body = req.body as CreateOsBody;
   const startedAt = new Date();
 
