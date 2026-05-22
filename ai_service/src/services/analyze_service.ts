@@ -93,7 +93,7 @@ function buildCustomerProfileContext(params: {
   const cpfCnpjDigits = onlyDigits(params.customerCpfCnpj);
   const phoneDigits = onlyDigits(params.phoneNumber);
   const phoneWithoutCountryCode = phoneDigits.startsWith('55') ? phoneDigits.slice(2) : phoneDigits;
-  
+
   const hasCpfCnpj = Boolean(
     cpfCnpjDigits &&
     cpfCnpjDigits !== phoneDigits &&
@@ -119,11 +119,65 @@ function buildCustomerProfileContext(params: {
   if (params.needsCustomerEmail && !params.needsCustomerName) {
     contextLines.push('- EMAIL: O email está pendente. Peça-o de forma contextualizada (ex: "Para que você consiga logar no Aplicativo da Oficina, qual o seu email?") e apos obte-lo, use a ferramenta update_customer com o parametro email.');
   }
-  
+
   if (params.needsCustomerCpfCnpj) {
     contextLines.push('- CPF/CNPJ: Como o cliente buscou a oficina, pergunte qual é o CPF ou CNPJ do cliente. Ao obter, use a ferramenta update_customer com o parametro cpf_cnpj.');
   }
-  
+
+  return contextLines.join('\n');
+}
+
+function buildVehicleProfileContext(vehicles: Array<{
+  placa: string;
+  marca: string | null;
+  modelo: string | null;
+  ano: number | null;
+  quilometragem_atual: number | null;
+}>): string {
+  if (vehicles.length === 0) {
+    return [
+      'Contexto de veículos do cliente:',
+      '- Nenhum veículo cadastrado ainda.',
+      '',
+      'Diretrizes de coleta de veículo (aja de forma conversacional e prestativa; não faça múltiplas perguntas de uma vez):',
+      '- O agendamento exige um veículo. Se o cliente não tiver veículos cadastrados, pergunte a placa do veículo primeiro. Após obter a placa, ela será salva no cadastro. Depois, peça os outros dados obrigatórios (marca, modelo, ano e quilometragem).',
+    ].join('\n');
+  }
+
+  const contextLines = [
+    'Contexto de veículos cadastrados do cliente:',
+  ];
+
+  for (const vehicle of vehicles) {
+    const isBrandMissing = !vehicle.marca || vehicle.marca === 'Nao informado' || vehicle.marca === 'Não informado';
+    const isModelMissing = !vehicle.modelo || vehicle.modelo === 'Nao informado' || vehicle.modelo === 'Não informado';
+    const isYearMissing = !vehicle.ano || vehicle.ano === new Date().getFullYear();
+    const isMileageMissing = !vehicle.quilometragem_atual;
+
+    const brand = isBrandMissing ? 'NAO_INFORMADO' : vehicle.marca;
+    const model = isModelMissing ? 'NAO_INFORMADO' : vehicle.modelo;
+    const year = isYearMissing ? 'NAO_INFORMADO' : vehicle.ano;
+    const mileage = isMileageMissing ? 'NAO_INFORMADO' : vehicle.quilometragem_atual;
+
+    contextLines.push(`- Veículo Placa ${vehicle.placa}:`);
+    contextLines.push(`  - Marca: ${brand}`);
+    contextLines.push(`  - Modelo: ${model}`);
+    contextLines.push(`  - Ano: ${year}`);
+    contextLines.push(`  - Quilometragem: ${mileage}`);
+
+    const missingFields: string[] = [];
+    if (isBrandMissing) missingFields.push('marca');
+    if (isModelMissing) missingFields.push('modelo');
+    if (isYearMissing) missingFields.push('ano');
+    if (isMileageMissing) missingFields.push('quilometragem');
+
+    if (missingFields.length > 0) {
+      contextLines.push(`  - Diretriz para Placa ${vehicle.placa}: Ainda faltam os dados obrigatórios do veículo: ${missingFields.join(', ')}. Pergunte-os de forma amigável (uma informação por vez, sem enxurrada de perguntas) e use a ferramenta update_vehicle assim que obtê-los. A quilometragem também é um dado obrigatório.`);
+    } else {
+      contextLines.push(`  - Todos os dados obrigatórios do veículo (placa, marca, modelo, ano e quilometragem) estão completos.`);
+    }
+  }
+
   return contextLines.join('\n');
 }
 
@@ -189,11 +243,10 @@ function isGenericFailureReply(content: string): boolean {
 function formatAppointmentConfirmation(data: AppointmentToolSuccess): string {
   return typeof data.message === 'string' && data.message.trim()
     ? data.message.trim()
-    : `Agendamento e orçamento criados com sucesso${
-        typeof data.agendado_para === 'string'
-          ? ` para ${new Date(data.agendado_para).toLocaleString('pt-BR')}`
-          : ''
-      }.`;
+    : `Agendamento e orçamento criados com sucesso${typeof data.agendado_para === 'string'
+      ? ` para ${new Date(data.agendado_para).toLocaleString('pt-BR')}`
+      : ''
+    }.`;
 }
 
 function appendAppointmentLinkIfMissing(content: string, fallbackAppointment?: AppointmentToolSuccess | null): string {
@@ -323,6 +376,19 @@ export async function analyzeMessage(message: string, number: string, conversaca
   );
   const activeNeedsCustomerCpfCnpj = !activeHasCpfCnpj;
 
+  const customerVehicles = activeCustomer
+    ? await prisma.veiculos.findMany({
+      where: { cliente_id: activeCustomer.id },
+      select: {
+        placa: true,
+        marca: true,
+        modelo: true,
+        ano: true,
+        quilometragem_atual: true,
+      },
+    })
+    : [];
+
   if (capturedEntityState) {
     console.log(
       `[AI Service] Dado contextual capturado: ${capturedEntityState.entity.type} (${capturedEntityState.status})`,
@@ -351,6 +417,7 @@ export async function analyzeMessage(message: string, number: string, conversaca
       needsCustomerEmail: activeNeedsCustomerEmail,
       needsCustomerCpfCnpj: activeNeedsCustomerCpfCnpj,
     })),
+    new SystemMessage(buildVehicleProfileContext(customerVehicles)),
     ...(capturedEntityState ? [new SystemMessage(capturedEntityState.promptContext)] : []),
     ...historyMessages,
   ];

@@ -7,6 +7,7 @@ export type CustomerProfileSnapshot = {
   nome: string | null;
   telefone: string | null;
   cpf_cnpj: string | null;
+  email: string | null;
 };
 
 export type CapturedEntityState = {
@@ -28,6 +29,7 @@ async function findCustomerByPhone(
         nome: true,
         telefone: true,
         cpf_cnpj: true,
+        email: true,
       },
     });
 
@@ -40,7 +42,7 @@ async function findCustomerByPhone(
   const phoneWithoutCountryCode = cleanPhone.startsWith('55') ? cleanPhone.slice(2) : cleanPhone;
 
   const rows = await prisma.$queryRaw<CustomerProfileSnapshot[]>`
-    SELECT id, nome, telefone, cpf_cnpj
+    SELECT id, nome, telefone, cpf_cnpj, email
     FROM usuarios
     WHERE regexp_replace(COALESCE(telefone, ''), '\\D', '', 'g') = ${cleanPhone}
        OR regexp_replace(COALESCE(telefone, ''), '\\D', '', 'g') = ${phoneWithoutCountryCode}
@@ -116,6 +118,7 @@ async function persistCustomerName(
       nome: true,
       telefone: true,
       cpf_cnpj: true,
+      email: true,
     },
   });
 
@@ -174,6 +177,7 @@ async function persistCpf(
       nome: true,
       telefone: true,
       cpf_cnpj: true,
+      email: true,
     },
   });
 
