@@ -30,7 +30,13 @@ class _ClientScheduleSheetState extends State<_ClientScheduleSheet> {
   static const int _firstHour = 7;
   static const int _lastHour = 18;
 
-  DateTime _selectedDate = DateTime.now();
+  DateTime get _nowBRT => DateTime.now().toUtc().subtract(const Duration(hours: 3));
+  DateTime get _todayBRT {
+    final now = _nowBRT;
+    return DateTime(now.year, now.month, now.day);
+  }
+
+  late DateTime _selectedDate = _todayBRT;
   int? _selectedHour;
   bool _loadingContext = true;
   bool _loadingAvailability = true;
@@ -113,7 +119,7 @@ class _ClientScheduleSheetState extends State<_ClientScheduleSheet> {
   }
 
   bool _isToday(DateTime date) {
-    final now = DateTime.now();
+    final now = _nowBRT;
     return date.year == now.year && date.month == now.month && date.day == now.day;
   }
 
@@ -123,7 +129,7 @@ class _ClientScheduleSheetState extends State<_ClientScheduleSheet> {
     }
 
     if (_isToday(_selectedDate)) {
-      final now = DateTime.now();
+      final now = _nowBRT;
       if (hour < now.hour) {
         return true;
       }
@@ -464,8 +470,8 @@ class _ClientScheduleSheetState extends State<_ClientScheduleSheet> {
               ),
               child: CalendarDatePicker(
                 initialDate: _selectedDate,
-                firstDate: DateTime.now(),
-                lastDate: DateTime.now().add(const Duration(days: 90)),
+                firstDate: _todayBRT,
+                lastDate: _todayBRT.add(const Duration(days: 90)),
                 onDateChanged: (date) {
                   setState(() {
                     _selectedDate = date;
