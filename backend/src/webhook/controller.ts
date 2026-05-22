@@ -18,6 +18,8 @@ const recentMessageIds = new Map<string, ReturnType<typeof setTimeout>>();
 
 const messageBuffer = new Map<string, string[]>();
 const debounceTimers = new Map<string, NodeJS.Timeout>();
+const activeRequests = new Set<string>();
+const pendingBatches = new Map<string, () => Promise<void>>();
 
 type PersistedOsConfirmation = {
   agendamento_id: string;
@@ -199,107 +201,125 @@ const processBufferedMessages = async (
   requestStartedAt: Date,
   message_id?: string
 ) => {
-  const messages = messageBuffer.get(customerNumber) || [];
-  if (messages.length === 0) return;
-
-  const combinedText = messages.join('\n');
-  
-  messageBuffer.delete(customerNumber);
-  debounceTimers.delete(customerNumber);
-
-  console.log(`[Webhook] Processando lote de mensagens para ${customerNumber}:\n${combinedText}`);
-
-  if (message_id) {
-    send_whatsapp_typing(message_id).catch((err) => {
-      console.error('[Webhook] Falha ao acionar indicador de digitação:', err.message);
+  if (activeRequests.has(customerNumber)) {
+    pendingBatches.set(customerNumber, async () => {
+      await processBufferedMessages(customerNumber, conversacaoId, clienteId, requestStartedAt, message_id);
     });
+    return;
   }
 
-  let is_ai_done = false;
-  const processando_timeout = setTimeout(async () => {
-    if (!is_ai_done) {
-      await sendWhatsAppMessage(customerNumber, "Estou processando sua solicitação, só um instante... ⚙️");
-    }
-  }, 25000);
+  activeRequests.add(customerNumber);
 
   try {
-    const aiResponse = await axios.post(`${AI_SERVICE_URL}/ai/analyze`, {
-      message: combinedText,
-      number: customerNumber,
-      conversacaoId,
-    }, {
-      headers: { 'X-Internal-Token': process.env.INTERNAL_AUTH_TOKEN }
-    });
+    const messages = messageBuffer.get(customerNumber) || [];
+    if (messages.length === 0) return;
 
-    is_ai_done = true;
-    clearTimeout(processando_timeout);
+    const combinedText = messages.join('\n');
+    
+    messageBuffer.delete(customerNumber);
+    debounceTimers.delete(customerNumber);
 
-    const { action, result, demand } = aiResponse.data;
+    console.log(`[Webhook] Processando lote de mensagens para ${customerNumber}:\n${combinedText}`);
 
-    if (action === 'REPLY') {
-      const recoveredMsg = isCustomerFacingFailure(result)
-        ? await recoverPersistedOsMessage(clienteId, requestStartedAt)
-        : null;
-      const replyText = recoveredMsg
-        ?? (typeof result === 'string' && result.trim()
-          ? result
-          : 'Desculpe, tive um problema ao processar sua solicitação no momento. Posso tentar novamente?');
-
-      await sendWhatsAppMessage(customerNumber, replyText);
-      if (conversacaoId) {
-        await ConversationModel.addMessage(conversacaoId, clienteId, 'bot', replyText);
-      }
-
-      // O magic link não é mais gerado ou enviado
-
-    } else if (action === 'CREATE_OS') {
-      console.log(`[Webhook] Solicitando criação de OS para ${customerNumber}...`);
-      const osCreateStartedAt = new Date();
-
-      try {
-        const osResponse = await axios.post(`${AI_SERVICE_URL}/ai/create-os`, demand, {
-          headers: { 'X-Internal-Token': process.env.INTERNAL_AUTH_TOKEN }
-        });
-        const { message: osMsg } = osResponse.data;
-
-        await sendWhatsAppMessage(customerNumber, osMsg);
-        if (conversacaoId) {
-          await ConversationModel.addMessage(conversacaoId, clienteId, 'bot', osMsg);
-        }
-      } catch (osErr: any) {
-        console.error('[Webhook] Erro ao criar OS no ai_service:', osErr.response?.data ?? osErr.message);
-        const recoveredMsg = await recoverPersistedOsMessage(clienteId, osCreateStartedAt, demand?.vehiclePlate);
-
-        if (recoveredMsg) {
-          await sendWhatsAppMessage(customerNumber, recoveredMsg);
-          if (conversacaoId) {
-            await ConversationModel.addMessage(conversacaoId, clienteId, 'bot', recoveredMsg);
-          }
-          return;
-        }
-
-        const errMsg = "Ops, tive um problema ao gerar sua Ordem de Serviço. Tente novamente em instantes.";
-        await sendWhatsAppMessage(customerNumber, errMsg);
-        if (conversacaoId) {
-          await ConversationModel.addMessage(conversacaoId, clienteId, 'system', errMsg);
-        }
-      }
-
-    } else if (action === 'MANUAL_WAIT') {
-      console.log(`[Webhook] Atendimento manual para ${customerNumber}`);
-      const waitMsg = "Entendido. Vou passar seu caso para um de nossos mecânicos. Um momento, por favor!";
-      await sendWhatsAppMessage(customerNumber, waitMsg);
-      
-      if (conversacaoId) {
-        await ConversationModel.addMessage(conversacaoId, clienteId, 'bot', waitMsg);
-        await ConversationModel.updateHandoff(conversacaoId, true);
-      }
+    if (message_id) {
+      send_whatsapp_typing(message_id).catch((err) => {
+        console.error('[Webhook] Falha ao acionar indicador de digitação:', err.message);
+      });
     }
 
-  } catch (error: any) {
-    is_ai_done = true;
-    clearTimeout(processando_timeout);
-    console.error('[Webhook] Erro na comunicação com AI_SERVICE:', error.message);
+    let is_ai_done = false;
+    const processando_timeout = setTimeout(async () => {
+      if (!is_ai_done) {
+        await sendWhatsAppMessage(customerNumber, "Estou processando sua solicitação, só um instante... ⚙️");
+      }
+    }, 25000);
+
+    try {
+      const aiResponse = await axios.post(`${AI_SERVICE_URL}/ai/analyze`, {
+        message: combinedText,
+        number: customerNumber,
+        conversacaoId,
+      }, {
+        headers: { 'X-Internal-Token': process.env.INTERNAL_AUTH_TOKEN }
+      });
+
+      is_ai_done = true;
+      clearTimeout(processando_timeout);
+
+      const { action, result, demand } = aiResponse.data;
+
+      if (action === 'REPLY') {
+        const recoveredMsg = isCustomerFacingFailure(result)
+          ? await recoverPersistedOsMessage(clienteId, requestStartedAt)
+          : null;
+        const replyText = recoveredMsg
+          ?? (typeof result === 'string' && result.trim()
+            ? result
+            : 'Desculpe, tive um problema ao processar sua solicitação no momento. Posso tentar novamente?');
+
+        await sendWhatsAppMessage(customerNumber, replyText);
+        if (conversacaoId) {
+          await ConversationModel.addMessage(conversacaoId, clienteId, 'bot', replyText);
+        }
+
+      } else if (action === 'CREATE_OS') {
+        console.log(`[Webhook] Solicitando criação de OS para ${customerNumber}...`);
+        const osCreateStartedAt = new Date();
+
+        try {
+          const osResponse = await axios.post(`${AI_SERVICE_URL}/ai/create-os`, demand, {
+            headers: { 'X-Internal-Token': process.env.INTERNAL_AUTH_TOKEN }
+          });
+          const { message: osMsg } = osResponse.data;
+
+          await sendWhatsAppMessage(customerNumber, osMsg);
+          if (conversacaoId) {
+            await ConversationModel.addMessage(conversacaoId, clienteId, 'bot', osMsg);
+          }
+        } catch (osErr: any) {
+          console.error('[Webhook] Erro ao criar OS no ai_service:', osErr.response?.data ?? osErr.message);
+          const recoveredMsg = await recoverPersistedOsMessage(clienteId, osCreateStartedAt, demand?.vehiclePlate);
+
+          if (recoveredMsg) {
+            await sendWhatsAppMessage(customerNumber, recoveredMsg);
+            if (conversacaoId) {
+              await ConversationModel.addMessage(conversacaoId, clienteId, 'bot', recoveredMsg);
+            }
+            return;
+          }
+
+          const errMsg = "Ops, tive um problema ao gerar sua Ordem de Serviço. Tente novamente em instantes.";
+          await sendWhatsAppMessage(customerNumber, errMsg);
+          if (conversacaoId) {
+            await ConversationModel.addMessage(conversacaoId, clienteId, 'system', errMsg);
+          }
+        }
+
+      } else if (action === 'MANUAL_WAIT') {
+        console.log(`[Webhook] Atendimento manual para ${customerNumber}`);
+        const waitMsg = "Entendido. Vou passar seu caso para um de nossos mecânicos. Um momento, por favor!";
+        await sendWhatsAppMessage(customerNumber, waitMsg);
+        
+        if (conversacaoId) {
+          await ConversationModel.addMessage(conversacaoId, clienteId, 'bot', waitMsg);
+          await ConversationModel.updateHandoff(conversacaoId, true);
+        }
+      }
+
+    } catch (error: any) {
+      is_ai_done = true;
+      clearTimeout(processando_timeout);
+      console.error('[Webhook] Erro na comunicação com AI_SERVICE:', error.message);
+    }
+  } finally {
+    activeRequests.delete(customerNumber);
+    const nextBatch = pendingBatches.get(customerNumber);
+    if (nextBatch) {
+      pendingBatches.delete(customerNumber);
+      nextBatch().catch((err) => {
+        console.error(`[Webhook] Erro ao processar lote enfileirado para ${customerNumber}:`, err.message);
+      });
+    }
   }
 };
 

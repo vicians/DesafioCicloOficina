@@ -87,3 +87,22 @@ export function looksLikeCustomerNameReply(message: string): boolean {
   const words = cleanedMessage.split(/\s+/).filter(Boolean);
   return words.length <= 5;
 }
+
+export function isValidEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+}
+
+export function cleanEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+export function cleanCpfCnpj(value: string): string {
+  return value.replace(/\D/g, '');
+}
+
+export function isValidCpfCnpj(value: string): boolean {
+  const digits = cleanCpfCnpj(value);
+  return digits.length === 11 || digits.length === 14;
+}
+
