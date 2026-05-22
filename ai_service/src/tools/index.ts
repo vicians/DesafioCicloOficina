@@ -4,14 +4,17 @@ import { historyTool } from './history_tool';
 import { catalogTool } from './catalog_tool';
 import { backendApiTool } from './backend_api_tool';
 import { operationalSearchTool } from './operational_search_tool';
-import { updateCustomerNameTool } from './update_customer_tool';
+import { updateCustomerTool } from './update_customer_tool';
+import { updateVehicleTool } from './update_vehicle_tool';
 
 export const getTools = (phoneNumber: string, message: string, clienteId?: string) => [
   appointmentTool(phoneNumber, message),
   availabilityTool,
   historyTool(phoneNumber),
   catalogTool,
-  updateCustomerNameTool(phoneNumber),
+  updateCustomerTool(phoneNumber),
+  updateVehicleTool(phoneNumber),
   backendApiTool,
   operationalSearchTool(clienteId ?? null),
 ];
+

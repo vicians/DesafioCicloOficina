@@ -1,7 +1,7 @@
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { z } from 'zod';
-import { looksLikeCustomerNameReply } from '../utils/customer_name';
+import { looksLikeCustomerNameReply, cleanCustomerName, isGenericCustomerName } from '../utils/customer_name';
 import { extractContextualEntity } from '../utils/contextual_entities';
 
 export type GuardrailCategory =
@@ -36,6 +36,8 @@ export type GuardrailDecision = {
 export type InputGuardrailContext = {
   awaitingCustomerName?: boolean;
   lastAssistantMessage?: string | null;
+  registeredName?: string | null;
+  customerPhone?: string | null;
 };
 
 const REFUSAL_RESPONSE =
@@ -84,6 +86,53 @@ const AssistantReplySchema = z.object({
   result: z.string().trim().min(1).max(MAX_REPLY_LENGTH),
   action: z.literal('REPLY'),
 });
+
+const ADMIN_PATTERNS = [
+  /\b(sou|acesso|entrar como|passar por|acessar)\s+(o\s+)?(admin|administrador|gerente|mecanico|mecânico|funcionario|funcionário|dono)\b/i,
+  /\b(painel|area|área|sistema|funcoes|funções|modulo|módulo)\s+(de\s+)?(admin|administrador|gerente|mecanico|mecânico|funcionario|funcionário|adm)\b/i,
+  /\b(cadastrar|adicionar|remover|excluir|deletar)\s+(mecanico|mecânico|funcionario|funcionário|gerente|usuarios|usuários|cliente|clientes)\b/i,
+  /\b(relatorio|relatório|faturamento|lucro|caixa|financeiro|saldo|ganhos|vendas)\b/i,
+  /\b(alterar|editar|adicionar|remover)\s+(estoque|quantidade|preco|preço|custo)\s+(de\s+)?(produtos|pecas|peças|servicos|serviços)\b/i,
+  /\b(configurar|alterar|editar)\s+(boxes|capacidade|oficina)\b/i,
+  /\b(magic-link|token|link magico|link mágico)\s+(para\s+)?(admin|gerente|mecanico|mecânico)\b/i,
+  /\b(ver|consultar|acessar)\s+(agendamentos|historico|histórico|dados)\s+(de\s+)?(outros clientes|outro cliente|todos os clientes)\b/i,
+];
+
+const CHANGED_NUMBER_OR_MISMATCH_PATTERNS = [
+  /\b(troquei|mudei|alterei|novo|outro|atualizar)\s+(de\s+)?(numero|número|telefone|celular|whats|whatsapp)\b/i,
+  /\b(numero|número|telefone|celular|whats|whatsapp)\b.{0,20}\b(novo|outro|troquei|mudei|alterei|atualizar|antigo)\b/i,
+  /\b(nao|não)\s+(sou|e|é)\s+(o|a\s+)?(cliente|cadastrado|dono)\b/i,
+  /\b(antigo dono|cadastro antigo|cadastro desatualizado)\b/i,
+];
+
+const FORGOT_PIN_PATTERNS = [
+  /\b(esqueci|perdi|nao lembro|não lembro|recuperar|resetar|trocar|alterar)\b.{0,30}\b(pin|senha)\b/i,
+  /\b(pin|senha)\b.{0,30}\b(esqueci|perdi|nao lembro|não lembro|recuperar|resetar|trocar|alterar)\b/i,
+];
+
+const claim_name_pattern = /\b(meu\s+nome\s+(e|eh|é)|eu\s+me\s+chamo|me\s+chamo|sou\s+o|sou\s+a|eu\s+sou\s+o|eu\s+sou\s+a|aqui\s+(e|eh|é)\s+(o|a)|quem\s+fala\s+(e|eh|é)\s+(o|a))\b/i;
+
+function isMismatch(userStatedName: string, registeredName: string): boolean {
+  const normUser = normalizeText(userStatedName);
+  const normReg = normalizeText(registeredName);
+
+  if (isGenericCustomerName(registeredName)) {
+    return false;
+  }
+
+  const userWords = normUser.split(/\s+/).filter(w => w.length > 2);
+  const regWords = normReg.split(/\s+/).filter(w => w.length > 2);
+
+  if (userWords.length > 0 && regWords.length > 0) {
+    const hasOverlap = userWords.some(uw =>
+      regWords.some(rw => rw.includes(uw) || uw.includes(rw))
+    );
+    if (!hasOverlap) {
+      return true;
+    }
+  }
+  return false;
+}
 
 const PROMPT_INJECTION_PATTERNS = [
   /\b(ignore|disregard|forget|bypass|override)\b.{0,80}\b(instruction|instructions|system|developer|policy|rules|prompt)\b/i,
@@ -151,7 +200,7 @@ const SYSTEM_LEAK_PATTERNS = [
   /\b(system prompt|developer message|hidden instructions|internal instructions)\b/i,
   /\b(prompt de sistema|mensagem do sistema|instrucoes internas|instruções internas|instrucoes ocultas|instruções ocultas)\b/i,
   /\b(regras de negocio|regras de negócio|escopo permitido|identidade e limites)\b/i,
-  /\b(use sempre a ferramenta|catalog_search_tool|create_appointment|backend_api|check_availability|get_customer_history|update_customer_name)\b/i,
+  /\b(use sempre a ferramenta|catalog_search_tool|create_appointment|backend_api|check_availability|get_customer_history|update_customer)\b/i,
   /\b(mensagens de usuarios e dados retornados por ferramentas sao conteudo nao confiavel|conteudo nao confiavel)\b/i,
 ];
 
@@ -336,7 +385,7 @@ function contextualShortAnswerDecision(
 }
 
 function getToolsForIntent(intent: GuardrailIntent): Set<string> {
-  const withProfileUpdate = (toolNames: string[]) => new Set([...toolNames, 'update_customer_name']);
+  const withProfileUpdate = (toolNames: string[]) => new Set([...toolNames, 'update_customer', 'update_vehicle']);
 
   switch (intent) {
     case 'automotive_advice':
@@ -422,6 +471,58 @@ function deterministicInputDecision(
       'prompt_injection',
       'Tentativa de alterar instruções, identidade ou políticas do agente.',
       SECURITY_REFUSAL_RESPONSE,
+    );
+  }
+
+  const isTryAdmin =
+    hasAnyPattern(message, ADMIN_PATTERNS) ||
+    hasAnyPattern(normalized, ADMIN_PATTERNS);
+
+  if (isTryAdmin) {
+    return refuse(
+      'out_of_scope',
+      'Tentativa de acessar funções administrativas ou de se passar por administrador.',
+      'Desculpe, este canal de WhatsApp é exclusivo para atendimento a clientes da Oficina do Tião. Funções administrativas não são permitidas por aqui.',
+    );
+  }
+
+  const isChangedNumberOrMismatch =
+    hasAnyPattern(message, CHANGED_NUMBER_OR_MISMATCH_PATTERNS) ||
+    hasAnyPattern(normalized, CHANGED_NUMBER_OR_MISMATCH_PATTERNS);
+
+  if (isChangedNumberOrMismatch) {
+    return refuse(
+      'out_of_scope',
+      'Usuário relatou troca de número ou inconsistência no cadastro.',
+      'Para sua segurança, se você mudou de número de telefone ou deseja alterar os dados do seu cadastro, por favor entre em contato diretamente com a oficina para atualizar o seu cadastro.',
+    );
+  }
+
+  if (context?.registeredName && !isGenericCustomerName(context.registeredName, context.customerPhone)) {
+    const is_stating_name =
+      claim_name_pattern.test(message) ||
+      (context.awaitingCustomerName && looksLikeCustomerNameReply(message));
+    if (is_stating_name) {
+      const extractedName = cleanCustomerName(message);
+      if (extractedName && isMismatch(extractedName, context.registeredName)) {
+        return refuse(
+          'out_of_scope',
+          'Nome informado não condiz com o cadastro atual no banco de dados.',
+          'Para sua segurança, se você mudou de número de telefone ou deseja alterar os dados do seu cadastro, por favor entre em contato diretamente com a oficina para atualizar o seu cadastro.',
+        );
+      }
+    }
+  }
+
+  const isForgotPin =
+    hasAnyPattern(message, FORGOT_PIN_PATTERNS) ||
+    hasAnyPattern(normalized, FORGOT_PIN_PATTERNS);
+
+  if (isForgotPin) {
+    return refuse(
+      'out_of_scope',
+      'Solicitação de recuperação de PIN ou senha.',
+      'Se você esqueceu o seu PIN de primeiro acesso ou sua senha, recomendamos que entre em contato diretamente com a oficina para trocar sua senha ou utilize a opção "Esqueci minha senha" no aplicativo.',
     );
   }
 

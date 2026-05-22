@@ -26,7 +26,7 @@ function normalizeServices(value: string | string[]): string[] {
 
 export const appointmentTool = (phoneNumber: string, fallbackDescription: string) => new DynamicStructuredTool({
   name: "create_appointment",
-  description: "Cria um agendamento e uma ordem de serviço (orçamento) para um cliente. Use quando o cliente solicitar explicitamente um agendamento.",
+  description: "Cria um agendamento para um cliente. Use quando o cliente solicitar agendamento ou orçamento.",
   schema: z.object({
     customerName: z.string().optional().describe("Nome do cliente"),
     vehiclePlate: z.string().describe("Placa do veículo"),
