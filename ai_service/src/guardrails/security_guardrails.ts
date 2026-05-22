@@ -336,7 +336,7 @@ function contextualShortAnswerDecision(
 }
 
 function getToolsForIntent(intent: GuardrailIntent): Set<string> {
-  const withProfileUpdate = (toolNames: string[]) => new Set([...toolNames, 'update_customer']);
+  const withProfileUpdate = (toolNames: string[]) => new Set([...toolNames, 'update_customer', 'update_vehicle']);
 
   switch (intent) {
     case 'automotive_advice':
